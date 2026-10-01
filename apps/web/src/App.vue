@@ -106,7 +106,14 @@ async function refresh() {
   } else if (role.value === 'moderator' && moderatorToken.value && assemblyId.value) {
     loading.value = true
     try { state.value = normalizeState(await request<Record<string, any>>(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}`, {}, moderatorToken.value)) }
-    catch (e) { error.value = (e as Error).message }
+    catch (e) {
+      const message = (e as Error).message
+      if (message.includes('401') || message.toLowerCase().includes('unauthorized')) {
+        moderatorToken.value = ''
+        sessionStorage.removeItem('moderatorToken')
+        error.value = 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
+      } else error.value = message
+    }
     finally { loading.value = false }
   }
 }

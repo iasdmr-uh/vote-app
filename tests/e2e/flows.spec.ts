@@ -94,6 +94,21 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(page.getByRole('button', { name: 'Publicar resultados' })).toBeVisible()
 })
 
+test('moderador con credencial caducada vuelve a mostrar acceso y elimina el token guardado', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'stale-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    await route.fulfill({ status: 401, json: { message: 'Unauthorized' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByLabel('Credencial de moderación')).toBeVisible()
+  await expect(page.getByText('La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.')).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBeNull()
+})
+
 test('proyector presenta estado y progreso sintético sin nombres ni opciones', async ({ page }) => {
   await page.route(api, async (route) => {
     const url = new URL(route.request().url())
