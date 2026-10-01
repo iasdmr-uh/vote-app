@@ -7,12 +7,19 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): void 
   if ((env.MODERATOR_ACCESS_TOKEN ?? '').length < 32) {
     throw new Error('MODERATOR_ACCESS_TOKEN must contain at least 32 characters')
   }
-  for (const key of ['WEB_ORIGIN', 'PUBLIC_APP_URL'] as const) {
+  const allowedOrigins = (env.WEB_ORIGIN ?? '').split(',').map((origin) => origin.trim()).filter(Boolean)
+  if (allowedOrigins.length === 0) throw new Error('WEB_ORIGIN must contain at least one absolute URL')
+  for (const origin of allowedOrigins) {
     try {
-      new URL(env[key]!)
+      new URL(origin)
     } catch {
-      throw new Error(`${key} must be an absolute URL`)
+      throw new Error('WEB_ORIGIN must contain only absolute URLs')
     }
+  }
+  try {
+    new URL(env.PUBLIC_APP_URL!)
+  } catch {
+    throw new Error('PUBLIC_APP_URL must be an absolute URL')
   }
   if (!/^postgres(?:ql)?:\/\//.test(env.DATABASE_URL!)) {
     throw new Error('DATABASE_URL must be a PostgreSQL connection URL')

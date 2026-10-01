@@ -16,6 +16,7 @@ import {
   RealtimeSocketData,
   roomFor,
 } from './realtime.types.js'
+import { isAllowedWebOrigin } from '../config/origins.js'
 
 export type RealtimeServer = Server<
   RealtimeClientToServerEvents,
@@ -53,7 +54,7 @@ function identityMatchesCredential(identity: RealtimeIdentity, credentials: Real
 
 @WebSocketGateway({
   namespace: '/events',
-  cors: { origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173', credentials: false },
+  cors: { origin: (origin, callback) => callback(null, isAllowedWebOrigin(origin)), credentials: false },
 })
 @Injectable()
 export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {

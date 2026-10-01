@@ -16,7 +16,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1')
   app.use(helmet())
   app.use(json({ limit: '16kb' }))
-  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: false })
+  app.enableCors({ origin: process.env.WEB_ORIGIN!.split(',').map((origin) => origin.trim()), credentials: false })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   app.enableShutdownHooks()
   await app.listen(Number(process.env.API_PORT ?? 3000))

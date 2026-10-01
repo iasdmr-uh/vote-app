@@ -55,6 +55,8 @@ Consulta `.env.example`. `POSTGRES_PASSWORD`, `DATABASE_URL` y `MODERATOR_ACCESS
 
 La credencial compartida habilita el MVP técnico, pero no identifica a cada operador individual. No desplegarla para una Asamblea oficial hasta que Secretaría/mesa valide quién modera, cómo se entrega y cómo se rota. Producción requiere secretos administrados por el entorno, HTTPS y una lista CORS específica.
 
+`WEB_ORIGIN` acepta una lista de orígenes exactos separados por comas. Para probar desde un teléfono, agrega el origen LAN del equipo que sirve Vite (por ejemplo, `http://192.168.1.20:5173`) y configura `VITE_API_URL` en `apps/web/.env.local` hacia la API en esa misma IP. Mantén solo los orígenes locales necesarios y reinicia ambos servidores después de cambiar `.env`.
+
 ## API implementada
 
 - Delegado: `POST /api/v1/assemblies/:assemblyCode/join`, `GET /api/v1/participant/me` y `POST /api/v1/participant/rounds/:roundId/vote`.

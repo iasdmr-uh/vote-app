@@ -25,6 +25,7 @@ test('startup configuration validates required URLs, database and moderator secr
     API_PORT: '3000',
   }
   assert.doesNotThrow(() => validateEnvironment(valid))
+  assert.doesNotThrow(() => validateEnvironment({ ...valid, WEB_ORIGIN: 'http://localhost:5173, http://192.168.2.6:5173' }))
   assert.throws(() => validateEnvironment({ ...valid, MODERATOR_ACCESS_TOKEN: 'too-short' }), /at least 32/)
   assert.throws(() => validateEnvironment({ ...valid, DATABASE_URL: 'file:local' }), /PostgreSQL/)
   assert.throws(() => validateEnvironment({ ...valid, WEB_ORIGIN: 'not-a-url' }), /absolute URL/)
