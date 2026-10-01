@@ -1,0 +1,41 @@
+{
+  "name": "@asdmr/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:dev": "nest start --watch",
+    "build": "nest build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/*.spec.ts test/**/*.spec.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.0",
+    "@nestjs/core": "^12.0.0",
+    "@nestjs/platform-express": "^12.0.0",
+    "@nestjs/platform-socket.io": "^12.0.0",
+    "@nestjs/websockets": "^12.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1",
+    "express": "^5.1.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "helmet": "^8.1.0",
+    "dotenv": "^16.6.1",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.0",
+    "prisma": "^7.10.0",
+    "tsx": "^4.20.0"
+  }
+}

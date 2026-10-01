@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationType {
+  union
+  association
+}
+
+enum AssemblyStatus {
+  preparing
+  lobby_open
+  lobby_closed
+  in_progress
+  completed
+}
+
+enum ParticipantStatus {
+  active
+  removed
+}
+
+enum RoundStatus {
+  draft
+  open
+  closed
+  published
+}
+
+model Organization {
+  id         String           @id @default(uuid()) @db.Uuid
+  name       String
+  type       OrganizationType
+  assemblies Assembly[]
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  @@map("organizations")
+}
+
+model Assembly {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid @map("organization_id")
+  name           String
+  status         AssemblyStatus       @default(preparing)
+  joinCodeHash   String               @unique @map("join_code_hash") @db.Char(64)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  participants   ParticipantSession[]
+  rounds         Round[]
+  auditEvents    AuditEvent[]
+
+  @@index([organizationId, status])
+  @@map("assemblies")
+}
+
+model ParticipantSession {
+  id         String             @id @default(uuid()) @db.Uuid
+  assemblyId String             @db.Uuid @map("assembly_id")
+  firstName  String             @map("first_name")
+  lastName   String             @map("last_name")
+  tokenHash  String             @unique @map("token_hash") @db.Char(64)
+  status     ParticipantStatus @default(active)
+  joinedAt   DateTime           @default(now()) @map("joined_at")
+  assembly   Assembly           @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  participations Participation[]
+
+  @@index([assemblyId, status])
+  @@map("participant_sessions")
+}
+
+model Round {
+  id             String          @id @default(uuid()) @db.Uuid
+  assemblyId     String          @db.Uuid @map("assembly_id")
+  title          String
+  format         String          @default("single_choice")
+  countingRule   Json            @map("counting_rule")
+  status         RoundStatus     @default(draft)
+  openedAt       DateTime?       @map("opened_at")
+  closedAt       DateTime?       @map("closed_at")
+  publishedAt    DateTime?       @map("published_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  assembly       Assembly        @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  options        BallotOption[]
+  participations Participation[]
+  votes          AnonymousVote[]
+  auditEvents    AuditEvent[]
+
+  @@index([assemblyId, status])
+  @@map("rounds")
+}
+
+model BallotOption {
+  id      String           @id @default(uuid()) @db.Uuid
+  roundId String           @db.Uuid @map("round_id")
+  label   String
+  order   Int
+  round   Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  votes   AnonymousVote[]
+
+  @@unique([roundId, order])
+  @@unique([roundId, id])
+  @@map("ballot_options")
+}
+
+model Participation {
+  id                   String             @id @default(uuid()) @db.Uuid
+  roundId              String             @db.Uuid @map("round_id")
+  participantSessionId String             @db.Uuid @map("participant_session_id")
+  recordedAt           DateTime           @default(now()) @map("recorded_at")
+  round                Round              @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participantSession   ParticipantSession @relation(fields: [participantSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, participantSessionId])
+  @@map("participations")
+}
+
+model AnonymousVote {
+  id       String       @id @default(uuid()) @db.Uuid
+  roundId  String       @db.Uuid @map("round_id")
+  optionId String       @db.Uuid @map("option_id")
+  round    Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  option   BallotOption @relation(fields: [roundId, optionId], references: [roundId, id], onDelete: Cascade)
+
+  @@index([roundId, optionId])
+  @@map("anonymous_votes")
+}
+
+model AuditEvent {
+  id         String    @id @default(uuid()) @db.Uuid
+  assemblyId String    @db.Uuid @map("assembly_id")
+  roundId    String?   @db.Uuid @map("round_id")
+  actorRef   String    @map("actor_ref")
+  action     String
+  occurredAt DateTime  @default(now()) @map("occurred_at")
+  metadata   Json?
+  assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  round      Round?   @relation(fields: [roundId], references: [id], onDelete: SetNull)
+
+  @@index([assemblyId, occurredAt])
+  @@map("audit_events")
+}

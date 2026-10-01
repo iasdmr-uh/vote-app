@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+apps/api/.nestjs/
+apps/api/src/generated/prisma/
+playwright-report/
+test-results/
+.k6-summary.json
