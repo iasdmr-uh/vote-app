@@ -96,7 +96,7 @@ function normalizeState(value: Record<string, any>): PublicState {
   } : undefined
   const assembly = value.assembly || (value.assemblyStatus
     ? { status: value.assemblyStatus }
-    : value.id ? { id: value.id, name: value.name, status: value.status } : undefined)
+    : value.id ? { id: value.id, name: value.name, status: value.status, completedAt: value.completedAt ?? null } : undefined)
   return {
     ...value,
     assembly,

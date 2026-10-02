@@ -109,16 +109,14 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
     const url = new URL(request.url())
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
       await route.fulfill({ json: {
-        assembly: {
-          id: 'synthetic-assembly', name: 'Asamblea de prueba',
-          status: assemblyCompleted ? 'completed' : 'in_progress',
-          completedAt: assemblyCompleted ? completedAt : null,
-          lobbyStatus: 'lobby_closed',
-        },
+        id: 'synthetic-assembly',
+        name: 'Asamblea de prueba',
+        status: assemblyCompleted ? 'completed' : 'in_progress',
+        completedAt: assemblyCompleted ? completedAt : null,
         participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético' }],
         participantCount: 1,
         eligibleCount: 1,
-        currentRound: { id: 'synthetic-round', title: 'Elección de prueba', status: roundClosed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }] },
+        rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: roundClosed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }] }],
       } })
       return
     }
@@ -155,6 +153,47 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
   await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Preparar papeleta' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Publicar resultados' })).toHaveCount(0)
+})
+
+test('delegado y proyector ven que la Asamblea concluyó y conservan resultados publicados', async ({ page }) => {
+  const completedAt = '2026-10-02T18:30:00.000Z'
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'synthetic-participant-token')
+    localStorage.setItem('assemblyJoinCode', 'DEMO-ROOM')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assemblyStatus: 'completed',
+        assemblyCompletedAt: completedAt,
+        lobbyStatus: 'closed',
+        openRound: { roundId: 'synthetic-round', title: 'Elección publicada', status: 'published', options: [] },
+        participationStatus: 'recorded',
+        results: [{ label: 'Opción declarada', count: 1 }],
+      } })
+      return
+    }
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      await route.fulfill({ json: {
+        assembly: { name: 'Asamblea de prueba', status: 'completed', completedAt, lobbyStatus: 'lobby_closed' },
+        participantCount: 1,
+        currentRound: { id: 'synthetic-round', title: 'Elección publicada', status: 'published' },
+        results: [{ label: 'Opción declarada', count: 1 }],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
+  await expect(page.getByText('La sesión concluyó')).toBeVisible()
+  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+
+  await page.goto('/projector?code=DEMO-ROOM')
+  await expect(page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
+  await expect(page.getByText('Opción declarada')).toBeVisible()
 })
 
 test('moderador con credencial caducada vuelve a mostrar acceso y elimina el token guardado', async ({ page }) => {
