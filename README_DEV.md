@@ -20,6 +20,9 @@
 
 Registro reproducible más reciente: 2026-10-01. En Node.js 22.22.1/npm 11.13.0, `npm run typecheck` y `npm run build` terminaron correctamente. `npm run test:e2e` pasó 6/6 pruebas (Chromium de escritorio y móvil); Playwright intercepta la API con datos sintéticos, por lo que no valida el recorrido integrado contra API y PostgreSQL. La primera ejecución E2E dentro del sandbox no pudo abrir `127.0.0.1:5173` (`EPERM`); al autorizar el servidor local, la misma suite pasó.
 
+La suite integrada real se ejecuta por separado con `npm run test:e2e:integration` (requiere Docker o las herramientas locales de PostgreSQL y Chromium de Playwright). Instrucciones y formato de evidencia: [docs/e2e-real-postgres.md](docs/e2e-real-postgres.md).
+
+
 Docker 28.0.4 estaba instalado, pero su daemon no estaba disponible. Se usó PostgreSQL local 15.15 para crear un clúster nuevo y desechable en `/private/tmp`, escuchando solo en `127.0.0.1:55432`, con una base vacía `asdmr_integration`; no se conectó a la base local habitual ni a datos reales. `prisma migrate deploy` aplicó `20261001000000_initial`; `TEST_DATABASE_URL=... npm run test --workspace @asdmr/api` pasó 11/11, incluido el caso de concurrencia, cierre y publicación que antes se omitía. El clúster de prueba se detuvo después de la corrida. La repetición limpia requiere los comandos de abajo.
 
 `k6` no está instalado (`k6 version`: comando no encontrado). `node --input-type=module --check < tests/load/voting.js` pasó únicamente la comprobación sintáctica: no se ejecutó carga y no hay resultado de rendimiento. No se ejecutará carga hasta disponer de un entorno candidato de pruebas preparado, IDs sintéticos válidos y umbrales acordados. Los ensayos presenciales siguen pendientes.
