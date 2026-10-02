@@ -32,6 +32,10 @@ Antes de ejecutar, completar estas decisiones y dependencias:
 | Disponibilidad de Secretaría/mesa y participantes de prueba | Pendiente de agenda | Designar responsables, operadores y grupo de ensayo |
 | Playwright y k6 ejecutables en pipeline/entorno | Playwright instalado y suite aislada ejecutada: 6/6 pasan; CLI k6 no está instalado en el entorno actual | Instalar k6 en el host y confirmar versiones/comandos reproducibles antes de la carga; las pruebas UI no validan backend |
 
+### Preparación candidata (#6)
+
+El repositorio incluye ahora `docker-compose.candidate.yml`, imágenes API/web, Caddy para HTTPS, migración explícita, healthchecks, ejemplo de variables sin secretos y guiones para respaldo y comprobación de restauración aislada. Procedimiento: [docs/candidate-environment.md](docs/candidate-environment.md). Una comprobación local con PostgreSQL desechable pasó dump/restore de la migración y verificó ocho tablas; no prueba los scripts Compose ni PostgreSQL 17 del candidato. La fila de entorno continúa `Pendiente` hasta que el operador proporcione host/DNS autorizados y se adjunten la verificación desde fuera del host, el ensayo de scripts de respaldo/restauración con la imagen candidata y el SHA candidato. No se guardan secretos ni backups en Git.
+
 Las filas marcadas pendientes son bloqueos para sus pruebas correspondientes; no representan fallos ni resultados. La revisión documental y preparación de casos sí puede avanzar con los contratos de Fase 01.
 
 ### Registro reproducible de validación local (2026-10-01)
