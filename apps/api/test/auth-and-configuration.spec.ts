@@ -27,7 +27,7 @@ test('moderator credentials compare by digest and reject missing or incorrect va
 })
 
 test('moderator guard rejects missing credentials and accepts a valid credential', () => {
-  const auth = { verifyModeratorToken: (token?: string) => token === 'valid-moderator-token' } as AuthService
+  const auth = { verifyModeratorToken: (token?: string) => token === 'valid-moderator-token' } as unknown as AuthService
   const guard = new ModeratorGuard(auth)
 
   assert.throws(() => guard.canActivate(httpContext()), (error: unknown) => {
