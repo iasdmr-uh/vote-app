@@ -28,6 +28,7 @@ const firstName = ref('')
 const lastName = ref('')
 const sessionToken = ref(localStorage.getItem('participantSessionToken') || '')
 const moderatorToken = ref(sessionStorage.getItem('moderatorToken') || '')
+const moderatorCredential = ref('')
 const assemblyId = ref(sessionStorage.getItem('assemblyId') || '')
 const assemblyName = ref('Asamblea de Delegados')
 const roundTitle = ref('')
@@ -211,7 +212,7 @@ async function createRound() {
 }
 
 function signInModerator() {
-  moderatorToken.value = moderatorToken.value.trim()
+  moderatorToken.value = moderatorCredential.value.trim()
   sessionStorage.setItem('moderatorToken', moderatorToken.value)
   void refresh()
 }
@@ -296,7 +297,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); realti
       <section v-if="!moderatorToken" class="card join-card">
         <p class="eyebrow">ACCESO DE MESA</p><h1>Moderación</h1>
         <p class="lead">Ingresa la credencial operativa autorizada por la organización.</p>
-        <form @submit.prevent="signInModerator"><label>Credencial de moderación<input v-model="moderatorToken" type="password" autocomplete="current-password" required /></label><button class="primary">Continuar</button></form>
+        <form @submit.prevent="signInModerator"><label>Credencial de moderación<input v-model="moderatorCredential" type="password" autocomplete="current-password" required /></label><button class="primary">Continuar</button></form>
       </section>
       <template v-else>
         <section class="page-heading"><p class="eyebrow">PANEL DE MODERACIÓN</p><h1>Control de Asamblea</h1><p>El estado de la sesión y las votaciones proviene del servidor.</p></section>
