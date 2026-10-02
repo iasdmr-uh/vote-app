@@ -28,6 +28,7 @@ const firstName = ref('')
 const lastName = ref('')
 const sessionToken = ref(localStorage.getItem('participantSessionToken') || '')
 const moderatorToken = ref(sessionStorage.getItem('moderatorToken') || '')
+const moderatorAuthState = ref<'unauthenticated' | 'validating' | 'authenticated'>(moderatorToken.value ? 'validating' : 'unauthenticated')
 const moderatorCredential = ref('')
 const assemblyId = ref(sessionStorage.getItem('assemblyId') || '')
 const assemblyName = ref('Asamblea de Delegados')
@@ -44,6 +45,13 @@ const lobbyStatus = computed(() => state.value?.assembly?.lobbyStatus || (state.
 const round = computed(() => state.value?.currentRound)
 
 function go(path: string) {
+  const enteringModerator = path.startsWith('/moderator')
+  if (enteringModerator) {
+    moderatorAuthState.value = moderatorToken.value ? 'validating' : 'unauthenticated'
+    state.value = null
+  } else if (role.value === 'moderator') {
+    state.value = null
+  }
   history.pushState({}, '', path)
   route.value = path
   error.value = ''
@@ -106,16 +114,47 @@ async function refresh() {
     finally { loading.value = false }
   } else if (role.value === 'moderator' && moderatorToken.value && assemblyId.value) {
     loading.value = true
-    try { state.value = normalizeState(await request<Record<string, any>>(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}`, {}, moderatorToken.value)) }
+    try {
+      if (moderatorAuthState.value !== 'authenticated') {
+        moderatorAuthState.value = 'validating'
+        state.value = null
+      }
+      state.value = normalizeState(await request<Record<string, any>>(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}`, {}, moderatorToken.value))
+      moderatorAuthState.value = 'authenticated'
+      sessionStorage.setItem('moderatorToken', moderatorToken.value)
+    }
     catch (e) {
       const message = (e as Error).message
       if (message.includes('401') || message.toLowerCase().includes('unauthorized')) {
         moderatorToken.value = ''
+        moderatorAuthState.value = 'unauthenticated'
+        state.value = null
         sessionStorage.removeItem('moderatorToken')
         error.value = 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
-      } else error.value = message
+      } else {
+        moderatorAuthState.value = 'unauthenticated'
+        state.value = null
+        error.value = message
+      }
     }
     finally { loading.value = false }
+  } else if (role.value === 'moderator' && moderatorToken.value) {
+    loading.value = true
+    moderatorAuthState.value = 'validating'
+    try {
+      await request('/moderator/session', {}, moderatorToken.value)
+      moderatorAuthState.value = 'authenticated'
+      sessionStorage.setItem('moderatorToken', moderatorToken.value)
+    } catch (e) {
+      const message = (e as Error).message
+      moderatorToken.value = ''
+      moderatorAuthState.value = 'unauthenticated'
+      state.value = null
+      sessionStorage.removeItem('moderatorToken')
+      error.value = message.includes('401') || message.toLowerCase().includes('unauthorized')
+        ? 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
+        : message
+    } finally { loading.value = false }
   }
 }
 
@@ -211,10 +250,28 @@ async function createRound() {
   })
 }
 
-function signInModerator() {
-  moderatorToken.value = moderatorCredential.value.trim()
-  sessionStorage.setItem('moderatorToken', moderatorToken.value)
-  void refresh()
+async function signInModerator() {
+  const credential = moderatorCredential.value.trim()
+  if (!credential) return
+  moderatorAuthState.value = 'validating'
+  moderatorToken.value = credential
+  state.value = null
+  error.value = ''
+  try {
+    await request('/moderator/session', {}, credential)
+    moderatorAuthState.value = 'authenticated'
+    sessionStorage.setItem('moderatorToken', credential)
+    if (assemblyId.value) void refresh()
+  } catch (e) {
+    const message = (e as Error).message
+    moderatorToken.value = ''
+    moderatorAuthState.value = 'unauthenticated'
+    state.value = null
+    sessionStorage.removeItem('moderatorToken')
+    error.value = message.includes('401') || message.toLowerCase().includes('unauthorized')
+      ? 'La credencial de moderación no es válida.'
+      : message
+  }
 }
 
 function syncRealtime() {
@@ -234,7 +291,15 @@ function syncRealtime() {
 }
 
 onMounted(() => {
-  window.addEventListener('popstate', () => { route.value = window.location.pathname; void refresh() })
+  window.addEventListener('popstate', () => {
+    const nextRoute = window.location.pathname
+    if (nextRoute.startsWith('/moderator')) {
+      moderatorAuthState.value = moderatorToken.value ? 'validating' : 'unauthenticated'
+      state.value = null
+    } else if (role.value === 'moderator') state.value = null
+    route.value = nextRoute
+    void refresh()
+  })
   void refresh()
   void refreshQr()
   syncRealtime()
@@ -248,10 +313,9 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); realti
 <template>
   <header class="topbar">
     <a class="brand" href="/" @click.prevent="go('/')"><span class="brand-mark">A</span><span>ASDMR <small>Unión Hondureña</small></span></a>
-    <nav aria-label="Vistas">
-      <a href="/" :aria-current="role === 'participant' ? 'page' : undefined" @click.prevent="go('/')">Delegado</a>
-      <a href="/moderator" :aria-current="role === 'moderator' ? 'page' : undefined" @click.prevent="go('/moderator')">Moderación</a>
-      <a :href="`/projector${code ? `?code=${encodeURIComponent(code)}` : ''}`" :aria-current="role === 'projector' ? 'page' : undefined" @click.prevent="go('/projector')">Proyector</a>
+    <nav v-if="role === 'moderator'" aria-label="Vistas de mesa">
+      <a href="/" @click.prevent="go('/')">Delegado</a>
+      <a :href="`/projector${code ? `?code=${encodeURIComponent(code)}` : ''}`" @click.prevent="go('/projector')">Proyector</a>
     </nav>
   </header>
 
@@ -294,12 +358,16 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); realti
     </template>
 
     <template v-else-if="role === 'moderator'">
-      <section v-if="!moderatorToken" class="card join-card">
+      <section v-if="moderatorAuthState === 'validating'" class="card join-card" aria-live="polite">
+        <p class="eyebrow">ACCESO DE MESA</p><h1>Verificando acceso</h1>
+        <p class="lead">Estamos validando la credencial con el servidor.</p>
+      </section>
+      <section v-else-if="moderatorAuthState !== 'authenticated'" class="card join-card">
         <p class="eyebrow">ACCESO DE MESA</p><h1>Moderación</h1>
         <p class="lead">Ingresa la credencial operativa autorizada por la organización.</p>
         <form @submit.prevent="signInModerator"><label>Credencial de moderación<input v-model="moderatorCredential" type="password" autocomplete="current-password" required /></label><button class="primary">Continuar</button></form>
       </section>
-      <template v-else>
+      <template v-else-if="moderatorAuthState === 'authenticated'">
         <section class="page-heading"><p class="eyebrow">PANEL DE MODERACIÓN</p><h1>Control de Asamblea</h1><p>El estado de la sesión y las votaciones proviene del servidor.</p></section>
         <section v-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
         <template v-else>
