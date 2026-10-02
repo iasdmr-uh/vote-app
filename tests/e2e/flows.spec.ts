@@ -40,6 +40,8 @@ test('delegado ingresa con datos sintéticos y confirma su participación', asyn
   })
 
   await page.goto('/')
+  await expect(page.getByRole('navigation')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Moderación' })).toHaveCount(0)
   await page.getByLabel('Código de sala').fill('DEMO-ROOM')
   await page.getByLabel('Nombre').fill('Delegado')
   await page.getByLabel('Apellido').fill('Sintético')
@@ -107,6 +109,43 @@ test('moderador con credencial caducada vuelve a mostrar acceso y elimina el tok
   await expect(page.getByLabel('Credencial de moderación')).toBeVisible()
   await expect(page.getByText('La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.')).toBeVisible()
   expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBeNull()
+})
+
+test('abrir /moderator sin credencial solo muestra el formulario de acceso', async ({ page }) => {
+  let moderatorRequests = 0
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.includes('/moderator/')) moderatorRequests += 1
+    await route.fulfill({ status: 401, json: { message: 'Unauthorized' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { name: 'Moderación' })).toBeVisible()
+  await expect(page.getByLabel('Credencial de moderación')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Crear Asamblea y generar código' })).toHaveCount(0)
+  expect(moderatorRequests).toBe(0)
+})
+
+test('moderador valida la credencial antes de mostrar el panel cuando aún no hay Asamblea', async ({ page }) => {
+  let authorization = ''
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/session')) {
+      authorization = request.headers().authorization || ''
+      await route.fulfill({ json: { authenticated: true } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await page.getByLabel('Credencial de moderación').fill('synthetic-moderator-token')
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toBeVisible()
+  expect(authorization).toBe('Bearer synthetic-moderator-token')
 })
 
 test('proyector presenta estado y progreso sintético sin nombres ni opciones', async ({ page }) => {
