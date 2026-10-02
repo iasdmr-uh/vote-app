@@ -1,49 +1,59 @@
 import http from 'k6/http'
-import { check, sleep } from 'k6'
+import { check } from 'k6'
 import { Counter, Rate, Trend } from 'k6/metrics'
 
 const BASE_URL = (__ENV.VOTE_BASE_URL || '').replace(/\/$/, '')
-const ASSEMBLY_CODE = __ENV.VOTE_ASSEMBLY_CODE || ''
-const ROUND_ID = __ENV.VOTE_ROUND_ID || ''
-const OPTION_ID = __ENV.VOTE_OPTION_ID || ''
 const API_PREFIX = (__ENV.VOTE_API_PREFIX || '/api/v1').replace(/\/$/, '')
+const MODE = __ENV.VOTE_MODE || 'join'
 const TARGET_SESSIONS = Number(__ENV.VOTE_SESSIONS || 50)
-const JOIN_ONLY = __ENV.VOTE_JOIN_ONLY === 'true'
 const P95_LIMIT_MS = Number(__ENV.VOTE_P95_MS || '')
 const MAX_ERROR_RATE = Number(__ENV.VOTE_MAX_ERROR_RATE || '')
+const MODERATOR_TOKEN = __ENV.VOTE_MODERATOR_TOKEN || ''
+const RUN_LABEL = (__ENV.VOTE_RUN_LABEL || '').trim()
 
 const requestErrors = new Rate('vote_request_errors')
-const joinLatency = new Trend('vote_join_latency', true)
-const stateLatency = new Trend('vote_state_latency', true)
-const voteLatency = new Trend('vote_submit_latency', true)
+const loadLatency = new Trend('vote_load_request_latency', true)
 const joinedSessions = new Counter('vote_joined_sessions')
+const seededSessions = new Counter('vote_seeded_sessions')
+const acceptedVotes = new Counter('vote_expected_accepted')
+const duplicateRejections = new Counter('vote_expected_duplicate_rejections')
+const closedRejections = new Counter('vote_expected_closed_rejections')
 
-if (!BASE_URL) throw new Error('Set VOTE_BASE_URL to an explicitly selected candidate API origin before running k6.')
-if (!ASSEMBLY_CODE) throw new Error('Set VOTE_ASSEMBLY_CODE to a synthetic test assembly code.')
-if (!JOIN_ONLY && (!ROUND_ID || !OPTION_ID)) {
-  throw new Error('For the voting scenario, set VOTE_ROUND_ID and VOTE_OPTION_ID for a synthetic open round.')
+if (!BASE_URL) throw new Error('Set VOTE_BASE_URL to an explicitly selected test API origin.')
+if (__ENV.VOTE_ENVIRONMENT !== 'staging') {
+  throw new Error('Set VOTE_ENVIRONMENT=staging. This script refuses to run without an explicit staging target declaration.')
 }
-if (!Number.isInteger(TARGET_SESSIONS) || TARGET_SESSIONS < 1 || TARGET_SESSIONS > 70) {
-  throw new Error('VOTE_SESSIONS must be an integer between 1 and 70; acceptance runs should use 50–70.')
+if (!MODERATOR_TOKEN) throw new Error('Set VOTE_MODERATOR_TOKEN to the moderator credential for the isolated staging environment.')
+if (!RUN_LABEL) throw new Error('Set VOTE_RUN_LABEL to a unique synthetic run label.')
+if (!['join', 'vote-retry', 'closed-vote'].includes(MODE)) {
+  throw new Error('VOTE_MODE must be join, vote-retry, or closed-vote.')
+}
+if (!Number.isInteger(TARGET_SESSIONS) || TARGET_SESSIONS < 50 || TARGET_SESSIONS > 70) {
+  throw new Error('VOTE_SESSIONS must be an integer between 50 and 70 for acceptance runs.')
 }
 if (!Number.isFinite(P95_LIMIT_MS) || P95_LIMIT_MS <= 0) {
-  throw new Error('Set VOTE_P95_MS to the P95 latency limit approved for this run.')
+  throw new Error('Set VOTE_P95_MS to the P95 latency limit approved before the run.')
 }
 if (!__ENV.VOTE_MAX_ERROR_RATE || !Number.isFinite(MAX_ERROR_RATE) || MAX_ERROR_RATE < 0 || MAX_ERROR_RATE > 1) {
-  throw new Error('Set VOTE_MAX_ERROR_RATE to the approved maximum request error rate (0–1).')
+  throw new Error('Set VOTE_MAX_ERROR_RATE to the approved maximum unexpected request error rate (0–1).')
+}
+
+const moderatorHeaders = {
+  Authorization: `Bearer ${MODERATOR_TOKEN}`,
+  'Content-Type': 'application/json',
 }
 
 export const options = {
   scenarios: {
-    assembly_sessions: {
+    synthetic_sessions: {
       executor: 'per-vu-iterations',
       vus: TARGET_SESSIONS,
       iterations: 1,
-      maxDuration: __ENV.VOTE_MAX_DURATION || '3m',
+      maxDuration: __ENV.VOTE_MAX_DURATION || '5m',
     },
   },
   thresholds: {
-    http_req_duration: [`p(95)<=${P95_LIMIT_MS}`],
+    vote_load_request_latency: [`p(95)<=${P95_LIMIT_MS}`],
     vote_request_errors: [`rate<=${MAX_ERROR_RATE}`],
   },
 }
@@ -52,43 +62,133 @@ function endpoint(path) {
   return `${BASE_URL}${API_PREFIX}${path}`
 }
 
-export default function () {
-  const suffix = `load-${__VU}-${Date.now()}`
-  const joinResponse = http.post(
-    endpoint(`/assemblies/${encodeURIComponent(ASSEMBLY_CODE)}/join`),
-    JSON.stringify({ firstName: 'Prueba', lastName: suffix }),
-    { headers: { 'Content-Type': 'application/json' }, tags: { operation: 'join' } },
-  )
-  joinLatency.add(joinResponse.timings.duration)
-  const joinOk = check(joinResponse, {
-    'join accepted (200/201)': (response) => response.status === 200 || response.status === 201,
-    'join returns synthetic participant token': (response) => Boolean(response.json('participantSessionToken')),
-  })
-  requestErrors.add(!joinOk)
-  if (!joinOk) return
+function body(response) {
+  try { return response.json() } catch { return {} }
+}
 
-  joinedSessions.add(1)
-  const token = joinResponse.json('participantSessionToken')
-  const meResponse = http.get(endpoint('/participant/me'), {
-    headers: { Authorization: `Bearer ${token}` },
-    tags: { operation: 'participant_state' },
+function controlRequest(method, path, payload, expectedStatuses) {
+  const response = http.request(method, endpoint(path), payload === undefined ? null : JSON.stringify(payload), {
+    headers: moderatorHeaders,
+    tags: { phase: 'setup', operation: path },
   })
-  stateLatency.add(meResponse.timings.duration)
-  const stateOk = check(meResponse, { 'participant snapshot loaded': (response) => response.status === 200 })
-  requestErrors.add(!stateOk)
+  if (!expectedStatuses.includes(response.status)) {
+    throw new Error(`Staging setup failed for ${method} ${path}: HTTP ${response.status}`)
+  }
+  return body(response)
+}
 
-  if (stateOk && !JOIN_ONLY) {
-    const voteResponse = http.post(
-      endpoint(`/participant/rounds/${encodeURIComponent(ROUND_ID)}/vote`),
-      JSON.stringify({ optionId: OPTION_ID, confirmation: true }),
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, tags: { operation: 'vote' } },
-    )
-    voteLatency.add(voteResponse.timings.duration)
-    const voteOk = check(voteResponse, { 'vote accepted (200/201)': (response) => response.status === 200 || response.status === 201 })
-    requestErrors.add(!voteOk)
+function batchJoin(joinCode) {
+  const requests = Array.from({ length: TARGET_SESSIONS }, (_, index) => ({
+    method: 'POST',
+    url: endpoint(`/assemblies/${encodeURIComponent(joinCode)}/join`),
+    body: JSON.stringify({ firstName: 'Prueba', lastName: `${RUN_LABEL}-${index + 1}` }),
+    params: { headers: { 'Content-Type': 'application/json' }, tags: { phase: 'setup', operation: 'seed_join' } },
+  }))
+  const responses = http.batch(requests)
+  const participants = responses.map((response, index) => {
+    const value = body(response)
+    if (![200, 201].includes(response.status) || !value.participantSessionToken) {
+      throw new Error(`Could not create synthetic participant ${index + 1}: HTTP ${response.status}`)
+    }
+    return { token: value.participantSessionToken }
+  })
+  return participants
+}
+
+function batchVotes(participants, roundId, optionId) {
+  const requests = participants.map(({ token }) => ({
+    method: 'POST',
+    url: endpoint(`/participant/rounds/${encodeURIComponent(roundId)}/vote`),
+    body: JSON.stringify({ optionId, confirmation: true }),
+    params: {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      tags: { phase: 'setup', operation: 'seed_vote' },
+    },
+  }))
+  const responses = http.batch(requests)
+  responses.forEach((response, index) => {
+    if (![200, 201].includes(response.status)) {
+      throw new Error(`Could not seed vote for synthetic participant ${index + 1}: HTTP ${response.status}`)
+    }
+  })
+}
+
+export function setup() {
+  const assembly = controlRequest('POST', '/moderator/assemblies', { name: `k6 ${RUN_LABEL}` }, [200, 201])
+  if (MODE === 'join') return { joinCode: assembly.joinCode }
+
+  const participants = batchJoin(assembly.joinCode)
+  seededSessions.add(participants.length)
+
+  controlRequest('PATCH', `/moderator/assemblies/${encodeURIComponent(assembly.assemblyId)}/lobby`, { status: 'lobby_closed' }, [200])
+  const round = controlRequest('POST', `/moderator/assemblies/${encodeURIComponent(assembly.assemblyId)}/rounds`, {
+    title: `Prueba k6 ${RUN_LABEL}`,
+    format: 'single_choice',
+    options: [{ label: 'Opción sintética' }],
+    countingRule: { kind: 'count_only' },
+  }, [200, 201])
+  controlRequest('POST', `/moderator/rounds/${encodeURIComponent(round.id)}/open`, undefined, [200])
+
+  const optionId = round.options?.[0]?.id
+  if (!optionId) throw new Error('Staging setup failed: created round has no option ID.')
+
+  if (MODE === 'closed-vote') {
+    batchVotes(participants, round.id, optionId)
+    controlRequest('POST', `/moderator/rounds/${encodeURIComponent(round.id)}/close`, undefined, [200])
   }
 
-  sleep(0.2)
+  return { participants, roundId: round.id, optionId }
+}
+
+function record(response, label, acceptedStatuses) {
+  loadLatency.add(response.timings.duration)
+  const ok = check(response, { [label]: (value) => acceptedStatuses.includes(value.status) })
+  requestErrors.add(!ok)
+  return ok
+}
+
+export default function (data) {
+  if (MODE === 'join') {
+    const suffix = `${RUN_LABEL}-${__VU}`
+    const joined = http.post(
+      endpoint(`/assemblies/${encodeURIComponent(data.joinCode)}/join`),
+      JSON.stringify({ firstName: 'Prueba', lastName: suffix }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { operation: 'join' } },
+    )
+    if (!record(joined, 'synthetic participant joined', [200, 201])) return
+    joinedSessions.add(1)
+    const token = body(joined).participantSessionToken
+    if (!token) {
+      requestErrors.add(true)
+      check(joined, { 'join returns participant token': () => false })
+      return
+    }
+    const state = http.get(endpoint('/participant/me'), {
+      headers: { Authorization: `Bearer ${token}` },
+      tags: { operation: 'participant_state' },
+    })
+    record(state, 'participant state loaded', [200])
+    return
+  }
+
+  const participant = data.participants[__VU - 1]
+  const voteUrl = endpoint(`/participant/rounds/${encodeURIComponent(data.roundId)}/vote`)
+  const voteParams = {
+    headers: { Authorization: `Bearer ${participant.token}`, 'Content-Type': 'application/json' },
+    tags: { operation: MODE === 'closed-vote' ? 'closed_vote' : 'vote' },
+  }
+  const payload = JSON.stringify({ optionId: data.optionId, confirmation: true })
+
+  if (MODE === 'vote-retry') {
+    const first = http.post(voteUrl, payload, voteParams)
+    if (record(first, 'first vote accepted', [200, 201])) acceptedVotes.add(1)
+    const retry = http.post(voteUrl, payload, voteParams)
+    if (record(retry, 'duplicate vote rejected', [409])) duplicateRejections.add(1)
+    return
+  }
+
+  const closed = http.post(voteUrl, payload, voteParams)
+  if (record(closed, 'vote rejected after round closure', [409])) closedRejections.add(1)
 }
 
 export function handleSummary(data) {

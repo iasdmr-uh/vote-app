@@ -71,21 +71,35 @@ npm run test:e2e
 
 `@playwright/test` está declarado como dependencia de desarrollo raíz. Playwright descarga su navegador con `npx playwright install chromium`; el proyecto `mobile-chromium` usa emulación Pixel 7 en Chromium y `chromium` usa escritorio. Estos casos interceptan la API con respuestas sintéticas y no requieren iniciar ni conectar el backend. Para apuntar el navegador a un servidor web ya levantado, establecer `PLAYWRIGHT_BASE_URL` antes del comando; en ese modo Playwright no inicia Vite.
 
-El ejecutable k6 es un requisito aparte de npm y debe instalarse/disponerse en el sistema (`k6 version`). El escenario usa ensamblado sintético explícito; no tiene URL de destino por defecto y aborta si faltan variables. Preparar primero Asamblea/lobby de prueba abierto; salvo `VOTE_JOIN_ONLY=true`, preparar también una ronda sintética abierta y una opción válida. Ejemplo de corrida de 50 sesiones:
+El ejecutable k6 es un requisito aparte de npm y debe instalarse/disponerse en el sistema (`k6 version`). `tests/load/voting.js` exige declarar explícitamente `VOTE_ENVIRONMENT=staging`, URL de API de pruebas, credencial de moderación de ese entorno, etiqueta única y umbrales aprobados. En cada corrida crea una Asamblea y participantes sintéticos nuevos; los modos de voto preparan también una ronda. No reutiliza ni borra datos previos. Configurar `VOTE_BASE_URL` solo con el origen de staging autorizado.
+
+La suite tiene tres modos y conviene guardar un resumen por corrida. `join` mide ingreso concurrente y lectura de estado; `vote-retry` prepara sesiones y ronda y mide el primer voto y un reintento por cada sesión; `closed-vote` prepara una papeleta con un voto por sesión, la cierra y mide 50–70 rechazos concurrentes posteriores al cierre. Los rechazos esperados (HTTP 409) no cuentan como errores; cualquier respuesta distinta falla los checks y aumenta `vote_request_errors`.
+
+Ejemplo de ejecución (repetir por modo con etiquetas únicas):
 
 ```sh
+mkdir -p artifacts
+export VOTE_ENVIRONMENT=staging
+export VOTE_BASE_URL='https://staging-autorizado.example'
+export VOTE_MODERATOR_TOKEN='<credencial de moderación solo de staging>'
 export VOTE_P95_MS='<umbral P95 aprobado, en milisegundos>'
 export VOTE_MAX_ERROR_RATE='<tasa máxima aprobada, valor entre 0 y 1>'
-VOTE_BASE_URL='https://entorno-candidato.example' \
-VOTE_ASSEMBLY_CODE='CODIGO_SINTETICO' \
-VOTE_ROUND_ID='UUID_RONDA_ABIERTA' \
-VOTE_OPTION_ID='UUID_OPCION' \
 VOTE_SESSIONS=50 \
-K6_SUMMARY_FILE=.k6-summary.json \
+VOTE_MODE=join \
+VOTE_RUN_LABEL='2026-10-02-join-a' \
+K6_SUMMARY_FILE=artifacts/k6-join.json \
 npm run test:load
 ```
 
-Sustituir ambos valores de umbral por los acordados por el equipo antes de la corrida; el script los exige y falla al arrancar si faltan o no son numéricos. Se evalúan como `http_req_duration: p(95)<=VOTE_P95_MS` y `vote_request_errors: rate<=VOTE_MAX_ERROR_RATE`. Cambiar `VOTE_SESSIONS` a un entero entre 50 y 70 para aceptación. Para probar solo ingreso y lectura de snapshot, omitir los IDs de ronda/opción y definir `VOTE_JOIN_ONLY=true`. Opcionalmente, `VOTE_MAX_DURATION` cambia el límite temporal de seguridad (por defecto `3m`) y `VOTE_API_PREFIX` cambia el prefijo (por defecto `/api/v1`). Cada VU crea una sesión con nombre sintético; las sesiones persistidas deben eliminarse conforme al procedimiento del entorno de prueba. El equipo fija los límites; este artefacto no prescribe sus valores.
+Ejecutar también con `VOTE_MODE=vote-retry VOTE_RUN_LABEL='2026-10-02-vote-a' K6_SUMMARY_FILE=artifacts/k6-vote-retry.json` y `VOTE_MODE=closed-vote VOTE_RUN_LABEL='2026-10-02-closed-a' K6_SUMMARY_FILE=artifacts/k6-closed-vote.json`. Se evalúan `vote_load_request_latency: p(95)<=VOTE_P95_MS` y `vote_request_errors: rate<=VOTE_MAX_ERROR_RATE`. `VOTE_SESSIONS` debe ser de 50 a 70. Opcionalmente, `VOTE_MAX_DURATION` cambia el límite por corrida (por defecto `5m`) y `VOTE_API_PREFIX` cambia el prefijo (por defecto `/api/v1`). No fijar valores de umbral por conveniencia: el equipo técnico/operativo debe aprobarlos antes de la corrida.
+
+Registrar los resultados reales abajo y mantenerlos como `Pendiente` hasta tener resumen y comprobación posterior en el panel de moderación. Enlazar el JSON y conservar una copia bajo control de versiones, quitando del resumen cualquier dato que pudiera revelar credenciales. Nunca guardar el token de moderación en el repositorio.
+
+| Corrida | Fecha / commit | k6 / entorno | Sesiones | Umbrales P95 / error | Resumen | Participaciones verificadas | Resultado |
+|---|---|---|---:|---|---|---|---|
+| K-01 `join` | Pendiente | Pendiente | 50–70 | Pendiente | Pendiente | Ingreso y lecturas de estado | Pendiente |
+| K-03a `vote-retry` | Pendiente | Pendiente | 50–70 | Pendiente | Pendiente | Total igual al número de sesiones; retries HTTP 409 | Pendiente |
+| K-03b `closed-vote` | Pendiente | Pendiente | 50–70 | Pendiente | Pendiente | Sin incremento tras el cierre; HTTP 409 | Pendiente |
 
 ## 2. Matriz funcional, privacidad y tiempo real
 
@@ -135,9 +149,10 @@ Preparar datos completamente sintéticos. Ejecutar contra el entorno más pareci
 
 | ID | Perfil | Ejecución | Criterio de aceptación | Evidencia requerida | Bloqueos | Resultado |
 |---|---|---|---|---|---|---|
-| K-01 | Concurrencia normal | 50–70 sesiones conectadas; recorrer lobby, snapshot/estado y cambios de ronda | Recorrido completado sin errores bloqueantes; latencia y tasa de error cumplen umbrales definidos antes de correr | Script/commit, configuración, resumen k6, umbrales, entorno y errores | Entorno y 50–70 VUs; umbrales acordados | Pendiente |
-| K-02 | Ráfaga de ingreso | Simular ingreso simultáneo/ráfaga hacia lobby durante apertura | Ingresos aceptados/rechazados de forma correcta según estado; sin pérdida ni duplicados; umbrales acordados | Métricas k6, conteo servidor y errores | Endpoint de ingreso y entorno representativo | Pendiente |
-| K-03 | Ráfaga de voto | Con ronda abierta, ráfaga de envíos válidos y reintentos por sesión; incluir solicitudes después de cierre | Un voto máximo por sesión/ronda, rechazos tras cierre y estabilidad; no hay resultados parciales | Métricas, conteos sintéticos y revisión de eventos/logs | F02–03 y reglas aprobadas; umbrales acordados | Pendiente |
+| K-01 | Concurrencia normal | `VOTE_MODE=join`; 50–70 sesiones se unen simultáneamente y leen su estado | Todas las sesiones creadas y estado HTTP 200; latencia P95 y tasa de error dentro de los umbrales aprobados | Resumen JSON, commit, versión k6, etiqueta, URL de staging sin secretos y umbrales | k6, staging aislado y umbrales acordados | Pendiente |
+| K-02 | Ráfaga de ingreso | `VOTE_MODE=join`; las sesiones realizan ingreso concurrente al lobby | Ingreso válido de todas las sesiones; no se bloquean nombres repetidos por política accidental; límites aprobados | Resumen JSON y conteo de sesiones creadas en Asamblea sintética | K-01 y entorno representativo | Pendiente |
+| K-03a | Voto y reintento | `VOTE_MODE=vote-retry`; un voto aceptado y luego mismo envío por cada sesión | Primer envío aceptado; reintento respondido con HTTP 409; una participación por sesión; umbrales aprobados | Resumen JSON; verificación final del contador de participación en panel de moderación | Staging y ronda sintética abierta | Pendiente |
+| K-03b | Voto tras cierre | `VOTE_MODE=closed-vote`; preparación siembra un voto por sesión, cierra la ronda y luego somete un voto adicional por sesión | 50–70 votos posteriores al cierre reciben HTTP 409; no se altera participación; umbrales aprobados | Resumen JSON; estado final/cuenta de participación en panel de moderación | K-03a y cierre autorizado en staging | Pendiente |
 
 ### Simulacro presencial — P0
 
