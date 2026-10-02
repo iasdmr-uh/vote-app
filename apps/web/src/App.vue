@@ -133,6 +133,7 @@ async function refresh() {
       state.value = normalizeState(await request<Record<string, any>>(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}`, {}, moderatorToken.value))
       moderatorAuthState.value = 'authenticated'
       sessionStorage.setItem('moderatorToken', moderatorToken.value)
+      error.value = ''
     }
     catch (e) {
       const message = (e as Error).message
@@ -156,6 +157,7 @@ async function refresh() {
       await request('/moderator/session', {}, moderatorToken.value)
       moderatorAuthState.value = 'authenticated'
       sessionStorage.setItem('moderatorToken', moderatorToken.value)
+      error.value = ''
     } catch (e) {
       const message = (e as Error).message
       state.value = null
@@ -275,6 +277,7 @@ async function signInModerator() {
     await request('/moderator/session', {}, credential)
     moderatorAuthState.value = 'authenticated'
     sessionStorage.setItem('moderatorToken', credential)
+    error.value = ''
     if (assemblyId.value) void refresh()
   } catch (e) {
     const message = (e as Error).message

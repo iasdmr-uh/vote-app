@@ -172,6 +172,7 @@ test('error temporal al validar conserva la credencial guardada y permite reinte
   expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBe('saved-moderator-token')
   await page.getByRole('button', { name: 'Reintentar validación' }).click()
   await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
   expect(validationAttempts).toBe(2)
   expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBe('saved-moderator-token')
 })
