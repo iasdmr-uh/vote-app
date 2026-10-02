@@ -114,6 +114,9 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
     assert.equal(completedPublicState.assembly.status, 'completed')
     assert.equal(completedPublicState.assembly.completedAt, completed.completedAt)
     assert.deepEqual(completedPublicState.results, published.results)
+    const completedModeratorState = await service.moderatorAssembly(assemblyId)
+    assert.equal(completedModeratorState.status, 'completed')
+    assert.equal(completedModeratorState.completedAt, completed.completedAt)
   } finally {
     if (assemblyId) await prisma.assembly.deleteMany({ where: { id: assemblyId } })
     await prisma.organization.deleteMany({ where: { id: organizationId } })
