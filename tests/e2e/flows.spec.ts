@@ -148,6 +148,34 @@ test('moderador valida la credencial antes de mostrar el panel cuando aún no ha
   expect(authorization).toBe('Bearer synthetic-moderator-token')
 })
 
+test('error temporal al validar conserva la credencial guardada y permite reintentar', async ({ page }) => {
+  let validationAttempts = 0
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'saved-moderator-token')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/moderator/session')) {
+      validationAttempts += 1
+      if (validationAttempts === 1) {
+        await route.fulfill({ status: 503, json: { message: 'Servicio temporalmente no disponible' } })
+      } else {
+        await route.fulfill({ json: { authenticated: true } })
+      }
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { name: 'No se pudo validar el acceso' })).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBe('saved-moderator-token')
+  await page.getByRole('button', { name: 'Reintentar validación' }).click()
+  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
+  expect(validationAttempts).toBe(2)
+  expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBe('saved-moderator-token')
+})
+
 test('proyector presenta estado y progreso sintético sin nombres ni opciones', async ({ page }) => {
   await page.route(api, async (route) => {
     const url = new URL(route.request().url())

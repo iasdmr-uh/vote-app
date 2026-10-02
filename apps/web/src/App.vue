@@ -28,7 +28,7 @@ const firstName = ref('')
 const lastName = ref('')
 const sessionToken = ref(localStorage.getItem('participantSessionToken') || '')
 const moderatorToken = ref(sessionStorage.getItem('moderatorToken') || '')
-const moderatorAuthState = ref<'unauthenticated' | 'validating' | 'authenticated'>(moderatorToken.value ? 'validating' : 'unauthenticated')
+const moderatorAuthState = ref<'unauthenticated' | 'validating' | 'authenticated' | 'validation_error'>(moderatorToken.value ? 'validating' : 'unauthenticated')
 const moderatorCredential = ref('')
 const assemblyId = ref(sessionStorage.getItem('assemblyId') || '')
 const assemblyName = ref('Asamblea de Delegados')
@@ -65,8 +65,19 @@ async function request<T>(path: string, init: RequestInit = {}, token = ''): Pro
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const response = await fetch(`${API}${path}`, { ...init, headers })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.message || 'No se pudo completar la solicitud. Intenta de nuevo.')
+  if (!response.ok) throw new ApiRequestError(body.message || 'No se pudo completar la solicitud. Intenta de nuevo.', response.status)
   return body as T
+}
+
+class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
+}
+
+function isUnauthorized(e: unknown) {
+  return e instanceof ApiRequestError && e.status === 401
 }
 
 function normalizeState(value: Record<string, any>): PublicState {
@@ -125,14 +136,14 @@ async function refresh() {
     }
     catch (e) {
       const message = (e as Error).message
-      if (message.includes('401') || message.toLowerCase().includes('unauthorized')) {
+      if (isUnauthorized(e)) {
         moderatorToken.value = ''
         moderatorAuthState.value = 'unauthenticated'
         state.value = null
         sessionStorage.removeItem('moderatorToken')
         error.value = 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
       } else {
-        moderatorAuthState.value = 'unauthenticated'
+        moderatorAuthState.value = 'validation_error'
         state.value = null
         error.value = message
       }
@@ -147,13 +158,16 @@ async function refresh() {
       sessionStorage.setItem('moderatorToken', moderatorToken.value)
     } catch (e) {
       const message = (e as Error).message
-      moderatorToken.value = ''
-      moderatorAuthState.value = 'unauthenticated'
       state.value = null
-      sessionStorage.removeItem('moderatorToken')
-      error.value = message.includes('401') || message.toLowerCase().includes('unauthorized')
-        ? 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
-        : message
+      if (isUnauthorized(e)) {
+        moderatorToken.value = ''
+        moderatorAuthState.value = 'unauthenticated'
+        sessionStorage.removeItem('moderatorToken')
+        error.value = 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
+      } else {
+        moderatorAuthState.value = 'validation_error'
+        error.value = message
+      }
     } finally { loading.value = false }
   }
 }
@@ -264,13 +278,16 @@ async function signInModerator() {
     if (assemblyId.value) void refresh()
   } catch (e) {
     const message = (e as Error).message
-    moderatorToken.value = ''
-    moderatorAuthState.value = 'unauthenticated'
     state.value = null
-    sessionStorage.removeItem('moderatorToken')
-    error.value = message.includes('401') || message.toLowerCase().includes('unauthorized')
-      ? 'La credencial de moderación no es válida.'
-      : message
+    if (isUnauthorized(e)) {
+      moderatorToken.value = ''
+      moderatorAuthState.value = 'unauthenticated'
+      sessionStorage.removeItem('moderatorToken')
+      error.value = 'La credencial de moderación no es válida.'
+    } else {
+      moderatorAuthState.value = 'validation_error'
+      error.value = message
+    }
   }
 }
 
@@ -303,7 +320,9 @@ onMounted(() => {
   void refresh()
   void refreshQr()
   syncRealtime()
-  refreshTimer = window.setInterval(() => { if (!loading.value) void refresh() }, 7000)
+  refreshTimer = window.setInterval(() => {
+    if (!loading.value && !(role.value === 'moderator' && moderatorAuthState.value === 'validation_error')) void refresh()
+  }, 7000)
 })
 watch([route, sessionToken, moderatorToken, code], () => syncRealtime())
 watch(code, () => { void refreshQr() })
@@ -361,6 +380,11 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); realti
       <section v-if="moderatorAuthState === 'validating'" class="card join-card" aria-live="polite">
         <p class="eyebrow">ACCESO DE MESA</p><h1>Verificando acceso</h1>
         <p class="lead">Estamos validando la credencial con el servidor.</p>
+      </section>
+      <section v-else-if="moderatorAuthState === 'validation_error'" class="card join-card">
+        <p class="eyebrow">ACCESO DE MESA</p><h1>No se pudo validar el acceso</h1>
+        <p class="lead">La credencial se conserva. Comprueba la conexión e inténtalo de nuevo.</p>
+        <button class="primary" :disabled="loading" @click="refresh">{{ loading ? 'Reintentando…' : 'Reintentar validación' }}</button>
       </section>
       <section v-else-if="moderatorAuthState !== 'authenticated'" class="card join-card">
         <p class="eyebrow">ACCESO DE MESA</p><h1>Moderación</h1>
