@@ -65,6 +65,11 @@ export class ParticipantController {
 export class ModeratorController {
   constructor(private readonly voting: VotingService) {}
 
+  @Get('session')
+  session() {
+    return { authenticated: true }
+  }
+
   @Post('assemblies')
   createAssembly(@Body() input: CreateAssemblyDto) {
     return this.voting.createAssembly(input.name)
