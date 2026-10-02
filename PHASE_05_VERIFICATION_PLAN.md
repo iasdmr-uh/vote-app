@@ -12,7 +12,7 @@
 - Pruebas de API: con una base PostgreSQL nueva y desechable, migración aplicada y TEST_DATABASE_URL explícita, npm run test --workspace @asdmr/api pasó 11/11 (incluida la prueba de integración, sin skips).
 - Playwright: npm run test:e2e pasó 6/6 con respuestas sintéticas interceptadas; no valida integración con API ni base de datos. La primera ejecución en sandbox falló al enlazar 127.0.0.1:5173 (EPERM); repetida con autorización para iniciar servidor local, pasó.
 - Escenario k6: node --input-type=module --check < tests/load/voting.js pasó la comprobación sintáctica. k6 no está instalado (k6 version: comando no encontrado), así que no se ejecutó carga.
-- Ensayos operativos: no ejecutados.
+- Simulacros institucionales y ensayos en el recinto: no ejecutados. La verificación técnica local del stack candidato y los scripts de backup/restauración se registra abajo.
 
 Estos resultados son parciales y no aprueban por sí solos los escenarios de la matriz. Mantener cada fila como `Pendiente` hasta que se ejecute ese escenario y se adjunte su evidencia específica.
 
@@ -27,10 +27,14 @@ Antes de ejecutar, completar estas decisiones y dependencias:
 | Acceso y roles del moderador; reapertura de lobby | Pendiente de decisión/implementación | Secretaría/mesa confirma operación; F01 registra decisión y F02–04 la implementan |
 | Retención/eliminación de nombres, participación, votos y bitácoras | Pendiente institucional | Responsable institucional aprueba política; implementarla antes de validar borrado/retención |
 | Límite aceptable de latencia y tasa de error de carga | Sin umbrales definidos | Acordar umbrales antes de la corrida k6 con responsables técnicos y operativos |
-| Hosting, dominio/HTTPS, respaldos y restauración | Pendiente de entorno | Preparar entorno candidato representativo y confirmar el procedimiento de respaldo/restauración |
+| Hosting, dominio/HTTPS, respaldos y restauración | Stack y scripts backup/restore verificados localmente con PostgreSQL 17.11; HTTPS y CORS externos pendientes | Desplegar en host/DNS autorizados, verificar HTTPS/CORS desde móvil y confirmar procedimiento operativo de recuperación |
 | Wi-Fi del recinto, proyector y dispositivos | Pendiente de confirmación y ensayo | Confirmar acceso y ventana de simulacro en el recinto |
 | Disponibilidad de Secretaría/mesa y participantes de prueba | Pendiente de agenda | Designar responsables, operadores y grupo de ensayo |
 | Playwright y k6 ejecutables en pipeline/entorno | Playwright instalado y suite aislada ejecutada: 6/6 pasan; CLI k6 no está instalado en el entorno actual | Instalar k6 en el host y confirmar versiones/comandos reproducibles antes de la carga; las pruebas UI no validan backend |
+
+### Preparación candidata (#6)
+
+El repositorio incluye ahora `docker-compose.candidate.yml`, imágenes API/web, Caddy para HTTPS, migración explícita, healthchecks, ejemplo de variables sin secretos y guiones para respaldo y comprobación de restauración aislada. Procedimiento y evidencia local: [docs/candidate-environment.md](docs/candidate-environment.md). El 2026-10-02, con Docker Engine 28.0.4, Compose 2.34.0-desktop.1 y la imagen fijada `postgres:17.11-alpine3.24`, se construyeron API/web, se aplicó la migración, API y web quedaron healthy, y los scripts candidatos completaron dump custom y restauración aislada con las cuatro tablas principales presentes. Se eliminaron contenedores y volúmenes de prueba; no se usaron datos personales. La fila de entorno sigue `Pendiente` hasta desplegar en host/DNS autorizados y adjuntar evidencia del HTTPS público y CORS desde un móvil fuera del host, junto al SHA candidato. No se guardan secretos ni backups en Git.
 
 Las filas marcadas pendientes son bloqueos para sus pruebas correspondientes; no representan fallos ni resultados. La revisión documental y preparación de casos sí puede avanzar con los contratos de Fase 01.
 
