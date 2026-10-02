@@ -10,6 +10,10 @@ const P95_LIMIT_MS = Number(__ENV.VOTE_P95_MS || '')
 const MAX_ERROR_RATE = Number(__ENV.VOTE_MAX_ERROR_RATE || '')
 const MODERATOR_TOKEN = __ENV.VOTE_MODERATOR_TOKEN || ''
 const RUN_LABEL = (__ENV.VOTE_RUN_LABEL || '').trim()
+const ALLOWED_STAGING_HOSTS = (__ENV.VOTE_ALLOWED_STAGING_HOSTS || '')
+  .split(',')
+  .map((host) => host.trim().toLowerCase().replace(/\.$/, ''))
+  .filter(Boolean)
 
 const requestErrors = new Rate('vote_request_errors')
 const loadLatency = new Trend('vote_load_request_latency', true)
@@ -22,6 +26,20 @@ const closedRejections = new Counter('vote_expected_closed_rejections')
 if (!BASE_URL) throw new Error('Set VOTE_BASE_URL to an explicitly selected test API origin.')
 if (__ENV.VOTE_ENVIRONMENT !== 'staging') {
   throw new Error('Set VOTE_ENVIRONMENT=staging. This script refuses to run without an explicit staging target declaration.')
+}
+if (__ENV.VOTE_DISPOSABLE_TARGET !== 'true') {
+  throw new Error('Set VOTE_DISPOSABLE_TARGET=true only for a fresh, disposable staging deployment/database for this single run.')
+}
+if (ALLOWED_STAGING_HOSTS.length === 0) {
+  throw new Error('Set VOTE_ALLOWED_STAGING_HOSTS to the protected comma-separated staging hostname allowlist.')
+}
+const originMatch = BASE_URL.match(/^https:\/\/([a-z0-9.-]+)(?::([0-9]+))?\/?$/i)
+if (!originMatch || (originMatch[2] && originMatch[2] !== '443')) {
+  throw new Error('VOTE_BASE_URL must be an HTTPS origin without credentials, path, query, or nonstandard port.')
+}
+const targetHost = originMatch[1].toLowerCase().replace(/\.$/, '')
+if (!ALLOWED_STAGING_HOSTS.includes(targetHost)) {
+  throw new Error(`Refusing target host "${targetHost}": it is not in VOTE_ALLOWED_STAGING_HOSTS.`)
 }
 if (!MODERATOR_TOKEN) throw new Error('Set VOTE_MODERATOR_TOKEN to the moderator credential for the isolated staging environment.')
 if (!RUN_LABEL) throw new Error('Set VOTE_RUN_LABEL to a unique synthetic run label.')
