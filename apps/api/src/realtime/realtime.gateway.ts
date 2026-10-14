@@ -202,7 +202,8 @@ export class RealtimePublisher {
   }
 
   roundState(assemblyId: string, payload: RealtimeServerToClientEvents['round.state'] extends (arg: infer P) => void ? P : never): void {
-    this.server.to([publicRoom(assemblyId), moderatorRoom(assemblyId)]).emit('round.state', publicRoundPayload(payload))
+    // Phones refresh on it too: annulling a ballot or publishing/withdrawing a declaration changes what they show.
+    this.server.to([publicRoom(assemblyId), moderatorRoom(assemblyId), participantBroadcastRoom(assemblyId)]).emit('round.state', publicRoundPayload(payload))
   }
 
   roundOpened(assemblyId: string, payload: RealtimeServerToClientEvents['round.opened'] extends (arg: infer P) => void ? P : never): void {

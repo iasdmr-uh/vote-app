@@ -23,6 +23,7 @@ test('a declared committee composition must match its configured number of seats
   const database = {
     $transaction: async (work: (tx: unknown) => unknown) => work({
       $queryRaw: async () => [{ id: 'round', assembly_id: 'assembly', status: 'closed', category: 'committee', member_count: 3 }],
+      round: { findUniqueOrThrow: async () => ({ committeeRootRoundId: null }), findMany: async () => [{ status: 'closed' }] },
     }),
   }
   const voting = new VotingService(database as never, {} as never)
@@ -32,39 +33,63 @@ test('a declared committee composition must match its configured number of seats
   )
 })
 
-test('nomination simple majority uses only the explicitly configured denominator and records aggregates', async () => {
+test('the mesa records the delegation decision on a proposal; the system does not compute a majority', async () => {
   const recorded: Record<string, unknown>[] = []
   const tx = {
-    round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: { approvalDenominator: 'valid_votes' } }) },
+    $queryRaw: async () => [],
+    round: { findUnique: async () => ({ assemblyId: 'assembly', status: 'draft', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
     committeeProposal: {
       findFirst: async () => ({ id: 'proposal' }),
       update: async ({ data }: { data: Record<string, unknown> }) => { recorded.push(data); return { id: 'proposal', ...data } },
     },
-    participantSession: { count: async () => 9 },
     auditEvent: { create: async ({ data }: { data: { metadata: Record<string, unknown> } }) => { recorded.push(data.metadata); return data } },
   }
   const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx) } as never, {} as never)
-  await voting.recordCommitteeApproval('round', 'proposal', { yesVotes: 3, noVotes: 2 })
-  assert.equal(recorded[0]?.status, 'approved', 'three of five valid votes is a simple majority')
-  assert.equal(recorded[0]?.approvalYes, 3)
-  assert.equal(recorded[0]?.approvalNo, 2)
+  await voting.recordCommitteeApproval('round', 'proposal', { decision: 'approved', yesVotes: 2, noVotes: 3 })
+  assert.equal(recorded[0]?.status, 'approved', 'the recorded decision stands even when the optional counts would not be a majority')
+  assert.equal(recorded[0]?.approvalYes, 2)
+  assert.equal(recorded[0]?.approvalNo, 3)
   assert.equal('voterId' in recorded[0]!, false, 'only aggregate counts are retained')
-  assert.equal(recorded[1]?.basis, 'valid_votes')
+  assert.equal(recorded[1]?.decision, 'approved')
+  recorded.length = 0
+  await voting.recordCommitteeApproval('round', 'proposal', { decision: 'rejected' })
+  assert.equal(recorded[0]?.status, 'rejected')
+  assert.equal(recorded[0]?.approvalYes, null, 'counts are optional')
 })
 
-test('valid-votes approval rejects aggregate votes above the eligible delegate roster', async () => {
-  let updated = false
+test('a recorded delegation decision can be corrected, but proposals that lacked supports cannot be approved', async () => {
+  let where: Record<string, unknown> | undefined
   const tx = {
-    round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: { approvalDenominator: 'valid_votes' } }) },
+    $queryRaw: async () => [],
+    round: { findUnique: async () => ({ assemblyId: 'assembly', status: 'draft', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
     committeeProposal: {
-      findFirst: async () => ({ id: 'proposal' }),
-      update: async () => { updated = true; return { id: 'proposal' } },
+      findFirst: async (args: { where: Record<string, unknown> }) => { where = args.where; return null },
+      update: async () => assert.fail('must not update'),
     },
-    participantSession: { count: async () => 4 },
   }
   const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx) } as never, {} as never)
-  await assert.rejects(voting.recordCommitteeApproval('round', 'proposal', { yesVotes: 3, noVotes: 2 }), /superan el número de delegados elegibles/)
-  assert.equal(updated, false, 'impossible aggregate must not decide the proposal')
+  await assert.rejects(voting.recordCommitteeApproval('round', 'proposal', { decision: 'rejected' }), /Propuesta apoyada no disponible/)
+  assert.deepEqual(where?.OR, [{ status: 'supported' }, { decidedAt: { not: null } }], 'decided proposals stay correctable; support-rejected ones have no decision date')
+})
+
+test('nomination proposals stay blocked until the delegation fixes the number of candidates', async () => {
+  const createdRound = { id: 'round', title: 'Comisión', format: 'multiple_choice', category: 'committee', committeeType: 'nomination', memberCount: 5, decisionNote: 'validada', committeeStage: 'configuration_required', committeeConfiguration: {}, countingRule: { kind: 'count_only' }, status: 'draft', options: [] }
+  const tx = {
+    $queryRaw: async () => [{ id: 'assembly', status: 'lobby_closed' }],
+    participantSession: { count: async () => 10 },
+    round: { create: async ({ data }: { data: { committeeStage: string } }) => { createdRound.committeeStage = data.committeeStage as typeof createdRound.committeeStage; return createdRound } },
+    auditEvent: { create: async () => ({}) },
+  }
+  const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUniqueOrThrow: async () => createdRound } } as never, {} as never)
+  const rules = { institutionallyValidated: true, validationReference: 'ACTA-1', eligibilityRule: 'delegados elegibles', votingMethod: 'secreta', proposalRule: 'eligible_delegate_only' as const, supportRule: 'one_per_eligible_delegate' as const, supportMinimum: 2 }
+  const input = { ...base, options: [], category: 'committee' as const, committeeType: 'nomination' as const, memberCount: 5, decisionNote: 'validada' }
+  assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: rules })).committeeStage, 'configuration_required')
+  assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: { ...rules, candidateCount: 4 } })).committeeStage, 'configuration_required', 'fewer candidates than seats')
+  assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: { ...rules, candidateCount: 10 } })).committeeStage, 'proposals')
+})
+
+test('"Voto nulo" is added by the system and cannot be typed as a regular option', async () => {
+  await assert.rejects(service.createRound('assembly', { ...base, options: [{ label: 'A' }, { label: 'voto NULO' }] }), /se agrega automáticamente/)
 })
 
 test('nomination configuration remains blocked when support or majority decisions are missing', async () => {
@@ -99,7 +124,7 @@ test('cannot begin nomination proposals when the support minimum exceeds eligibl
   const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUniqueOrThrow: async () => createdRound } } as never, {} as never)
   const result = await voting.createRound('assembly', {
     ...base, options: [], category: 'committee', committeeType: 'nomination', memberCount: 5, decisionNote: 'validada',
-    committeeConfiguration: { institutionallyValidated: true, validationReference: 'ACTA-1', eligibilityRule: 'delegados elegibles', votingMethod: 'secreta', proposalRule: 'eligible_delegate_only', supportRule: 'one_per_eligible_delegate', supportMinimum: 6, approvalDenominator: 'eligible_delegates' },
+    committeeConfiguration: { institutionallyValidated: true, validationReference: 'ACTA-1', eligibilityRule: 'delegados elegibles', votingMethod: 'secreta', proposalRule: 'eligible_delegate_only', supportRule: 'one_per_eligible_delegate', supportMinimum: 6, candidateCount: 7 },
   })
   assert.equal(result.committeeStage, 'configuration_required')
 })

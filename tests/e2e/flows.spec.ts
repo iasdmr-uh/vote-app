@@ -116,6 +116,143 @@ test('delegado vota en comisión con selección múltiple limitada a los cupos',
   await expect(page.getByText('Tu participación está registrada')).toBeVisible()
 })
 
+test('el voto nulo reemplaza a las candidaturas elegidas y no se combina con ellas', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'null-vote-session'))
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'committee-assembly', name: 'Asamblea prueba', status: 'in_progress' },
+        participationStatus: 'pending',
+        openRound: { roundId: 'repeat-round', title: 'Comisión — nueva votación', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 5, electionSeats: 1, options: [
+          { optionId: 'candidate-a', label: 'Ana (prueba)' }, { optionId: 'candidate-b', label: 'Beto (prueba)' }, { optionId: 'null-option', label: 'Voto nulo', isNullVote: true },
+        ] },
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/repeat-round/vote')) {
+      expect(request.postDataJSON()).toEqual({ optionIds: ['null-option'], confirmation: true })
+      await route.fulfill({ status: 201, json: { status: 'recorded' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for null vote test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Selecciona hasta 1 integrantes')).toBeVisible()
+  await page.getByLabel('Ana (prueba)').check()
+  await page.getByLabel('Beto (prueba)').check()
+  await expect(page.getByRole('alert')).toContainText('máximo 1 integrantes', { useInnerText: true })
+  await page.getByLabel('Voto nulo').check()
+  await expect(page.getByLabel('Ana (prueba)')).not.toBeChecked()
+  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
+  await expect(page.locator('.review-details')).toContainText('Voto nulo')
+  await expect(page.locator('.review-details')).not.toContainText('Ana')
+  await page.getByRole('button', { name: 'Confirmar voto' }).click()
+})
+
+test('moderador anula una papeleta con motivo y prepara una nueva votación con los más votados', async ({ page }) => {
+  let annulled = false
+  let repeated: Record<string, unknown> | null = null
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress',
+        rounds: [
+          { id: 'first', title: 'Presidencia', status: 'published', options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gama' }, { id: 'n', label: 'Voto nulo', isNullVote: true }],
+            results: [{ optionId: 'b', label: 'Beta', count: 4 }, { optionId: 'a', label: 'Alfa', count: 4 }, { optionId: 'c', label: 'Gama', count: 1 }, { optionId: 'n', label: 'Voto nulo', count: 2, isNullVote: true }], officialResult: null },
+          { id: 'second', title: 'Secretaría', status: annulled ? 'annulled' : 'open', annulReason: annulled ? 'Nombre mal escrito' : null, options: [{ id: 'x', label: 'Rosa' }, { id: 'n2', label: 'Voto nulo', isNullVote: true }], officialResult: null },
+        ],
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/second/annul')) {
+      expect(request.postDataJSON()).toEqual({ reason: 'Nombre mal escrito' })
+      annulled = true
+      await route.fulfill({ status: 201, json: { roundId: 'second', status: 'annulled' } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/first/repeat')) {
+      repeated = request.postDataJSON()
+      await route.fulfill({ status: 201, json: { id: 'third' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for annul test' } })
+  })
+
+  await page.goto('/moderator')
+  const ranking = page.locator('.official-round').first().locator('.results-list')
+  await expect(ranking).toContainText('1. Beta')
+  await expect(ranking).toContainText('2. Alfa')
+  await expect(ranking.locator('div').last()).toHaveText(/^\s*Voto nulo\s*2$/)
+
+  await page.getByRole('button', { name: 'Anular votación' }).click()
+  const annulDialog = page.getByRole('dialog')
+  await expect(annulDialog).toContainText('se eliminarán y nunca se contarán')
+  await expect(annulDialog.getByRole('button', { name: 'Anular papeleta' })).toBeDisabled()
+  await annulDialog.getByLabel('Motivo (obligatorio, queda en el registro)').fill('Nombre mal escrito')
+  await annulDialog.getByRole('button', { name: 'Anular papeleta' }).click()
+  await expect(page.getByText('Papeleta anulada: Nombre mal escrito.')).toBeVisible()
+
+  const repeatForm = page.locator('.official-round').first().getByRole('group', { name: 'Nueva votación con las opciones seleccionadas' })
+  await expect(repeatForm.getByLabel('Voto nulo')).toHaveCount(0)
+  await repeatForm.getByLabel('Beta').check()
+  await repeatForm.getByLabel('Alfa').check()
+  await page.locator('.official-round').first().getByRole('button', { name: 'Preparar nueva votación' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Preparar nueva votación' }).click()
+  await expect(page.getByText('Acción registrada.')).toBeVisible()
+  expect(repeated).toEqual({ optionIds: ['b', 'a'] })
+})
+
+test('el teléfono muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'declared-session'))
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
+        participationStatus: 'recorded',
+        openRound: { roundId: 'repeat', title: 'Presidencia — nueva votación', status: 'closed', format: 'single_choice', options: [] },
+        officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: 'Electa por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('RESULTADO OFICIAL DE LA MESA')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'María López' })).toBeVisible()
+  await expect(page.getByText('RESULTADOS PUBLICADOS')).toHaveCount(0)
+})
+
+test('una comisión anulada en etapa de apoyos muestra el aviso y no el formulario', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'annulled-committee-session'))
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
+        participationStatus: 'pending',
+        openRound: { roundId: 'nomination', title: 'Comisión de Nombramiento', status: 'annulled', category: 'committee', committeeType: 'nomination', committeeStage: 'support', options: [] },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('La mesa anuló esta votación')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Apoyar propuestas' })).toHaveCount(0)
+})
+
 test('delegado registra una propuesta y apoyo sin mostrar identidades de apoyo', async ({ page }) => {
   let stage: 'proposals' | 'support' = 'proposals'
   let supported = false
@@ -350,6 +487,7 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
 test('moderador declara el resultado oficial por separado y lo publica explícitamente', async ({ page }) => {
   let officialResult: Record<string, unknown> | null = null
   let publishCount = 0
+  let withdrawCount = 0
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -384,13 +522,19 @@ test('moderador declara el resultado oficial por separado y lo publica explícit
       await route.fulfill({ status: 200, json: officialResult })
       return
     }
+    if (request.method() === 'DELETE' && url.pathname.endsWith('/moderator/rounds/synthetic-round/official-result')) {
+      withdrawCount += 1
+      officialResult = null
+      await route.fulfill({ status: 200, json: { roundId: 'synthetic-round', withdrawn: true } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for official result test' } })
   })
 
   await page.goto('/moderator')
   await expect(page.getByRole('heading', { name: 'Declaraciones oficiales de la mesa' })).toBeVisible()
   await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
-  await page.getByLabel('Candidato Beta').check()
+  await page.getByRole('group', { name: 'Persona(s) declarada(s) electa(s)' }).getByLabel('Candidato Beta').check()
   await page.getByLabel('Observación o motivo (opcional)').fill('Decisión de la Asamblea')
   await page.getByRole('button', { name: 'Registrar resultado oficial' }).click()
   await expect(page.getByRole('dialog')).toContainText('¿Guardar los cambios?')
@@ -405,6 +549,12 @@ test('moderador declara el resultado oficial por separado y lo publica explícit
   await page.getByRole('dialog').getByRole('button', { name: 'Publicar resultados' }).click()
   await expect(page.getByText('Visible al público')).toBeVisible()
   expect(publishCount).toBe(1)
+
+  await page.getByRole('button', { name: 'Retirar declaración' }).click()
+  await expect(page.getByRole('dialog')).toContainText('¿Retirar la declaración oficial?')
+  await page.getByRole('dialog').getByRole('button', { name: 'Retirar declaración' }).click()
+  await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
+  expect(withdrawCount).toBe(1)
 })
 
 test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de consulta', async ({ page }) => {

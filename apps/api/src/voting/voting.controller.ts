@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -15,6 +16,7 @@ import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
 import {
+  AnnulRoundDto,
   CreateAssemblyDto,
   CompleteAssemblyDto,
   CreateRoundDto,
@@ -26,6 +28,7 @@ import {
   LobbyPatchDto,
   ParticipantPatchDto,
   OfficialResultDto,
+  RepeatRoundDto,
   ResumeSessionDto,
   VoteDto,
 } from './dtos.js'
@@ -159,6 +162,16 @@ export class ModeratorController {
     return this.voting.publishRound(roundId)
   }
 
+  @Post('rounds/:roundId/annul')
+  annulRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: AnnulRoundDto) {
+    return this.voting.annulRound(roundId, input.reason)
+  }
+
+  @Post('rounds/:roundId/repeat')
+  repeatRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: RepeatRoundDto) {
+    return this.voting.repeatRound(roundId, input)
+  }
+
   @Post('rounds/:roundId/committee/stage')
   committeeStage(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: CommitteeStageDto) {
     return this.voting.advanceCommitteeStage(roundId, input.stage)
@@ -177,6 +190,11 @@ export class ModeratorController {
   @Put('rounds/:roundId/official-result')
   officialResult(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: OfficialResultDto) {
     return this.voting.declareOfficialResult(roundId, input)
+  }
+
+  @Delete('rounds/:roundId/official-result')
+  withdrawOfficialResult(@Param('roundId', ParseUUIDPipe) roundId: string) {
+    return this.voting.withdrawOfficialResult(roundId)
   }
 
   @Post('rounds/:roundId/official-result/publish')

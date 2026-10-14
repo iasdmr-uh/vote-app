@@ -69,7 +69,7 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   expect((await afterDuplicate.json()).rounds[0].participationCount).toBe(1)
 
   await confirm(moderator, 'Cerrar votación')
-  await expect(moderator.getByText('La papeleta está cerrada. Revisa el conteo antes de publicarlo.')).toBeVisible()
+  await expect(moderator.getByText('La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide en el acta.')).toBeVisible()
   const hiddenResults = await request.get(`${api}/assemblies/${joinCode}/public-state`)
   expect(hiddenResults.ok()).toBeTruthy()
   expect(await hiddenResults.json()).not.toHaveProperty('results')

@@ -13,14 +13,14 @@ type PublicState = {
   recordedCount?: number
   eligibleCount?: number
   participationStatus?: 'pending' | 'recorded'
-  currentRound?: { id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; committeeStage?: string | null; memberCount?: number | null; options?: Array<{ id: string; label: string }>; participationCount?: number }
+  currentRound?: { id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; committeeStage?: string | null; memberCount?: number | null; electionSeats?: number | null; options?: Array<{ id: string; label: string; isNullVote?: boolean }>; participationCount?: number; annulReason?: string | null }
   committeeCandidates?: Array<{ id: string; firstName: string; lastName: string }>
   committeeProposals?: Array<{ id: string; candidateName: string; supportCount: number; supportedByMe?: boolean }>
-  results?: Array<{ label: string; count: number }>
+  results?: Array<{ label: string; count: number; isNullVote?: boolean }>
   officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredAt: string }
   rounds?: Array<{
-    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null }>; committeeComposition?: Array<{ participantId: string; name: string; order: number }>; options: Array<{ id: string; label: string; candidateParticipantId?: string | null }>
-    results?: Array<{ optionId: string; label: string; count: number }>
+    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null; decidedAt?: string | null }>; electionSeats?: number | null; annulledAt?: string | null; annulReason?: string | null; options: Array<{ id: string; label: string; candidateParticipantId?: string | null; isNullVote?: boolean }>
+    results?: Array<{ optionId: string; label: string; count: number; isNullVote?: boolean }>
     officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null } | null
     secrecyCleanupPending?: boolean
   }>
@@ -32,7 +32,9 @@ const route = ref(window.location.pathname)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
-const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+/** Required reason typed in the confirmation dialog; sent as `reason` in the request body. */
+const moderationReason = ref('')
 const state = ref<PublicState | null>(null)
 const urlParams = new URLSearchParams(window.location.search)
 const incomingJoinCode = urlParams.get('join') || urlParams.get('code') || ''
@@ -61,9 +63,11 @@ const committeeVotingMethod = ref('')
 const committeeProposalRule = ref('')
 const committeeSupportRule = ref('')
 const committeeSupportMinimum = ref<number | null>(null)
-const committeeApprovalDenominator = ref('')
+const committeeCandidateCount = ref<number | null>(null)
 const committeeCandidateSelections = ref<string[]>([])
-const committeeApprovalCounts = ref<Record<string, { yesVotes: number; noVotes: number }>>({})
+const committeeApprovalCounts = ref<Record<string, { yesVotes?: number; noVotes?: number }>>({})
+const repeatSelections = ref<Record<string, string[]>>({})
+const repeatSeats = ref<Record<string, number | null>>({})
 const participantCandidateSelection = ref('')
 const selectedOptions = ref<string[]>([])
 const committeeEditingRoundId = ref('')
@@ -81,6 +85,8 @@ watch(() => state.value?.rounds, (rounds) => {
       officialSelections.value[item.id] = item.officialResult?.elected.map((person) => person.optionId) || []
       officialNotes.value[item.id] = item.officialResult?.note || ''
     }
+    // Checkbox v-model needs an array; with undefined Vue binds a single boolean instead.
+    if (!Array.isArray(repeatSelections.value[item.id])) repeatSelections.value[item.id] = []
   }
 }, { immediate: true })
 const realtimeActive = ref(false)
@@ -108,6 +114,24 @@ const completionTime = computed(() => assemblyCompletedAt.value
 const reviewedOptions = computed(() => round.value?.options?.filter((option) => selectedOptions.value.includes(option.id)) || [])
 // Derived from server state so the warning survives refreshes, reloads and other moderator tabs.
 const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
+const ballotMaxChoices = computed(() => round.value?.electionSeats ?? round.value?.memberCount ?? null)
+const roundStatusLabels: Record<string, string> = { draft: 'preparada', open: 'abierta', closed: 'cerrada', published: 'publicada', annulled: 'anulada' }
+/** Rounds that repeat this one; the official result is declared on the original once any of them was counted. */
+function roundChain(target: NonNullable<PublicState['rounds']>[number]) {
+  return (state.value?.rounds || []).filter((item) => item.id === target.id || item.committeeRootRoundId === target.id)
+}
+function isDecidable(target: NonNullable<PublicState['rounds']>[number]) {
+  const chain = roundChain(target)
+  return !target.committeeRootRoundId && !chain.some((item) => item.status === 'open') && chain.some((item) => item.status === 'closed' || item.status === 'published')
+}
+function rankOf(results: Array<{ count: number; isNullVote?: boolean }>, index: number) {
+  return results[index]?.isNullVote ? '' : `${index + 1}.`
+}
+/** Share of all counted votes (null votes included), rounded for the projector. */
+function resultPercent(results: Array<{ count: number }>, count: number) {
+  const total = results.reduce((sum, result) => sum + result.count, 0)
+  return total ? Math.round((count / total) * 100) : 0
+}
 const eligibleCommitteeCandidates = computed(() => (state.value?.participants || []).filter((person) => person.assemblyRole === 'delegate' && person.committeeEligible))
 const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar resultados']
 const moderatorWorkflowStep = computed(() => {
@@ -228,7 +252,7 @@ function clearParticipantSession() {
 
 function normalizeState(value: Record<string, any>): PublicState {
   const rawRound = value.currentRound || value.openRound || value.round || value.rounds?.at(-1) || null
-  const options = rawRound?.options?.map((option: any) => ({ id: option.id || option.optionId, label: option.label }))
+  const options = rawRound?.options?.map((option: any) => ({ id: option.id || option.optionId, label: option.label, isNullVote: Boolean(option.isNullVote) }))
   const currentRound = rawRound ? {
     id: rawRound.id || rawRound.roundId,
     title: rawRound.title,
@@ -238,6 +262,8 @@ function normalizeState(value: Record<string, any>): PublicState {
     committeeType: rawRound.committeeType,
     committeeStage: rawRound.committeeStage || rawRound.stage || rawRound.committee?.stage,
     memberCount: rawRound.memberCount,
+    electionSeats: rawRound.electionSeats,
+    annulReason: rawRound.annulReason,
     ...(options ? { options } : {}),
     ...(rawRound.participationCount !== undefined ? { participationCount: rawRound.participationCount } : {}),
   } : undefined
@@ -453,13 +479,18 @@ function toggleBallotOption(optionId: string, checked: boolean) {
     selectedOptions.value = checked ? [optionId] : []
     return
   }
-  if (checked) {
-    const maxChoices = round.value.memberCount
-    if (maxChoices && selectedOptions.value.length >= maxChoices) {
+  // The null vote cannot be combined with candidates, so choosing it replaces them and vice versa.
+  const nullOptionIds = new Set((round.value.options || []).filter((option) => option.isNullVote).map((option) => option.id))
+  if (checked && nullOptionIds.has(optionId)) {
+    selectedOptions.value = [optionId]
+  } else if (checked) {
+    const current = selectedOptions.value.filter((id) => !nullOptionIds.has(id))
+    const maxChoices = ballotMaxChoices.value
+    if (maxChoices && current.length >= maxChoices) {
       error.value = `Puedes seleccionar como máximo ${maxChoices} integrantes.`
       return
     }
-    selectedOptions.value = [...selectedOptions.value, optionId]
+    selectedOptions.value = [...current, optionId]
   } else selectedOptions.value = selectedOptions.value.filter((id) => id !== optionId)
   error.value = ''
 }
@@ -490,7 +521,7 @@ async function configureCommittee(targetRound: NonNullable<PublicState['rounds']
         proposalRule: committeeProposalRule.value,
         ...(committeeSupportRule.value ? { supportRule: committeeSupportRule.value } : {}),
         supportMinimum: committeeSupportMinimum.value,
-        ...(committeeApprovalDenominator.value ? { approvalDenominator: committeeApprovalDenominator.value } : {}),
+        ...(committeeCandidateCount.value ? { candidateCount: committeeCandidateCount.value } : {}),
       } : {}),
     },
   })
@@ -510,7 +541,7 @@ function editCommitteeConfiguration(targetRound: NonNullable<PublicState['rounds
   committeeProposalRule.value = rules.proposalRule || ''
   committeeSupportRule.value = rules.supportRule || ''
   committeeSupportMinimum.value = rules.supportMinimum ?? null
-  committeeApprovalDenominator.value = rules.approvalDenominator || ''
+  committeeCandidateCount.value = rules.candidateCount ?? null
 }
 
 async function saveCommitteeConfiguration(targetRound: NonNullable<PublicState['rounds']>[number]) {
@@ -522,13 +553,41 @@ async function advanceCommitteeStage(targetRound: NonNullable<PublicState['round
   await moderatorAction(`/moderator/rounds/${encodeURIComponent(targetRound.id)}/committee/stage`, 'POST', { stage })
 }
 
-async function recordCommitteeApproval(targetRound: NonNullable<PublicState['rounds']>[number], proposalId: string) {
-  const counts = committeeApprovalCounts.value[proposalId] || { yesVotes: 0, noVotes: 0 }
-  await moderatorAction(`/moderator/rounds/${encodeURIComponent(targetRound.id)}/committee/proposals/${encodeURIComponent(proposalId)}/approval`, 'PUT', counts)
+async function recordCommitteeApproval(targetRound: NonNullable<PublicState['rounds']>[number], proposalId: string, decision: 'approved' | 'rejected') {
+  const counts = committeeApprovalCounts.value[proposalId] || {}
+  await moderatorAction(`/moderator/rounds/${encodeURIComponent(targetRound.id)}/committee/proposals/${encodeURIComponent(proposalId)}/approval`, 'PUT', { decision, ...counts })
 }
 
 function updateCommitteeApproval(proposalId: string, field: 'yesVotes' | 'noVotes', value: string) {
-  committeeApprovalCounts.value[proposalId] = { ...(committeeApprovalCounts.value[proposalId] || { yesVotes: 0, noVotes: 0 }), [field]: Number(value) }
+  const counts = { ...(committeeApprovalCounts.value[proposalId] || {}) }
+  if (value === '') delete counts[field]
+  else counts[field] = Number(value)
+  committeeApprovalCounts.value[proposalId] = counts
+}
+
+function annulRound(target: { id: string; title: string }) {
+  moderationReason.value = ''
+  moderationConfirmation.value = {
+    title: '¿Anular esta papeleta?',
+    consequence: `Los votos de «${target.title}» se eliminarán y nunca se contarán ni publicarán. Teléfonos y proyector mostrarán «Votación anulada». Después puedes repetir la votación.`,
+    label: 'Anular papeleta',
+    path: `/moderator/rounds/${encodeURIComponent(target.id)}/annul`,
+    method: 'POST',
+    reasonLabel: 'Motivo (obligatorio, queda en el registro)',
+    reasonPlaceholder: 'Ej.: Se detectó un error en las opciones de la papeleta',
+  }
+}
+
+function repeatRound(target: NonNullable<PublicState['rounds']>[number], optionIds = repeatSelections.value[target.id] || []) {
+  if (!optionIds.length) { error.value = 'Selecciona las opciones que pasan a la nueva votación.'; return }
+  const seats = repeatSeats.value[target.id]
+  void moderatorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/repeat`, 'POST', {
+    optionIds, ...(target.category === 'committee' && seats ? { seats } : {}),
+  })
+}
+
+function repeatAllOptions(target: NonNullable<PublicState['rounds']>[number] | undefined) {
+  if (target) repeatRound(target, target.options.filter((option) => !option.isNullVote).map((option) => option.id))
 }
 
 async function updateParticipantCommitteeStatus(person: NonNullable<PublicState['participants']>[number]) {
@@ -552,6 +611,10 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown) {
         ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación' }
         : path.endsWith('/close')
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos. Los resultados seguirán ocultos hasta que la mesa decida publicarlos.', label: 'Cerrar votación' }
+          : path.endsWith('/repeat')
+            ? { title: '¿Preparar una nueva votación?', consequence: 'Se crea una papeleta con las opciones seleccionadas y «Voto nulo». Ábrela cuando la Asamblea lo decida.', label: 'Preparar nueva votación' }
+          : method === 'DELETE' && path.endsWith('/official-result')
+            ? { title: '¿Retirar la declaración oficial?', consequence: 'Dejará de mostrarse en teléfonos y proyector. Quedará registrada en el historial. Después puedes repetir o anular la votación.', label: 'Retirar declaración' }
           : path.endsWith('/publish')
             ? { title: '¿Publicar resultados?', consequence: 'Los conteos agregados se harán visibles para participantes y proyector.', label: 'Publicar resultados' }
             : removed
@@ -563,6 +626,9 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown) {
 async function confirmModeratorAction() {
   const action = moderationConfirmation.value
   if (!action || loading.value) return
+  const reason = moderationReason.value.trim()
+  if (action.reasonLabel && !reason) return
+  if (action.reasonLabel) action.body = { ...(action.body as object | undefined), reason }
   moderationConfirmation.value = null
   error.value = ''
   loading.value = true
@@ -735,7 +801,7 @@ async function createRound() {
           proposalRule: committeeProposalRule.value,
           ...(committeeSupportRule.value ? { supportRule: committeeSupportRule.value } : {}),
           ...(committeeSupportMinimum.value ? { supportMinimum: committeeSupportMinimum.value } : {}),
-          ...(committeeApprovalDenominator.value ? { approvalDenominator: committeeApprovalDenominator.value } : {}),
+          ...(committeeCandidateCount.value ? { candidateCount: committeeCandidateCount.value } : {}),
         } : {}),
       },
     } : {}),
@@ -855,9 +921,10 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <p class="eyebrow">CONFIRMACIÓN DE MESA</p>
         <h2 id="moderation-confirm-title">{{ moderationConfirmation.title }}</h2>
         <p id="moderation-confirm-description">{{ moderationConfirmation.consequence }}</p>
+        <label v-if="moderationConfirmation.reasonLabel" class="confirmation-reason">{{ moderationConfirmation.reasonLabel }}<textarea v-model="moderationReason" rows="3" maxlength="1000" required :placeholder="moderationConfirmation.reasonPlaceholder"></textarea></label>
         <div class="confirmation-actions">
           <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
-          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
+          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim())" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
         </div>
       </section>
     </div>
@@ -890,11 +957,11 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <div class="status-panel"><span class="status-dot"></span><div><strong>Tu participación está registrada</strong><p>La papeleta fue confirmada y no puede cambiarse. No se muestra aquí la opción seleccionada.</p></div></div>
           <section v-if="round?.status === 'published' && state?.results?.length" class="participant-results" aria-labelledby="participant-results-title">
             <p class="eyebrow">RESULTADOS PUBLICADOS</p><h2 id="participant-results-title">{{ round.title }}</h2>
-            <ul class="participant-results-list"><li v-for="result in state.results" :key="result.label"><span>{{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong></li></ul>
+            <ul class="participant-results-list"><li v-for="(result, index) in state.results" :key="result.label"><span>{{ rankOf(state.results, index) }} {{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong></li></ul>
             <p class="participant-results-total">Total: {{ state.results.reduce((total, result) => total + result.count, 0) }} {{ state.results.reduce((total, result) => total + result.count, 0) === 1 ? 'voto' : 'votos' }}</p>
           </section>
         </template>
-        <section v-if="state?.results?.length" class="participant-published-results"><p class="eyebrow">RESULTADOS PUBLICADOS</p><div class="results-list"><div v-for="result in state.results" :key="result.label"><span>{{ result.label }}</span><strong>{{ result.count }}</strong></div></div><div v-if="state.officialResult" class="projector-official-result"><p class="eyebrow">RESULTADO OFICIAL DE LA MESA</p><h2>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</h2><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div></section>
+        <section v-if="state?.results?.length || state?.officialResult" class="participant-published-results"><template v-if="state.results?.length"><p class="eyebrow">RESULTADOS PUBLICADOS</p><div class="results-list"><div v-for="(result, index) in state.results" :key="result.label"><span>{{ rankOf(state.results, index) }} {{ result.label }}</span><strong>{{ result.count }}</strong></div></div></template><div v-if="state.officialResult" class="projector-official-result"><p class="eyebrow">RESULTADO OFICIAL DE LA MESA</p><h2>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</h2><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div></section>
         <template v-else-if="round?.status === 'open' && round.options?.length && reviewingVote">
           <section class="vote-review" aria-labelledby="vote-review-title">
             <p class="eyebrow">REVISIÓN DEL VOTO</p>
@@ -911,13 +978,14 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           </section>
         </template>
         <template v-else-if="round?.status === 'open' && round.options?.length">
-          <p class="lead">{{ round.format === 'multiple_choice' ? `Selecciona hasta ${round.memberCount ?? 'el límite indicado'} integrantes, revisa y confirma.` : 'Selecciona una opción, revísala y confirma cuando estés listo.' }}</p>
+          <p class="lead">{{ round.format === 'multiple_choice' ? `Selecciona hasta ${ballotMaxChoices ?? 'el límite indicado'} integrantes, o «Voto nulo», revisa y confirma.` : 'Selecciona una opción, revísala y confirma cuando estés listo.' }}</p>
           <fieldset class="options"><legend>Opciones de la papeleta</legend>
-            <label v-for="option in round.options" :key="option.id" class="option"><input :type="round.format === 'multiple_choice' ? 'checkbox' : 'radio'" name="option" :value="option.id" :checked="selectedOptions.includes(option.id)" @change="toggleBallotOption(option.id, ($event.target as HTMLInputElement).checked)" /><span>{{ option.label }}</span></label>
+            <label v-for="option in round.options" :key="option.id" :class="['option', { 'null-vote-option': option.isNullVote }]"><input :type="round.format === 'multiple_choice' ? 'checkbox' : 'radio'" name="option" :value="option.id" :checked="selectedOptions.includes(option.id)" @change="toggleBallotOption(option.id, ($event.target as HTMLInputElement).checked)" /><span>{{ option.label }}</span></label>
           </fieldset>
-          <button class="primary" :disabled="loading || voteSubmitting || !selectedOptions.length" @click="reviewVote">Revisar y confirmar voto</button>
-          <p class="privacy-note">Tu selección es definitiva después de confirmarla.</p>
+          <button class="primary ballot-submit" :disabled="loading || voteSubmitting || !selectedOptions.length" @click="reviewVote">Revisar y confirmar voto</button>
+          <p class="ballot-warning">Tu voto es secreto. Una vez confirmado, no podrás cambiarlo.</p>
         </template>
+        <div v-else-if="round?.status === 'annulled'" class="status-panel"><span class="status-dot"></span><div><strong>La mesa anuló esta votación</strong><p>Nada de lo registrado en esta papeleta se contará. Espera la siguiente indicación de la mesa.</p></div></div>
         <template v-else-if="round?.category === 'committee' && round.committeeStage === 'proposals'">
           <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Registrar propuesta</h2><p class="lead">Presenta una candidatura de la lista confirmada como elegible por moderación. No se admiten personas con los cargos excluidos.</p><form @submit.prevent="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals`, { candidateParticipantId: participantCandidateSelection })"><label>Candidatura<select v-model="participantCandidateSelection" required><option value="" disabled>Selecciona un delegado elegible</option><option v-for="candidate in state?.committeeCandidates || []" :key="candidate.id" :value="candidate.id">{{ candidate.firstName }} {{ candidate.lastName }}</option></select></label><button class="primary" :disabled="loading || !participantCandidateSelection">Registrar propuesta</button></form><ul class="option-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id">{{ proposal.candidateName }}</li></ul></section>
         </template>
@@ -957,9 +1025,9 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
             </li>
           </ol>
           <section class="summary-grid">
-            <div class="card metric"><span>Estado</span><strong>{{ round?.status === 'published' ? 'Resultados publicados' : round?.status === 'closed' ? 'Votación cerrada' : round?.status === 'open' ? 'Votación abierta' : lobbyStatus === 'lobby_open' ? 'Ingreso abierto' : assemblyStatus }}</strong></div>
+            <div class="card metric"><span>Estado</span><strong>{{ round?.status === 'annulled' ? 'Papeleta anulada' : round?.status === 'published' ? 'Resultados publicados' : round?.status === 'closed' ? 'Votación cerrada' : round?.status === 'open' ? 'Votación abierta' : lobbyStatus === 'lobby_open' ? 'Ingreso abierto' : assemblyStatus }}</strong></div>
             <div class="card metric"><span>Participación</span><strong v-if="round">{{ state?.recordedCount ?? 0 }}<small> / {{ eligibleVotes }} {{ eligibleVotes === 1 ? 'voto' : 'votos' }}</small></strong><strong v-else>{{ totalParticipants }} {{ totalParticipants === 1 ? 'participante' : 'participantes' }}</strong></div>
-            <div class="card metric"><span>Papeleta</span><strong>{{ round?.status === 'published' ? 'Publicada' : round?.status === 'closed' ? 'Cerrada' : round ? 'Preparada' : 'Sin iniciar' }}</strong></div>
+            <div class="card metric"><span>Papeleta</span><strong>{{ round?.status === 'annulled' ? 'Anulada' : round?.status === 'published' ? 'Publicada' : round?.status === 'closed' ? 'Cerrada' : round ? 'Preparada' : 'Sin iniciar' }}</strong></div>
           </section>
           <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
             <strong>Limpieza del secreto del voto pendiente.</strong>
@@ -975,10 +1043,11 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
             <div v-if="qrImage" class="qr-panel"><img :src="qrImage" alt="Código QR para unirse a la Asamblea" /><div><strong>Escanea para unirte</strong><p>Abre este enlace en el proyector y muestra el código QR durante el ingreso.</p><a :href="`/?code=${encodeURIComponent(code)}`">{{ origin }}/?code={{ code }}</a></div></div>
           </section>
           <section class="card"><p class="eyebrow">PAPELETA</p><h2>{{ round?.title || 'Preparar votación' }}</h2>
-            <div v-if="round?.status === 'draft' && (round.category !== 'committee' || ['election', 'tie_break'].includes(round.committeeStage || ''))" class="action-row"><div><p class="status-line">Papeleta preparada. Revisa las opciones antes de abrir.</p><ul class="option-list"><li v-for="option in round.options || []" :key="option.id">{{ option.label }}</li></ul></div><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/open`)">Abrir votación</button></div>
-            <div v-else-if="round?.status === 'open'" class="action-row"><p class="status-line">La votación está abierta. Los resultados permanecerán ocultos hasta que la mesa los publique.</p><button class="danger" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/close`)">Cerrar votación</button></div>
-            <div v-else-if="round?.status === 'closed'" class="action-row"><p class="status-line">La papeleta está cerrada. Revisa el conteo antes de publicarlo.</p><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/publish`)">Publicar resultados</button></div>
-            <template v-if="!round || round.status === 'published' || round.status === 'closed'">
+            <div v-if="round?.status === 'draft' && (round.category !== 'committee' || ['election', 'tie_break'].includes(round.committeeStage || ''))" class="action-row"><div><p class="status-line">Papeleta preparada. Revisa las opciones antes de abrir.</p><ul class="option-list"><li v-for="option in round.options || []" :key="option.id">{{ option.label }}</li></ul></div><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/open`)">Abrir votación</button></div></div>
+            <div v-else-if="round?.status === 'open'" class="action-row"><p class="status-line">La votación está abierta. Los resultados permanecerán ocultos hasta que la mesa los publique.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular votación</button><button class="danger" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/close`)">Cerrar votación</button></div></div>
+            <div v-else-if="round?.status === 'closed'" class="action-row"><p class="status-line">La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide en el acta.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/publish`)">Publicar resultados</button></div></div>
+            <div v-else-if="round?.status === 'annulled'" class="action-row"><p class="status-line">Papeleta anulada<template v-if="round.annulReason">: {{ round.annulReason }}</template>. Sus votos no se contarán.</p><button v-if="round.category !== 'committee' || round.options?.some((option) => !option.isNullVote)" class="secondary" :disabled="loading" @click="repeatAllOptions(state?.rounds?.find((item) => item.id === round?.id))">Repetir con las mismas opciones</button></div>
+            <template v-if="!round || round.status === 'published' || round.status === 'closed' || round.status === 'annulled'">
               <form @submit.prevent="createRound"><label>Tipo de proceso<select v-model="roundCategory"><option value="office">Cargo</option><option value="committee">Comisión temporal</option></select></label><label>{{ roundCategory === 'committee' ? 'Nombre de la comisión o proceso' : 'Título o cargo' }}<input v-model="roundTitle" required :placeholder="roundCategory === 'committee' ? 'Ej. Comisión de Finanzas' : 'Ej. Elección de presidencia'" /></label>
                 <template v-if="roundCategory === 'committee'">
                   <label>Tipo de comisión<select v-model="committeeType"><option value="nomination">Nombramiento</option><option value="finance">Finanzas</option><option value="statutes">Estatutos</option><option value="plans">Planes</option><option value="other">Otra comisión autorizada</option></select></label>
@@ -988,7 +1057,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                   <label>Decisión/validación de Secretaría o mesa<textarea v-model="committeeDecisionNote" rows="2" maxlength="1000" placeholder="Describe la decisión que valida este proceso"></textarea></label>
                   <label>Regla de elegibilidad validada<textarea v-model="committeeEligibilityRule" rows="2" maxlength="1000" placeholder="Quiénes pueden ser candidatos y electores"></textarea></label>
                   <label>Método de votación validado<textarea v-model="committeeVotingMethod" rows="2" maxlength="1000" placeholder="Método confirmado y tratamiento de abstenciones/nulos si aplica"></textarea></label>
-                  <template v-if="committeeType === 'nomination'"><label>Regla validada para presentar propuestas<select v-model="committeeProposalRule"><option value="">Pendiente de decisión institucional</option><option value="eligible_delegate_only">Solo delegados elegibles pueden presentar</option></select></label><label>Regla validada para registrar apoyos<select v-model="committeeSupportRule"><option value="">Pendiente de decisión institucional</option><option value="one_per_eligible_delegate">Un apoyo por delegado elegible y por propuesta</option></select></label><label>Mínimo de apoyos requerido<input v-model.number="committeeSupportMinimum" type="number" min="1" placeholder="Definido por Secretaría/mesa" /></label><label>Base de mayoría simple<select v-model="committeeApprovalDenominator"><option value="">Pendiente de decisión institucional</option><option value="eligible_delegates">Delegados elegibles confirmados</option><option value="valid_votes">Votos válidos emitidos (sí + no)</option></select></label><p class="status-line">El flujo permanece bloqueado hasta validar la regla y el mínimo de apoyos, y la base del denominador para mayoría simple.</p></template>
+                  <template v-if="committeeType === 'nomination'"><label>Regla validada para presentar propuestas<select v-model="committeeProposalRule"><option value="">Pendiente de decisión institucional</option><option value="eligible_delegate_only">Solo delegados elegibles pueden presentar</option></select></label><label>Regla validada para registrar apoyos<select v-model="committeeSupportRule"><option value="">Pendiente de decisión institucional</option><option value="one_per_eligible_delegate">Un apoyo por delegado elegible y por propuesta</option></select></label><label>Mínimo de apoyos requerido<input v-model.number="committeeSupportMinimum" type="number" min="1" placeholder="Definido por Secretaría/mesa" /></label><label>Número de candidatos <span class="hint">Lo fija la delegación; no puede ser menor que el número de integrantes.</span><input v-model.number="committeeCandidateCount" type="number" min="1" placeholder="Definido por la delegación" /></label><p class="status-line">El flujo permanece bloqueado hasta validar las reglas, el mínimo de apoyos y el número de candidatos.</p></template>
                   <template v-else><fieldset class="official-options"><legend>Candidaturas/integrantes con elegibilidad confirmada</legend><label v-for="candidate in eligibleCommitteeCandidates" :key="candidate.id"><input v-model="committeeCandidateSelections" type="checkbox" :value="candidate.id" />{{ candidate.firstName }} {{ candidate.lastName }}</label><p v-if="!eligibleCommitteeCandidates.length" class="status-line">Primero confirma roles y elegibilidad en la lista de participantes.</p></fieldset></template>
                   <p class="privacy-note">Los votos de la elección son secretos. Si falta una validación, el proceso queda bloqueado y no se puede abrir.</p>
                 </template>
@@ -1000,7 +1069,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <section v-if="state?.rounds?.length" class="card official-history">
             <p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones oficiales de la mesa</h2>
             <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
-              <div class="section-heading"><div><h3>{{ historyRound.title }}</h3><p class="status-line">{{ historyRound.category === 'committee' ? `Comisión · ${historyRound.committeeType} · ${historyRound.memberCount ?? 'tamaño pendiente'}` : 'Cargo' }} · conteo {{ historyRound.status === 'published' ? 'publicado' : historyRound.status === 'closed' ? 'cerrado' : historyRound.status }}</p><p v-if="historyRound.decisionNote" class="status-line">Configuración institucional: {{ historyRound.decisionNote }}</p></div></div>
+              <div class="section-heading"><div><h3>{{ historyRound.title }}</h3><p class="status-line">{{ historyRound.category === 'committee' ? `Comisión · ${historyRound.committeeType} · ${historyRound.memberCount ?? 'tamaño pendiente'}` : 'Cargo' }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}</p><p v-if="historyRound.decisionNote" class="status-line">Configuración institucional: {{ historyRound.decisionNote }}</p></div></div>
               <template v-if="historyRound.category === 'committee'">
                 <p class="status-line">Etapa: {{ historyRound.committeeStage || 'configuration_required' }}<span v-if="historyRound.committeeConfiguration?.validationReference"> · Validación: {{ historyRound.committeeConfiguration.validationReference }}</span></p>
                 <p v-if="historyRound.committeeConfiguration" class="status-line">Elegibilidad: {{ historyRound.committeeConfiguration.eligibilityRule || 'pendiente' }} · Método: {{ historyRound.committeeConfiguration.votingMethod || 'pendiente' }}</p>
@@ -1012,44 +1081,52 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                   <label>Elegibilidad<textarea v-model="committeeEligibilityRule" required rows="2"></textarea></label>
                   <label>Método de votación<textarea v-model="committeeVotingMethod" required rows="2"></textarea></label>
                   <label>Tamaño confirmado<input v-model.number="committeeMemberCount" type="number" min="1" required /></label>
-                  <template v-if="historyRound.committeeType === 'nomination'"><label>Regla de propuestas<select v-model="committeeProposalRule" required><option value="">Pendiente</option><option value="eligible_delegate_only">Solo delegados elegibles pueden presentar</option></select></label><label>Regla de apoyos<select v-model="committeeSupportRule" required><option value="">Pendiente</option><option value="one_per_eligible_delegate">Un apoyo por delegado elegible y por propuesta</option></select></label><label>Mínimo de apoyos<input v-model.number="committeeSupportMinimum" type="number" min="1" required /></label><label>Base para mayoría<select v-model="committeeApprovalDenominator"><option value="">Pendiente</option><option value="eligible_delegates">Delegados elegibles</option><option value="valid_votes">Votos válidos</option></select></label></template>
+                  <template v-if="historyRound.committeeType === 'nomination'"><label>Regla de propuestas<select v-model="committeeProposalRule" required><option value="">Pendiente</option><option value="eligible_delegate_only">Solo delegados elegibles pueden presentar</option></select></label><label>Regla de apoyos<select v-model="committeeSupportRule" required><option value="">Pendiente</option><option value="one_per_eligible_delegate">Un apoyo por delegado elegible y por propuesta</option></select></label><label>Mínimo de apoyos<input v-model.number="committeeSupportMinimum" type="number" min="1" required /></label><label>Número de candidatos<input v-model.number="committeeCandidateCount" type="number" min="1" required /></label></template>
                   <button class="primary" :disabled="loading">Guardar validación</button>
                 </form>
                 <div v-if="historyRound.committeeProposals?.length" class="committee-proposals">
-                  <h4>Propuestas, apoyos y aprobación</h4>
+                  <h4>Propuestas, apoyos y aprobación<span v-if="historyRound.committeeConfiguration?.candidateCount"> · {{ historyRound.committeeProposals.filter((proposal) => proposal.status === 'approved').length }} de {{ historyRound.committeeConfiguration.candidateCount }} candidatos aprobados</span></h4>
                   <ul class="option-list"><li v-for="proposal in historyRound.committeeProposals" :key="proposal.id">{{ proposal.candidateName }} · {{ proposal.supportCount }} apoyos · {{ proposal.status }}<span v-if="proposal.approvalYes !== null"> · aprobación agregada: {{ proposal.approvalYes }} sí / {{ proposal.approvalNo }} no</span></li></ul>
-                  <div v-if="historyRound.committeeStage === 'approval'" v-for="proposal in historyRound.committeeProposals" :key="`approval-${proposal.id}`" class="approval-entry">
-                    <strong>{{ proposal.candidateName }}</strong><label>Sí<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.yesVotes ?? 0" @input="updateCommitteeApproval(proposal.id, 'yesVotes', ($event.target as HTMLInputElement).value)" /></label><label>No<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.noVotes ?? 0" @input="updateCommitteeApproval(proposal.id, 'noVotes', ($event.target as HTMLInputElement).value)" /></label><button class="secondary" @click="recordCommitteeApproval(historyRound, proposal.id)">Registrar conteo agregado</button>
+                  <div v-if="historyRound.committeeStage === 'approval'" v-for="proposal in historyRound.committeeProposals.filter((item) => item.status === 'supported' || item.decidedAt)" :key="`approval-${proposal.id}`" class="approval-entry">
+                    <strong>{{ proposal.candidateName }}<template v-if="proposal.decidedAt"> · {{ proposal.status === 'approved' ? 'aprobada' : 'rechazada' }} (se puede corregir)</template></strong><label>Sí (opcional)<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.yesVotes ?? ''" @input="updateCommitteeApproval(proposal.id, 'yesVotes', ($event.target as HTMLInputElement).value)" /></label><label>No (opcional)<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.noVotes ?? ''" @input="updateCommitteeApproval(proposal.id, 'noVotes', ($event.target as HTMLInputElement).value)" /></label><button class="secondary" @click="recordCommitteeApproval(historyRound, proposal.id, 'approved')">Aprobada por la delegación</button><button class="link-button remove-link" @click="recordCommitteeApproval(historyRound, proposal.id, 'rejected')">Rechazada</button>
                   </div>
                 </div>
-                <ul v-if="historyRound.committeeComposition?.length" class="option-list"><li v-for="winner in historyRound.committeeComposition" :key="winner.participantId">Composición provisional {{ winner.order }}: {{ winner.name }}</li></ul>
                 <div class="action-row" v-if="historyRound.status === 'draft' && historyRound.committeeStage">
                   <button v-if="historyRound.committeeStage === 'proposals'" class="secondary" @click="advanceCommitteeStage(historyRound, 'support')">Cerrar propuestas e iniciar apoyos</button>
                   <button v-if="historyRound.committeeStage === 'support'" class="secondary" @click="advanceCommitteeStage(historyRound, 'approval')">Cerrar apoyos e iniciar aprobación</button>
                   <button v-if="historyRound.committeeStage === 'approval'" class="secondary" @click="advanceCommitteeStage(historyRound, 'election')">Abrir etapa de elección</button>
-                  <button v-if="historyRound.committeeStage === 'tie_break'" class="primary" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/open`)">Abrir segunda votación secreta</button>
+                  <button v-if="historyRound.committeeStage === 'tie_break'" class="primary" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/open`)">Abrir nueva votación</button>
                 </div>
               </template>
-              <p v-if="historyRound.committeeStage === 'tie_break_required'" class="status-line">Empate en el último cupo: debe abrirse la nueva votación secreta registrada en la ronda vinculada.</p>
+              <p v-if="historyRound.status === 'annulled'" class="status-line">Anulada<template v-if="historyRound.annulReason">: {{ historyRound.annulReason }}</template></p>
               <div v-if="historyRound.results?.length" class="results-list compact-results">
-                <div v-for="result in historyRound.results" :key="result.optionId"><span>{{ result.label }}</span><strong>{{ result.count }}</strong></div>
+                <div v-for="(result, index) in historyRound.results" :key="result.optionId"><span>{{ rankOf(historyRound.results, index) }} {{ result.label }}</span><strong>{{ result.count }}</strong></div>
               </div>
+              <form v-if="assemblyStatus !== 'completed' && ['closed', 'published', 'annulled'].includes(historyRound.status) && historyRound.options.some((option) => !option.isNullVote)" class="official-form" @submit.prevent="repeatRound(historyRound)">
+                <fieldset class="official-options"><legend>Nueva votación con las opciones seleccionadas</legend>
+                  <label v-for="option in historyRound.options.filter((item) => !item.isNullVote)" :key="`repeat-${option.id}`"><input v-model="repeatSelections[historyRound.id]" type="checkbox" :value="option.id" />{{ option.label }}</label>
+                </fieldset>
+                <label v-if="historyRound.category === 'committee'">Cupos a elegir en la nueva votación<input v-model.number="repeatSeats[historyRound.id]" type="number" min="1" :max="(repeatSelections[historyRound.id] || []).length || undefined" placeholder="Por defecto, los mismos cupos" /></label>
+                <button class="secondary" :disabled="loading || !(repeatSelections[historyRound.id] || []).length">Preparar nueva votación</button>
+              </form>
               <div v-if="historyRound.officialResult" class="declared-result">
                 <strong>Declaración {{ historyRound.officialResult.publishedAt ? 'publicada' : 'interna' }}</strong>
                 <p>Electos: {{ historyRound.officialResult.elected.map((person) => person.label).join(', ') }}</p>
                 <p v-if="historyRound.officialResult.note">Observación: {{ historyRound.officialResult.note }}</p>
                 <small>Registrada {{ formatDateTime(historyRound.officialResult.declaredAt) }} por {{ formatActor(historyRound.officialResult.declaredBy) }}</small>
               </div>
-              <p v-else class="status-line">La mesa aún no ha registrado una declaración oficial.</p>
-              <form v-if="historyRound.status === 'closed' || historyRound.status === 'published'" class="official-form" @submit.prevent="saveOfficialResult(historyRound)">
+              <p v-else-if="!historyRound.committeeRootRoundId" class="status-line">La mesa aún no ha registrado una declaración oficial.</p>
+              <p v-if="historyRound.committeeRootRoundId" class="status-line">Repetición de «{{ state.rounds.find((item) => item.id === historyRound.committeeRootRoundId)?.title }}»: el resultado oficial se registra en esa papeleta.</p>
+              <form v-if="isDecidable(historyRound)" class="official-form" @submit.prevent="saveOfficialResult(historyRound)">
                 <fieldset class="official-options"><legend>Persona(s) declarada(s) electa(s)</legend>
-                  <label v-for="option in historyRound.options" :key="option.id"><input v-model="officialSelections[historyRound.id]" type="checkbox" :value="option.id" />{{ option.label }}</label>
+                  <label v-for="option in historyRound.options.filter((item) => !item.isNullVote)" :key="option.id"><input v-model="officialSelections[historyRound.id]" type="checkbox" :value="option.id" />{{ option.label }}</label>
                 </fieldset>
                 <label>Observación o motivo (opcional)<textarea v-model="officialNotes[historyRound.id]" rows="2" maxlength="1000" placeholder="Ej. Decisión de desempate de la Asamblea"></textarea></label>
                 <div class="action-row">
                   <button class="secondary" :disabled="loading">{{ historyRound.officialResult ? 'Corregir declaración' : 'Registrar resultado oficial' }}</button>
-                  <button v-if="historyRound.officialResult && !historyRound.officialResult.publishedAt && historyRound.status === 'published'" type="button" class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result/publish`)">Publicar declaración</button>
+                  <button v-if="historyRound.officialResult && !historyRound.officialResult.publishedAt && roundChain(historyRound).some((item) => item.status === 'published')" type="button" class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result/publish`)">Publicar declaración</button>
                   <span v-else-if="historyRound.officialResult?.publishedAt" class="status-line">Visible al público</span>
+                  <button v-if="historyRound.officialResult && assemblyStatus !== 'completed'" type="button" class="link-button remove-link" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result`, 'DELETE')">Retirar declaración</button>
                 </div>
               </form>
             </article>
@@ -1063,15 +1140,15 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
       <section v-if="!code" class="card join-card"><p class="eyebrow">PANTALLA PÚBLICA</p><h1>Proyector</h1><p class="lead">Ingresa el código de la sala para mostrar el estado permitido de la Asamblea.</p><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
       <section v-else class="projector-content">
         <p class="eyebrow">ASDMR · UNIÓN HONDUREÑA</p>
-        <h1>{{ assemblyStatus === 'completed' ? 'Asamblea finalizada' : round?.status === 'published' ? 'Resultados publicados' : round?.status === 'open' || round?.status === 'closed' ? round.title : 'Sala de Asamblea' }}</h1>
-        <p class="projector-subtitle">{{ assemblyStatus === 'completed' ? `Sesión concluida${completionTime ? ` · ${completionTime}` : ''}` : round?.status === 'open' ? 'Votación abierta' : round?.status === 'closed' ? 'Votación cerrada · resultados ocultos' : round?.status === 'published' ? 'Resultados autorizados por la mesa' : 'Estado: ' + assemblyStatus }}</p>
+        <h1>{{ assemblyStatus === 'completed' ? 'Asamblea finalizada' : round?.status === 'published' ? 'Resultados publicados' : round?.status === 'open' || round?.status === 'closed' || round?.status === 'annulled' ? round.title : 'Sala de Asamblea' }}</h1>
+        <p class="projector-subtitle">{{ assemblyStatus === 'completed' ? `Sesión concluida${completionTime ? ` · ${completionTime}` : ''}` : round?.status === 'annulled' ? 'Votación anulada por la mesa · no se contará' : round?.status === 'open' ? 'Votación abierta' : round?.status === 'closed' ? 'Votación cerrada · resultados ocultos' : round?.status === 'published' ? `${round.title} · resultados autorizados por la mesa` : 'Estado: ' + assemblyStatus }}</p>
         <p v-if="realtimeActive && !realtimeConnected" class="connection-warning projector-connection-warning" role="status" aria-live="polite">Conexión interrumpida · Intentando reconectar. Los datos mostrados son los últimos confirmados.</p>
-        <div v-if="round?.status === 'published'" class="results-list">
-          <div v-for="result in state?.results || []" :key="result.label"><span>{{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong></div>
-          <p class="projector-result-total">Total: {{ (state?.results || []).reduce((total, result) => total + result.count, 0) }} {{ (state?.results || []).reduce((total, result) => total + result.count, 0) === 1 ? 'voto' : 'votos' }}</p>
-          <p class="projector-results-note">Conteo agregado por opción · sin proclamación automática de ganador</p>
-        </div>
         <section v-if="state?.officialResult" class="projector-official-result"><p class="eyebrow">RESULTADO DECLARADO POR LA MESA</p><h2>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</h2><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p><small>Declaración registrada {{ formatDateTime(state.officialResult.declaredAt) }}</small></section>
+        <div v-if="round?.status === 'published'" class="results-list projector-results">
+          <div v-for="(result, index) in state?.results || []" :key="result.label" :class="{ 'null-vote-result': result.isNullVote }"><span>{{ rankOf(state?.results || [], index) }} {{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }} <small>{{ resultPercent(state?.results || [], result.count) }} %</small></strong><span class="result-bar" aria-hidden="true"><span :style="{ width: `${resultPercent(state?.results || [], result.count)}%` }"></span></span></div>
+          <p class="projector-result-total">Total: {{ (state?.results || []).reduce((total, result) => total + result.count, 0) }} {{ (state?.results || []).reduce((total, result) => total + result.count, 0) === 1 ? 'voto' : 'votos' }}</p>
+          <p class="projector-results-note">Ordenado por votos · la mesa declara el resultado oficial</p>
+        </div>
         <div v-if="round?.status === 'open' || round?.status === 'closed'" class="projector-progress" aria-live="polite">
           <strong>{{ state?.recordedCount ?? 0 }}</strong>
           <span>de {{ state?.eligibleCount ?? state?.participantCount ?? 0 }} {{ (state?.eligibleCount ?? state?.participantCount ?? 0) === 1 ? 'voto recibido' : 'votos recibidos' }}</span>

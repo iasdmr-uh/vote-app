@@ -95,6 +95,10 @@ export class CommitteeConfigurationDto {
   @IsOptional() @IsInt() @Min(1)
   supportMinimum?: number
 
+  /** Number of candidates the delegation fixed for the Nomination Committee (05-12 03). */
+  @IsOptional() @IsInt() @Min(1)
+  candidateCount?: number
+
   @IsOptional() @IsIn(['eligible_delegates', 'valid_votes'])
   approvalDenominator?: 'eligible_delegates' | 'valid_votes'
 }
@@ -144,12 +148,16 @@ export class CommitteeProposalDto {
   candidateParticipantId!: string
 }
 
+/** The moderator records the delegation's decision; the system does not compute the majority. */
 export class CommitteeApprovalDto {
-  @IsInt() @Min(0)
-  yesVotes!: number
+  @IsIn(['approved', 'rejected'])
+  decision!: 'approved' | 'rejected'
 
-  @IsInt() @Min(0)
-  noVotes!: number
+  @IsOptional() @IsInt() @Min(0)
+  yesVotes?: number
+
+  @IsOptional() @IsInt() @Min(0)
+  noVotes?: number
 }
 
 export class CommitteeStageDto {
@@ -174,6 +182,22 @@ export class OfficialResultDto {
 
   @IsOptional() @IsString() @MaxLength(1000)
   note?: string
+}
+
+export class AnnulRoundDto {
+  @IsString() @Matches(/\S/) @MaxLength(1000)
+  reason!: string
+}
+
+export class RepeatRoundDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(40) @IsUUID('all', { each: true })
+  optionIds!: string[]
+
+  @IsOptional() @IsInt() @Min(1)
+  seats?: number
+
+  @IsOptional() @IsString() @Matches(/\S/) @MaxLength(200)
+  title?: string
 }
 
 export class RouteIdDto {

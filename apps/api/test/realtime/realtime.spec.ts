@@ -135,6 +135,25 @@ test('assembly completion reaches public, moderator, and participant viewers wit
   }])
 })
 
+test('round state reaches phones so a withdrawn declaration or an annulment refreshes them', () => {
+  const emissions: Array<{ rooms: unknown; event: string; payload: unknown }> = []
+  const server = {
+    to(rooms: unknown) {
+      return { emit(event: string, payload: unknown) { emissions.push({ rooms, event, payload }) } }
+    },
+  }
+  const gateway = new RealtimeGateway({ async authenticate() { throw new Error() } })
+  Object.assign(gateway, { server })
+
+  gateway.roundState('assembly-7', { roundId: 'round-1', status: 'annulled', title: 'Presidencia' })
+
+  assert.deepEqual(emissions, [{
+    rooms: ['assembly:assembly-7:public', 'assembly:assembly-7:moderators', 'assembly:assembly-7:participants'],
+    event: 'round.state',
+    payload: { roundId: 'round-1', status: 'annulled', title: 'Presidencia' },
+  }])
+})
+
 test('participant snapshot includes aggregates only after publication', () => {
   const emissions: Array<{ event: string; payload: unknown }> = []
   const server = {

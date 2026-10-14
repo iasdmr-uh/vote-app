@@ -191,7 +191,16 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 
 ## 18. Pendientes de validación antes de desarrollo
 
-- Confirmar con Secretaría y la mesa las reglas exactas para cada cargo, mayorías, abstenciones, desempates, anulaciones y repetición de rondas; contrastarlas con los Estatutos vigentes además del Reglamento Interno.
+- ~~Confirmar con Secretaría y la mesa las reglas exactas para cada cargo, mayorías, abstenciones, desempates, anulaciones y repetición de rondas.~~ Respondido por Secretaría (octubre 2026):
+  - No se valida en el sistema quién vota (votan delegados y ex oficio).
+  - No se automatiza la mayoría: se muestran todos los candidatos ordenados por votos y la mesa, con la Asamblea, decide quién continúa (puede repetir la votación entre los más votados) y quién queda. Cerrar una papeleta no elige a nadie. Los empates se resuelven igual.
+  - Existe el voto en blanco y se llama «Voto nulo».
+  - La mesa puede anular una papeleta.
+  - En la Comisión de Nombramiento se registran el número de integrantes y el número de candidatos.
+  - Las llegadas tarde las decide la Asamblea; la mesa reabre el ingreso.
+  - Una persona técnica modera; una laptop funciona como servidor en una red Wi-Fi propia (Starlink).
+  - El proyector muestra nombres y cantidad durante el ingreso.
+  - Los datos se conservan solo durante la Asamblea; después rige el acta.
 - Determinar quién puede operar el panel de moderación y cómo se entregará/acreditará su acceso.
 - Definir conservación y eliminación de nombres, participaciones, votos y bitácoras después de la Asamblea.
 - Confirmar infraestructura, cobertura y capacidad de la red Wi-Fi del recinto, dominio y plan de contingencia.
