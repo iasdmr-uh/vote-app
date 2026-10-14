@@ -94,6 +94,16 @@ Si guardaste el acta en PDF o el CSV en la laptop, entrégalos a Secretaría y b
 
 ## Seguridad en esta red
 
-- La red es HTTP sin cifrar dentro del Wi-Fi. La protegen la contraseña del Wi-Fi de Starlink (WPA2/WPA3) y el hecho de que solo la gente de la sala la conoce. No uses una red abierta.
-- El voto sigue siendo secreto: al cerrar cada papeleta, el sistema desvincula los votos de quién participó (ver `docs/foundation/data-model.md`).
-- La clave de la mesa no sale de la laptop: el panel no responde desde el Wi-Fi.
+**Riesgo aceptado: la conexión de los teléfonos no está cifrada.** Los teléfonos usan HTTP dentro del Wi-Fi, sin HTTPS. La contraseña del Wi-Fi impide que entre gente de fuera, pero no protege a un delegado de otra persona que también esté conectada. Alguien en la misma red, con las herramientas adecuadas, podría interponerse entre un teléfono y la laptop. Así podría ver la credencial de ese teléfono y su voto, o alterar lo que envía. Se decidió mantener HTTP (octubre de 2026) porque HTTPS en la red local exige un dominio propio con certificado o mostrar avisos de seguridad en cada teléfono.
+
+Medidas para reducir el riesgo:
+
+- Usa una contraseña de Wi-Fi nueva para cada Asamblea, dila solo en la sala y cámbiala al terminar. No uses una red abierta.
+- Si el router lo permite, elige WPA3. Evita que alguien grabe el tráfico y lo descifre después con la contraseña, aunque no impide que alguien conectado se interponga.
+- Que el Wi-Fi sea solo para la votación: no conectes otros equipos ni compartas la contraseña fuera de la sala.
+- La mesa compara la participación con las personas presentes. Si un delegado dice que su voto no quedó registrado o que su teléfono mostró algo extraño, anúlala y repite la papeleta.
+
+Lo que sí está protegido:
+
+- El secreto del voto en la base de datos: al cerrar cada papeleta, el sistema desvincula los votos de quién participó (ver `docs/foundation/data-model.md`).
+- La mesa: su clave nunca viaja por el Wi-Fi, porque el panel solo funciona en la laptop.
