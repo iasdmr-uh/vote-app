@@ -36,6 +36,7 @@ test('a declared committee composition must match its configured number of seats
 test('the mesa records the delegation decision on a proposal; the system does not compute a majority', async () => {
   const recorded: Record<string, unknown>[] = []
   const tx = {
+    $queryRaw: async () => [],
     round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
     committeeProposal: {
       findFirst: async () => ({ id: 'proposal' }),
@@ -59,6 +60,7 @@ test('the mesa records the delegation decision on a proposal; the system does no
 test('a recorded delegation decision can be corrected, but proposals that lacked supports cannot be approved', async () => {
   let where: Record<string, unknown> | undefined
   const tx = {
+    $queryRaw: async () => [],
     round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
     committeeProposal: {
       findFirst: async (args: { where: Record<string, unknown> }) => { where = args.where; return null },

@@ -193,10 +193,12 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await expect(ranking).toContainText('2. Alfa')
   await expect(ranking.locator('div').last()).toHaveText(/^\s*Voto nulo\s*2$/)
 
-  page.once('dialog', (dialog) => dialog.accept('Nombre mal escrito'))
   await page.getByRole('button', { name: 'Anular votación' }).click()
-  await expect(page.getByRole('dialog')).toContainText('Sus votos se eliminarán')
-  await page.getByRole('dialog').getByRole('button', { name: 'Anular papeleta' }).click()
+  const annulDialog = page.getByRole('dialog')
+  await expect(annulDialog).toContainText('se eliminarán y nunca se contarán')
+  await expect(annulDialog.getByRole('button', { name: 'Anular papeleta' })).toBeDisabled()
+  await annulDialog.getByLabel('Motivo (obligatorio, queda en el registro)').fill('Nombre mal escrito')
+  await annulDialog.getByRole('button', { name: 'Anular papeleta' }).click()
   await expect(page.getByText('Papeleta anulada: Nombre mal escrito.')).toBeVisible()
 
   const repeatForm = page.locator('.official-round').first().getByRole('group', { name: 'Nueva votación con las opciones seleccionadas' })
@@ -207,6 +209,28 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await page.getByRole('dialog').getByRole('button', { name: 'Preparar nueva votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
   expect(repeated).toEqual({ optionIds: ['b', 'a'] })
+})
+
+test('el teléfono muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'declared-session'))
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
+        participationStatus: 'recorded',
+        openRound: { roundId: 'repeat', title: 'Presidencia — nueva votación', status: 'closed', format: 'single_choice', options: [] },
+        officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: 'Electa por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('RESULTADO OFICIAL DE LA MESA')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'María López' })).toBeVisible()
+  await expect(page.getByText('RESULTADOS PUBLICADOS')).toHaveCount(0)
 })
 
 test('delegado registra una propuesta y apoyo sin mostrar identidades de apoyo', async ({ page }) => {

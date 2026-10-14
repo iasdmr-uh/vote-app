@@ -696,8 +696,14 @@ export class VotingService implements OnModuleInit {
     const proposal = await this.prisma.committeeProposal.findFirst({ where: { id: proposalId, roundId, status: 'proposed' }, select: { id: true } })
     if (!proposal) throw new NotFoundException('Propuesta no disponible')
     try {
-      await this.prisma.committeeProposalSupport.create({ data: { proposalId, supporterParticipantId: participantId } })
-      await this.prisma.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: participantId, action: 'committee.nomination.supported', metadata: { proposalId } } })
+      await this.prisma.$transaction(async (tx) => {
+        // Shared lock: delegates support concurrently, but closing supports (FOR UPDATE) waits for them,
+        // so no support is saved after the counts that decide each proposal were taken.
+        const rows = await tx.$queryRaw<Array<{ committee_stage: string | null }>>`SELECT committee_stage FROM rounds WHERE id = ${roundId}::uuid FOR SHARE`
+        if (rows[0]?.committee_stage !== 'support') throw new ConflictException('El proceso no está recibiendo apoyos')
+        await tx.committeeProposalSupport.create({ data: { proposalId, supporterParticipantId: participantId } })
+        await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: participantId, action: 'committee.nomination.supported', metadata: { proposalId } } })
+      })
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Ya registraste tu apoyo a esta propuesta')
       throw error
@@ -750,6 +756,9 @@ export class VotingService implements OnModuleInit {
 
   async recordCommitteeApproval(roundId: string, proposalId: string, input: CommitteeApprovalDto) {
     return this.prisma.$transaction(async (tx) => {
+      // Same row lock as advanceCommitteeStage: a decision either lands before the ballot copies the
+      // approved candidates or sees the election stage and is refused, never after the copy.
+      await tx.$queryRaw`SELECT id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
       const round = await tx.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
       if (!round || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'approval') throw new ConflictException('El proceso no está en aprobación de candidaturas')
       // Proposals rejected for lacking supports have no decision date and stay out; decided ones can be corrected.
