@@ -24,6 +24,16 @@ if [[ "${OPEN_ROUNDS//[[:space:]]/}" != "0" ]]; then
   exit 3
 fi
 
+# Releases before vote unlinking (no rounds.votes_unlinked_at column) close rounds without shuffling.
+# If such an API closed a round between the shuffle below and pg_dump, the dump would keep that round's
+# votes in delegate order, and the open-round check could not notice. Require that API to be stopped.
+HAS_UNLINKING="$("$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres sh -ec \
+  'psql -X -tA --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="SELECT count(*) FROM information_schema.columns WHERE table_name = '"'"'rounds'"'"' AND column_name = '"'"'votes_unlinked_at'"'"'"')"
+if [[ "${HAS_UNLINKING//[[:space:]]/}" != "1" ]] && "$ROOT_DIR/scripts/candidate-compose.sh" ps --status running --services | grep -qx api; then
+  printf 'Refusing to back up: the database still has the pre-upgrade schema and the api service is running.\nStop it first: scripts/candidate-compose.sh stop api\n' >&2
+  exit 3
+fi
+
 # A logical dump writes rows in physical order. Votes of rounds closed by a release before vote
 # unlinking existed are still in the same order as their participation receipts, so re-insert every
 # non-open round's votes in random order first (the same statement the API runs when closing a round).

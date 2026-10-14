@@ -46,13 +46,23 @@ scripts/candidate-compose.sh ps
 curl --fail https://APP_DOMAIN/api/v1/health
 ```
 
-Para una versión nueva, identifica primero el SHA que se pretende desplegar, detén la API (`scripts/candidate-compose.sh stop api`) para que ninguna papeleta se abra o cierre durante el respaldo, respalda la base, construye las imágenes desde ese checkout con `--profile tools build`, ejecuta `--profile tools run --rm --build migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
+Para una versión nueva, identifica primero el SHA que se pretende desplegar, detén la API (`scripts/candidate-compose.sh stop api`) para que ninguna papeleta se abra o cierre durante el respaldo (el script lo exige mientras la base tenga el esquema anterior), respalda la base, construye las imágenes desde ese checkout con `--profile tools build`, ejecuta `--profile tools run --rm --build migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
 
 ```sh
 scripts/candidate-compose.sh logs --tail=200 api caddy
 ```
 
 No ejecutes `prisma migrate dev` en el candidato. Si una migración no es compatible con la versión anterior, no reviertas código a ciegas ni sobrescribas la base: conserva el backup y recupera una copia aislada para diagnosticarla. Los volúmenes `candidate_postgres_data` y `candidate_caddy_data` persisten al recrear contenedores; `down -v` los borra y no forma parte del procedimiento de reinicio.
+
+## Limpieza pendiente al arrancar
+
+Al iniciar, la API completa la desvinculación pendiente de votos (ver `docs/foundation/data-model.md`). Si no puede, por ejemplo por disco lleno, **no arranca** y el log de `api` lo explica. Corrige la causa y reinicia: `scripts/candidate-compose.sh up -d api`.
+
+Solo si ocurre durante una asamblea y la mesa decide explícitamente continuar, se puede arrancar con la limpieza pendiente. Mientras tanto, los votos afectados siguen enlazables en el disco, y la publicación y la finalización quedan bloqueadas.
+
+1. En `.env.candidate`, cambia `ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true` y ejecuta `scripts/candidate-compose.sh up -d api`. Registra quién tomó la decisión y cuándo.
+2. Corrige la causa y pulsa «Reintentar limpieza» en el panel de moderación hasta que desaparezca el aviso.
+3. Vuelve a `ALLOW_START_WITH_PENDING_VOTE_CLEANUP=false` y ejecuta `scripts/candidate-compose.sh up -d api`. Comprueba en el log que arrancó sin el error de limpieza.
 
 ## Respaldo y comprobación de restauración
 

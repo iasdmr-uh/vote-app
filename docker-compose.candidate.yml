@@ -41,6 +41,8 @@ services:
       API_PORT: "3000"
       # Caddy is the only proxy in front of the API.
       TRUST_PROXY_HOPS: "1"
+      # Emergency only (see docs/candidate-environment.md): lets the API start while vote unlinking is pending.
+      ALLOW_START_WITH_PENDING_VOTE_CLEANUP: ${ALLOW_START_WITH_PENDING_VOTE_CLEANUP:-false}
     expose:
       - "3000"
     depends_on:
