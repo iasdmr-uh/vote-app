@@ -53,6 +53,8 @@ test('startup configuration validates required URLs, database and moderator secr
   assert.throws(() => validateEnvironment({ ...valid, WEB_ORIGIN: 'not-a-url' }), /absolute URL/)
   assert.doesNotThrow(() => validateEnvironment({ ...valid, TRUST_PROXY_HOPS: '1' }))
   assert.throws(() => validateEnvironment({ ...valid, TRUST_PROXY_HOPS: 'yes' }), /TRUST_PROXY_HOPS/)
+  assert.doesNotThrow(() => validateEnvironment({ ...valid, ALLOW_START_WITH_PENDING_VOTE_CLEANUP: 'true' }))
+  assert.throws(() => validateEnvironment({ ...valid, ALLOW_START_WITH_PENDING_VOTE_CLEANUP: 'yes' }), /ALLOW_START_WITH_PENDING_VOTE_CLEANUP/)
 })
 
 function rateLimitContext(ip: string, authorization?: string): ExecutionContext {

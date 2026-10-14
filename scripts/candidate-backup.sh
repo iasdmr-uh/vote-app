@@ -24,6 +24,20 @@ if [[ "${OPEN_ROUNDS//[[:space:]]/}" != "0" ]]; then
   exit 3
 fi
 
+# A logical dump writes rows in physical order. Votes of rounds closed by a release before vote
+# unlinking existed are still in the same order as their participation receipts, so re-insert every
+# non-open round's votes in random order first (the same statement the API runs when closing a round).
+# Vote ids are not referenced anywhere, so this changes nothing but row order and ids. It also works on
+# the pre-upgrade schema, so the backup taken before migrating is safe too.
+"$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres sh -ec \
+  'psql -X -q -v ON_ERROR_STOP=1 --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="
+    WITH removed AS (
+      DELETE FROM anonymous_votes v USING rounds r WHERE v.round_id = r.id AND r.status <> '"'"'open'"'"'
+      RETURNING v.round_id, v.option_id
+    )
+    INSERT INTO anonymous_votes (id, round_id, option_id)
+    SELECT gen_random_uuid(), round_id, option_id FROM removed ORDER BY random()"'
+
 TEMP_FILE="${BACKUP_FILE}.partial.$$"
 trap 'rm -f "$TEMP_FILE"' EXIT
 "$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres sh -ec \

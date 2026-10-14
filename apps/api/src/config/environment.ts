@@ -28,6 +28,9 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): void 
   if (!Number.isInteger(trustProxyHops) || trustProxyHops < 0 || trustProxyHops > 5) {
     throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 5')
   }
+  if (!['true', 'false', undefined].includes(env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP)) {
+    throw new Error('ALLOW_START_WITH_PENDING_VOTE_CLEANUP must be true or false')
+  }
   const port = Number(env.API_PORT ?? 3000)
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('API_PORT must be an integer from 1 to 65535')

@@ -28,13 +28,19 @@ export class VotingService implements OnModuleInit {
 
   /**
    * Finishes any pending vote unlinking on every deploy or restart, including rounds closed or
-   * published before unlinking existed and assemblies that are already completed.
+   * published before unlinking existed and assemblies that are already completed. Fails startup
+   * unless the head table explicitly accepts running with linkable votes at rest (for example, a
+   * full disk during an assembly), because a deploy must not come up silently in that state.
    */
   async onModuleInit() {
     try {
       await this.ensureVotesUnlinked()
     } catch (error) {
-      this.logger.error(`Vote unlinking at startup did not complete; affected assemblies cannot publish or complete until it does: ${(error as Error).message}`)
+      const message = `Vote unlinking at startup did not complete: ${(error as Error).message}`
+      if (process.env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP !== 'true') {
+        throw new Error(`${message}. Refusing to start; fix the cause or set ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true as an explicit emergency decision.`)
+      }
+      this.logger.error(`${message}. STARTING ANYWAY because ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true: votes of affected rounds remain linkable at rest; publishing and completing stay blocked until cleanup succeeds.`)
     }
   }
 

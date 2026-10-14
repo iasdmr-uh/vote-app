@@ -152,6 +152,17 @@ test('startup unlinks rounds published before this protection existed, even in c
     `)[0]!.count
     assert.equal(await linked(), 1n)
 
+    Object.assign(service, { vacuumAnonymousVotes: async () => { throw new Error('simulated disk full') } })
+    await assert.rejects(service.onModuleInit(), /Refusing to start/, 'a failed startup cleanup must not leave the API running silently')
+    process.env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP = 'true'
+    try {
+      await service.onModuleInit()
+    } finally {
+      delete process.env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP
+    }
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt, null, 'the override starts the API but does not mark the round clean')
+    delete (service as unknown as Record<string, unknown>).vacuumAnonymousVotes
+
     await service.onModuleInit()
 
     assert.equal(await linked(), 0n)

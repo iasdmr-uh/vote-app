@@ -46,7 +46,7 @@ scripts/candidate-compose.sh ps
 curl --fail https://APP_DOMAIN/api/v1/health
 ```
 
-Para una versión nueva, identifica primero el SHA que se pretende desplegar, respalda la base, construye las imágenes desde ese checkout con `--profile tools build`, ejecuta `--profile tools run --rm --build migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
+Para una versión nueva, identifica primero el SHA que se pretende desplegar, detén la API (`scripts/candidate-compose.sh stop api`) para que ninguna papeleta se abra o cierre durante el respaldo, respalda la base, construye las imágenes desde ese checkout con `--profile tools build`, ejecuta `--profile tools run --rm --build migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
 
 ```sh
 scripts/candidate-compose.sh logs --tail=200 api caddy
@@ -84,4 +84,8 @@ La aceptación de issue #6 sigue necesitando desplegar en un host/DNS autorizado
 ### Ensayo de despliegue del 2026-10-14 (rama `fix/pre-assembly-hardening`)
 
 Con Docker Desktop, `APP_DOMAIN=localhost` (certificado interno de Caddy), secretos aleatorios temporales y datos sintéticos se siguió el procedimiento de esta guía. El primer intento mostró que `build` sin `--profile tools` no reconstruía la imagen `migrate`: tenía 11 días y aplicó solo 2 de 6 migraciones informando éxito. Tras corregir los comandos, una base nueva recibió las 6 migraciones y los cuatro servicios quedaron healthy detrás de HTTPS. A través de Caddy se verificó: ingreso, voto y cierre; votos enlazables por `xmin` con la ronda abierta y ningún enlace tras el cierre con el conteo intacto; rechazo del respaldo con papeleta abierta y respaldo/restauración correctos tras cerrarla; `log_statement=none` y advertencia de la API al activarlo; y que encabezados `X-Forwarded-For` falsificados no evaden el límite de solicitudes (`TRUST_PROXY_HOPS=1`). En una corrida sobre una instalación recién creada fallaron los cuatro ingresos sin que el script mostrara la respuesta; no se reprodujo en dos corridas posteriores (una de ellas también sobre una instalación nueva). Se eliminaron contenedores, volúmenes y archivos de prueba. Sigue pendiente la prueba con DNS público y móviles reales.
+
+### Ensayo de actualización desde `main` (2026-10-14)
+
+Se desplegó `main` (5 migraciones) y 12 delegados sintéticos votaron con elecciones conocidas en una ronda que luego se publicó. El respaldo con el script de `main` guardó los votos exactamente en el orden de los delegados (`XZYZXYYZXZYX`), por lo que cada voto podía atribuirse a un nombre. Sobre la misma base, el script de esta rama produjo otro orden. Después se siguió esta guía: detener la API, respaldar, `--profile tools build`, `--profile tools run --rm --build migrate` (7 migraciones) y `up -d`. Al arrancar, la API marcó la ronda histórica como desvinculada, sin filas enlazables por `xmin` y con el conteo intacto (4/4/4). Si la limpieza al arrancar falla, la API no arranca salvo con `ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true`.
 
