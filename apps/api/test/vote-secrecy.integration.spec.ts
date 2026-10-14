@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ServiceUnavailableException } from '@nestjs/common'
+import pg from 'pg'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
@@ -172,6 +173,104 @@ test('startup unlinks rounds published before this protection existed, even in c
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
       await prisma.participantSession.deleteMany({ where: { assemblyId } })
+      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
+    }
+    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('a lock held on the votes table makes cleanup fail fast and recoverably instead of waiting forever', {
+  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
+}, async () => {
+  process.env.DATABASE_URL = testDatabaseUrl
+  const prisma = new PrismaService()
+  await prisma.$connect()
+  const locker = new pg.Client({ connectionString: testDatabaseUrl })
+  await locker.connect()
+  const organizationId = randomUUID()
+  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
+  const service = new VotingService(prisma, realtime)
+  Object.assign(service, { vacuumLockTimeoutMs: 300 })
+  let assemblyId: string | undefined
+  let lockHeld = false
+  try {
+    await prisma.organization.create({ data: { id: organizationId, name: `secrecy-lock-${organizationId}`, type: 'union' } })
+    const assembly = await prisma.assembly.create({ data: {
+      organizationId, name: 'Lock test', status: 'lobby_closed', joinCodeHash: hashCredential(newOpaqueCredential()),
+    } })
+    assemblyId = assembly.id
+    const voter = await prisma.participantSession.create({ data: {
+      assemblyId: assembly.id, firstName: 'Voter', lastName: 'Lock', tokenHash: hashCredential(newOpaqueCredential()),
+    } })
+    const round = await prisma.round.create({ data: {
+      assemblyId: assembly.id, title: 'Lock ballot', countingRule: { kind: 'count_only' },
+      options: { create: [{ label: 'A', order: 0 }, { label: 'B', order: 1 }] },
+    }, include: { options: true } })
+    await service.openRound(round.id)
+    await service.castVote(voter.id, round.id, round.options[0]!.id)
+
+    await locker.query('BEGIN')
+    await locker.query('LOCK TABLE anonymous_votes IN ACCESS SHARE MODE')
+    lockHeld = true
+    const startedAt = Date.now()
+    const closed = await service.closeRound(round.id)
+    const elapsed = Date.now() - startedAt
+    assert.equal(closed.status, 'closed')
+    assert.equal(closed.secrecyCleanupPending, true)
+    assert.ok(elapsed < 5_000, `close returned after ${elapsed} ms instead of waiting for the lock`)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt, null)
+
+    await locker.query('COMMIT')
+    lockHeld = false
+    await service.retrySecrecyCleanup(assembly.id)
+    assert.ok((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt)
+  } finally {
+    if (lockHeld) await locker.query('ROLLBACK')
+    await locker.end()
+    if (assemblyId) {
+      await prisma.round.deleteMany({ where: { assemblyId } })
+      await prisma.participantSession.deleteMany({ where: { assemblyId } })
+      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
+    }
+    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('startup cleanup handles many historical rounds, each in its own transaction', {
+  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
+}, async () => {
+  process.env.DATABASE_URL = testDatabaseUrl
+  const prisma = new PrismaService()
+  await prisma.$connect()
+  const organizationId = randomUUID()
+  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
+  const service = new VotingService(prisma, realtime)
+  let assemblyId: string | undefined
+  try {
+    await prisma.organization.create({ data: { id: organizationId, name: `secrecy-many-${organizationId}`, type: 'union' } })
+    const assembly = await prisma.assembly.create({ data: {
+      organizationId, name: 'Many rounds', status: 'completed', completedAt: new Date(), joinCodeHash: hashCredential(newOpaqueCredential()),
+    } })
+    assemblyId = assembly.id
+    const roundCount = 120
+    for (let index = 0; index < roundCount; index += 1) {
+      await prisma.round.create({ data: {
+        assemblyId: assembly.id, title: `Historical ${index}`, status: 'published', countingRule: { kind: 'count_only' },
+        options: { create: [{ label: 'A', order: 0 }, { label: 'B', order: 1 }] },
+      } })
+    }
+    const options = await prisma.ballotOption.findMany({ where: { round: { assemblyId: assembly.id } }, select: { roundId: true, id: true } })
+    await prisma.anonymousVote.createMany({ data: options.flatMap((option) => Array.from({ length: 5 }, () => ({ roundId: option.roundId, optionId: option.id }))) })
+
+    await service.onModuleInit()
+
+    assert.equal(await prisma.round.count({ where: { assemblyId: assembly.id, votesUnlinkedAt: null } }), 0)
+    assert.equal(await prisma.anonymousVote.count({ where: { round: { assemblyId: assembly.id } } }), roundCount * 2 * 5)
+  } finally {
+    if (assemblyId) {
+      await prisma.round.deleteMany({ where: { assemblyId } })
       await prisma.assembly.deleteMany({ where: { id: assemblyId } })
     }
     await prisma.organization.deleteMany({ where: { id: organizationId } })

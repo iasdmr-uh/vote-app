@@ -8,6 +8,7 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
+import pg from 'pg'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { hashCredential, newOpaqueCredential } from '../auth/credentials.js'
@@ -18,6 +19,7 @@ import type { CommitteeApprovalDto, CommitteeConfigurationUpdateDto, CreateRound
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const RESUME_CODE_TTL_MS = 10 * 60_000
+const VACUUM_LOCK_TIMEOUT_MS = 5_000
 const SECRECY_CLEANUP_PENDING = 'No se completó la limpieza que protege el secreto del voto. La operación no se realizó; usa «Reintentar limpieza» en unos segundos.'
 
 @Injectable()
@@ -1058,9 +1060,9 @@ export class VotingService implements OnModuleInit {
       where: { ...(assemblyId ? { assemblyId } : {}), status: { in: ['closed', 'published'] }, votesUnlinkedAt: null }, select: { id: true },
     })
     if (!pending.length) return
-    await this.prisma.$transaction(async (tx) => {
-      for (const { id } of pending) await this.unlinkRoundVotes(tx, id)
-    })
+    // One short transaction per round: a single transaction over many historical rounds could exceed
+    // Prisma's interactive-transaction timeout and roll everything back on every retry.
+    for (const { id } of pending) await this.prisma.$transaction((tx) => this.unlinkRoundVotes(tx, id))
     await this.vacuumAnonymousVotes()
     await this.prisma.round.updateMany({ where: { id: { in: pending.map(({ id }) => id) } }, data: { votesUnlinkedAt: new Date() } })
   }
@@ -1074,9 +1076,23 @@ export class VotingService implements OnModuleInit {
     }
   }
 
-  /** Physically removes the dead pre-shuffle tuples, which otherwise keep their original `xmin` until vacuumed. */
+  protected vacuumLockTimeoutMs = VACUUM_LOCK_TIMEOUT_MS
+
+  /**
+   * Physically removes the dead pre-shuffle tuples, which otherwise keep their original `xmin` until vacuumed.
+   * VACUUM FULL needs an exclusive lock and cannot run in a transaction, so `lock_timeout` must be set on the
+   * same session; a dedicated connection guarantees that, unlike the pool. Without the timeout, a held lock
+   * would leave closing or startup waiting forever instead of reaching the recoverable error.
+   */
   protected async vacuumAnonymousVotes() {
-    await this.prisma.$executeRawUnsafe('VACUUM FULL anonymous_votes')
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+    await client.connect()
+    try {
+      await client.query(`SET lock_timeout = ${Math.trunc(this.vacuumLockTimeoutMs)}`)
+      await client.query('VACUUM FULL anonymous_votes')
+    } finally {
+      await client.end()
+    }
   }
 
   private async publishedResults(roundId: string) {
