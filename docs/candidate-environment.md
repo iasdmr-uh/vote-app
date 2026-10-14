@@ -24,15 +24,15 @@ El perfil no publica PostgreSQL ni la API al host. HTTPS/Caddy es la única entr
 
 ```sh
 scripts/candidate-compose.sh config --quiet
-scripts/candidate-compose.sh build
-scripts/candidate-compose.sh --profile tools run --rm migrate
+scripts/candidate-compose.sh --profile tools build
+scripts/candidate-compose.sh --profile tools run --rm --build migrate
 scripts/candidate-compose.sh up -d
 scripts/candidate-compose.sh ps
 APP_DOMAIN="$(sed -n 's/^APP_DOMAIN=//p' .env.candidate)"
 curl --fail "https://${APP_DOMAIN}/api/v1/health"
 ```
 
-Ejecuta las migraciones una vez antes de actualizar el servicio API; no se aplican automáticamente en cada arranque. La API y web tienen healthchecks; Compose espera a PostgreSQL sano antes de migrar o iniciar la API y a ambos servicios antes de iniciar Caddy.
+Ejecuta las migraciones una vez antes de actualizar el servicio API; no se aplican automáticamente en cada arranque. El servicio `migrate` está en el perfil `tools`: un `build` sin `--profile tools` no reconstruye su imagen, y `migrate` aplicaría las migraciones de una imagen anterior informando éxito. Por eso ambos comandos incluyen `--profile tools` y `--build`. Comprueba después que `_prisma_migrations` contiene todas las carpetas de `apps/api/prisma/migrations`. La API y web tienen healthchecks; Compose espera a PostgreSQL sano antes de migrar o iniciar la API y a ambos servicios antes de iniciar Caddy.
 
 Caddy gestiona certificados públicamente confiables para el nombre DNS. Si el host está detrás de NAT, permite el reenvío de 80/443; si DNS o el firewall aún no están listos, el certificado no estará disponible y la prueba móvil HTTPS no debe marcarse como aprobada.
 
@@ -46,7 +46,7 @@ scripts/candidate-compose.sh ps
 curl --fail https://APP_DOMAIN/api/v1/health
 ```
 
-Para una versión nueva, identifica primero el SHA que se pretende desplegar, respalda la base, construye las imágenes desde ese checkout, ejecuta `migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
+Para una versión nueva, identifica primero el SHA que se pretende desplegar, respalda la base, construye las imágenes desde ese checkout con `--profile tools build`, ejecuta `--profile tools run --rm --build migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
 
 ```sh
 scripts/candidate-compose.sh logs --tail=200 api caddy
@@ -80,3 +80,8 @@ La corrida construyó las imágenes API y web, arrancó PostgreSQL, aplicó `202
 Esta corrida sí ejecutó los scripts `candidate-*` con la imagen PostgreSQL candidata. No verificó HTTPS público ni CORS desde un móvil fuera del host: el dominio era sintético y Caddy no se inició. La corrida local previa con PostgreSQL 15.15 y verificación de ocho tablas fue una prueba separada anterior; ya no representa el estado de verificación de Docker de esta branch.
 
 La aceptación de issue #6 sigue necesitando desplegar en un host/DNS autorizados, confirmar HTTPS y CORS desde un móvil fuera del host y adjuntar evidencia identificada por SHA. La verificación local de los scripts de respaldo/restauración con la imagen candidata ya está registrada arriba; no sustituye esas comprobaciones externas. Esa infraestructura y sus credenciales no están en el repositorio.
+
+### Ensayo de despliegue del 2026-10-14 (rama `fix/pre-assembly-hardening`)
+
+Con Docker Desktop, `APP_DOMAIN=localhost` (certificado interno de Caddy), secretos aleatorios temporales y datos sintéticos se siguió el procedimiento de esta guía. El primer intento mostró que `build` sin `--profile tools` no reconstruía la imagen `migrate`: tenía 11 días y aplicó solo 2 de 6 migraciones informando éxito. Tras corregir los comandos, una base nueva recibió las 6 migraciones y los cuatro servicios quedaron healthy detrás de HTTPS. A través de Caddy se verificó: ingreso, voto y cierre; votos enlazables por `xmin` con la ronda abierta y ningún enlace tras el cierre con el conteo intacto; rechazo del respaldo con papeleta abierta y respaldo/restauración correctos tras cerrarla; `log_statement=none` y advertencia de la API al activarlo; y que encabezados `X-Forwarded-For` falsificados no evaden el límite de solicitudes (`TRUST_PROXY_HOPS=1`). En una corrida sobre una instalación recién creada fallaron los cuatro ingresos sin que el script mostrara la respuesta; no se reprodujo en dos corridas posteriores (una de ellas también sobre una instalación nueva). Se eliminaron contenedores, volúmenes y archivos de prueba. Sigue pendiente la prueba con DNS público y móviles reales.
+
