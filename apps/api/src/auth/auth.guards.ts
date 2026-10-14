@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } 
 import type { Request } from 'express'
 import { AuthService, PARTICIPANT_ID, bearerToken } from './auth.service.js'
 import { hashCredential } from './credentials.js'
+import { isModeratorChannelAllowed } from '../config/moderator-channel.js'
 
 type AuthenticatedRequest = Request & { [PARTICIPANT_ID]?: string }
 
@@ -12,6 +13,8 @@ export class ModeratorGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     if (context.getType() !== 'http') return true
     const request = context.switchToHttp().getRequest<Request>()
+    // Same answer as a wrong token, so the Wi-Fi learns nothing about the moderator routes.
+    if (!isModeratorChannelAllowed(request.headers)) throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED)
     if (!this.auth.verifyModeratorToken(bearerToken(request.headers.authorization))) {
       throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED)
     }

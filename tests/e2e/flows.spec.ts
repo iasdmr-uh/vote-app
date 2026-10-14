@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 
 const api = '**/api/v1/**'
@@ -608,12 +609,103 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
 
   await page.getByRole('button', { name: 'Finalizar Asamblea' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Finalizar Asamblea' }).click()
-  await expect(page.getByText('La Asamblea quedó finalizada y disponible en modo de consulta.')).toBeVisible()
+  await expect(page.getByText('La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.')).toBeVisible()
   await expect(page.getByText('Asamblea finalizada', { exact: true })).toBeVisible()
   await expect(page.getByText(/Se registró/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Preparar papeleta' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Publicar resultados' })).toHaveCount(0)
+})
+
+test('después de finalizar, la mesa imprime el acta, descarga el CSV y borra los datos', async ({ page }) => {
+  let deleted = false
+  let deleteBody: unknown
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+    // The print dialog would block the test; the acta stays rendered as it does while the dialog is open.
+    window.print = () => { (window as unknown as { printed: number }).printed = ((window as unknown as { printed?: number }).printed ?? 0) + 1 }
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly') && !deleted) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
+        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético', assemblyRole: 'Delegado' }], participantCount: 1,
+        rounds: [
+          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }, { id: 'n', label: 'Voto nulo', isNullVote: true }],
+            results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 0 }, { optionId: 'n', label: 'Voto nulo', count: 1, isNullVote: true }],
+            officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
+          { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
+        ],
+      } })
+      return
+    }
+    if (request.method() === 'DELETE' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      deleteBody = request.postDataJSON()
+      deleted = true
+      await route.fulfill({ json: { assemblyId: 'synthetic-assembly', deleted: true, vacuumed: true } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null } }); return }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Descargar CSV' }).click()
+  const csv = await readFile(await (await download).path(), 'utf8')
+  expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.csv')
+  expect(csv).toContain('Presidencia,publicada,3,1,Rosa,2,sí')
+  expect(csv).toContain('Presidencia,publicada,3,,Voto nulo,1,')
+  expect(csv).toContain('Secretaría,anulada: Nombre mal escrito,1')
+
+  const acta = page.locator('.acta-print')
+  await expect(acta).toHaveCount(0)
+  await page.getByRole('button', { name: 'Imprimir o guardar PDF' }).click()
+  expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1)
+  await expect(acta).toBeHidden()
+  await page.emulateMedia({ media: 'print' })
+  await expect(acta).toBeVisible()
+  await expect(acta.getByRole('heading', { name: 'Acta de resultados' })).toBeVisible()
+  await expect(acta.getByText('Declarado electo por la mesa:')).toBeVisible()
+  await expect(acta.getByText('Anulada por la mesa: Nombre mal escrito. Sus votos no se contaron.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeHidden()
+  await page.emulateMedia({ media: 'screen' })
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+  await expect(acta).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Borrar datos de la Asamblea' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Borrar datos' })).toBeDisabled()
+  await dialog.getByLabel('Escribe BORRAR para confirmar').fill('borrar')
+  await expect(dialog.getByRole('button', { name: 'Borrar datos' })).toBeDisabled()
+  await dialog.getByLabel('Escribe BORRAR para confirmar').fill('BORRAR')
+  await dialog.getByRole('button', { name: 'Borrar datos' }).click()
+  await expect(page.getByText('Se borraron los datos de la Asamblea. Al apagar, sigue el cierre de la guía del técnico.')).toBeVisible()
+  expect(deleteBody).toEqual({ confirmation: true })
+  await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBeNull()
+})
+
+test('el proyector muestra la dirección de la red que da el servidor, no la de la laptop', async ({ page }) => {
+  const joinUrl = 'http://192.168.1.50/?join=DEMO-ROOM'
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      await route.fulfill({ json: { assembly: { name: 'Asamblea de prueba', status: 'lobby_open' }, joinUrl, participantCount: 0, participants: [] } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/projector?code=DEMO-ROOM')
+  await expect(page.locator('img.projector-qr')).toBeVisible()
+  await expect(page.getByText('Sin QR: abre 192.168.1.50 en el navegador e ingresa el código.')).toBeVisible()
 })
 
 test('delegado y proyector ven que la Asamblea concluyó y conservan resultados publicados', async ({ page }) => {

@@ -3,11 +3,11 @@ import { test } from 'node:test'
 import { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
 import type { RealtimeAuthorizer } from '../../src/realtime/realtime.types.js'
 
-function socket(auth: unknown) {
+function socket(auth: unknown, headers: Record<string, string> = {}) {
   const rooms: string[] = []
   let disconnected = false
   return {
-    handshake: { auth },
+    handshake: { auth, headers },
     data: {} as Record<string, unknown>,
     async join(room: string) { rooms.push(room) },
     disconnect() { disconnected = true },
@@ -64,6 +64,50 @@ test('rejects moderator authentication resolved for a different assembly', async
 
   assert.equal(client.disconnected, true)
   assert.deepEqual(client.rooms, [])
+})
+
+test('in LAN mode a moderator socket from the Wi-Fi listener is rejected; phones still connect', async () => {
+  const authorizer: RealtimeAuthorizer = {
+    async authenticate(credentials) {
+      return credentials.audience === 'moderator'
+        ? { audience: 'moderator', assemblyId: 'assembly-7', moderatorId: 'mod-1' }
+        : { audience: 'participant', assemblyId: 'assembly-7', sessionId: 'session-3' }
+    },
+  }
+  const gateway = new RealtimeGateway(authorizer)
+  const previous = process.env.MODERATOR_LOCAL_ONLY
+  process.env.MODERATOR_LOCAL_ONLY = 'true'
+  try {
+    const fromWifi = socket({ audience: 'moderator', assemblyId: 'assembly-7', moderatorCredential: 'opaque-secret' }, { 'x-asdmr-channel': 'public' })
+    await gateway.handleConnection(fromWifi as never)
+    assert.equal(fromWifi.disconnected, true)
+    assert.deepEqual(fromWifi.rooms, [])
+
+    const fromLaptop = socket({ audience: 'moderator', assemblyId: 'assembly-7', moderatorCredential: 'opaque-secret' }, { 'x-asdmr-channel': 'local' })
+    await gateway.handleConnection(fromLaptop as never)
+    assert.deepEqual(fromLaptop.rooms, ['assembly:assembly-7:moderators'])
+
+    const phone = socket({ audience: 'participant', participantSessionToken: 'opaque-token' }, { 'x-asdmr-channel': 'public' })
+    await gateway.handleConnection(phone as never)
+    assert.equal(phone.disconnected, false)
+  } finally {
+    if (previous === undefined) delete process.env.MODERATOR_LOCAL_ONLY
+    else process.env.MODERATOR_LOCAL_ONLY = previous
+  }
+})
+
+test('deleting an assembly closes every socket that was following it', () => {
+  const disconnectedRooms: unknown[] = []
+  const server = {
+    to() { return { emit() {} } },
+    in(rooms: unknown) { return { disconnectSockets() { disconnectedRooms.push(rooms) } } },
+  }
+  const gateway = new RealtimeGateway({ async authenticate() { throw new Error() } })
+  Object.assign(gateway, { server })
+
+  gateway.assemblyDeleted('assembly-7')
+
+  assert.deepEqual(disconnectedRooms, [['assembly:assembly-7:public', 'assembly:assembly-7:moderators', 'assembly:assembly-7:participants']])
 })
 
 test('only moderator room receives participant names', () => {

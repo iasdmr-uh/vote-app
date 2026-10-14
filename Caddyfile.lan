@@ -1,0 +1,39 @@
+# LAN mode: the server laptop on the assembly's own Starlink Wi-Fi. Plain HTTP, no domain or certificate.
+{
+	auto_https off
+	admin off
+}
+
+(app) {
+	encode gzip zstd
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+	}
+
+	@api path /api/* /socket.io/*
+	reverse_proxy @api api:3000
+
+	reverse_proxy web:8080
+}
+
+# Wi-Fi listener: delegates' phones. The mesa cannot work from here.
+:80 {
+	# Overwrites whatever a phone sends; the API accepts moderator requests only with `local`.
+	request_header X-Asdmr-Channel public
+
+	@moderatorApi path_regexp (?i)^/api/v1/moderator(/|$)
+	respond @moderatorApi 404
+
+	@moderatorPage path_regexp (?i)^/moderator(/|$)
+	redir @moderatorPage / 302
+
+	import app
+}
+
+# Bound to 127.0.0.1 by Compose: only reachable from the server laptop itself (panel and projector).
+:8081 {
+	request_header X-Asdmr-Channel local
+	import app
+}

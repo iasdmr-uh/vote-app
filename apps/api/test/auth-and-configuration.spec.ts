@@ -6,10 +6,10 @@ import { ModeratorGuard, RateLimitGuard } from '../src/auth/auth.guards.js'
 import type { AuthService } from '../src/auth/auth.service.js'
 import { validateEnvironment } from '../src/config/environment.js'
 
-function httpContext(authorization?: string): ExecutionContext {
+function httpContext(authorization?: string, extraHeaders: Record<string, string> = {}): ExecutionContext {
   return {
     getType: () => 'http',
-    switchToHttp: () => ({ getRequest: () => ({ headers: { authorization } }) }),
+    switchToHttp: () => ({ getRequest: () => ({ headers: { authorization, ...extraHeaders } }) }),
   } as unknown as ExecutionContext
 }
 
@@ -38,6 +38,23 @@ test('moderator guard rejects missing credentials and accepts a valid credential
   assert.equal(guard.canActivate(httpContext('Bearer valid-moderator-token')), true)
 })
 
+test('in LAN mode the moderator API answers only through the listener bound to the laptop', () => {
+  const auth = { verifyModeratorToken: (token?: string) => token === 'valid-moderator-token' } as unknown as AuthService
+  const guard = new ModeratorGuard(auth)
+  const previous = process.env.MODERATOR_LOCAL_ONLY
+  process.env.MODERATOR_LOCAL_ONLY = 'true'
+  try {
+    for (const headers of [{}, { 'x-asdmr-channel': 'public' }, { 'x-asdmr-channel': 'LOCAL' }] as Array<Record<string, string>>) {
+      assert.throws(() => guard.canActivate(httpContext('Bearer valid-moderator-token', headers)), (error: unknown) => error instanceof HttpException && error.getStatus() === 401)
+    }
+    assert.equal(guard.canActivate(httpContext('Bearer valid-moderator-token', { 'x-asdmr-channel': 'local' })), true)
+    assert.throws(() => guard.canActivate(httpContext('Bearer wrong', { 'x-asdmr-channel': 'local' })), HttpException)
+  } finally {
+    if (previous === undefined) delete process.env.MODERATOR_LOCAL_ONLY
+    else process.env.MODERATOR_LOCAL_ONLY = previous
+  }
+})
+
 test('startup configuration validates required URLs, database and moderator secret length', () => {
   const valid = {
     DATABASE_URL: 'postgresql://voter:local@localhost:5432/votes',
@@ -55,6 +72,8 @@ test('startup configuration validates required URLs, database and moderator secr
   assert.throws(() => validateEnvironment({ ...valid, TRUST_PROXY_HOPS: 'yes' }), /TRUST_PROXY_HOPS/)
   assert.doesNotThrow(() => validateEnvironment({ ...valid, ALLOW_START_WITH_PENDING_VOTE_CLEANUP: 'true' }))
   assert.throws(() => validateEnvironment({ ...valid, ALLOW_START_WITH_PENDING_VOTE_CLEANUP: 'yes' }), /ALLOW_START_WITH_PENDING_VOTE_CLEANUP/)
+  assert.doesNotThrow(() => validateEnvironment({ ...valid, MODERATOR_LOCAL_ONLY: 'true' }))
+  assert.throws(() => validateEnvironment({ ...valid, MODERATOR_LOCAL_ONLY: '1' }), /MODERATOR_LOCAL_ONLY/)
 })
 
 function rateLimitContext(ip: string, authorization?: string): ExecutionContext {

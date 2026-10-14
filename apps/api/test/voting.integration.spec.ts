@@ -13,6 +13,7 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
   skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
 }, async () => {
   process.env.DATABASE_URL = testDatabaseUrl
+  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
   const organizationId = randomUUID()
@@ -163,6 +164,7 @@ test('database nomination flow keeps votes secret, ranks candidates without elec
   skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
 }, async () => {
   process.env.DATABASE_URL = testDatabaseUrl
+  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
   const organizationId = randomUUID()

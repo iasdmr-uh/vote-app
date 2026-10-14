@@ -1,0 +1,106 @@
+name: asdmr-lan
+
+# The assembly runs on one laptop connected to the organization's own Starlink Wi-Fi.
+# Phones use http://LAN_ADDRESS; the mesa uses http://localhost:8081 on the laptop. See docs/lan-assembly.md.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24
+    restart: unless-stopped
+    # Never log SQL text or parameters: a logged vote insert next to its participation receipt reveals the vote.
+    command: ["postgres", "-c", "log_statement=none", "-c", "log_min_duration_statement=-1"]
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Run scripts/lan.sh preparar}
+      POSTGRES_USER: ${POSTGRES_USER:?Run scripts/lan.sh preparar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/lan.sh preparar}
+    volumes:
+      - lan_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      MODERATOR_ACCESS_TOKEN: ${MODERATOR_ACCESS_TOKEN:?Run scripts/lan.sh preparar}
+      WEB_ORIGIN: http://${LAN_ADDRESS:?Start with scripts/lan.sh iniciar},http://localhost:8081,http://127.0.0.1:8081
+      PUBLIC_APP_URL: http://${LAN_ADDRESS:?Start with scripts/lan.sh iniciar}
+      # The moderator panel and its API answer only through the listener bound to the laptop.
+      MODERATOR_LOCAL_ONLY: "true"
+      API_PORT: "3000"
+      # Caddy is the only proxy in front of the API.
+      TRUST_PROXY_HOPS: "1"
+      ALLOW_START_WITH_PENDING_VOTE_CLEANUP: ${ALLOW_START_WITH_PENDING_VOTE_CLEANUP:-false}
+    # No published port: the channel header the API trusts can only come from Caddy.
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 20s
+
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrations
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    logging: *default-logging
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ./Caddyfile.lan:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+volumes:
+  lan_postgres_data:
