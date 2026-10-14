@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
+import { xlsxBlob, type Cell } from './xlsx'
 
 type PublicState = {
   assembly?: { id?: string; name?: string; status?: string; completedAt?: string | null; lobbyStatus?: string }
@@ -774,30 +775,34 @@ async function printActa() {
   window.print()
 }
 
-function csvCell(value: string | number) {
-  // Names come from participants: a leading =, +, -, @, tab or CR would run as a spreadsheet formula.
-  const text = typeof value === 'string' && /^[=+\-@\t\r]/.test(value) ? `'${value}` : String(value)
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
 /** The acta stays with Secretaría after the data is erased, so it carries every count and declaration. */
-function downloadActaCsv() {
-  const rows: Array<Array<string | number>> = [['Papeleta', 'Estado', 'Votantes', 'Lugar', 'Opción', 'Votos', 'Declarada electa']]
+function downloadActaSpreadsheet() {
+  // Typed cells, not CSV: names come from participants, and a text cell stays text when re-saved in Excel.
+  const rows: Cell[][] = [['Papeleta', 'Estado', 'Votantes', 'Lugar', 'Opción', 'Votos', 'Declarada electa']]
   for (const item of state.value?.rounds || []) {
     const status = roundStatusLabels[item.status] || item.status
     const elected = new Set((item.officialResult?.elected || []).map((person) => person.optionId))
     if (item.results?.length) {
-      item.results.forEach((result, index) => rows.push([item.title, status, item.participationCount ?? '', rankOf(item.results!, index).replace('.', ''), result.label, result.count, elected.has(result.optionId) ? 'sí' : '']))
+      item.results.forEach((result, index) => rows.push([item.title, status, item.participationCount ?? '', result.isNullVote ? '' : index + 1, result.label, result.count, elected.has(result.optionId) ? 'sí' : '']))
     } else {
       rows.push([item.title, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, item.participationCount ?? '', '', '', '', (item.officialResult?.elected || []).map((person) => person.label).join('; ')])
     }
   }
-  const blob = new Blob(['\uFEFF' + rows.map((row) => row.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' })
   const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `acta-${(state.value?.assembly?.name || 'asamblea').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv`
+  link.href = URL.createObjectURL(xlsxBlob('Acta', rows))
+  link.download = `acta-${(state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}.xlsx`
   link.click()
   URL.revokeObjectURL(link.href)
+}
+
+/** Leaves a completed assembly without erasing it; it stays listed until the mesa deletes its data. */
+function closeActa() {
+  assemblyId.value = ''
+  sessionStorage.removeItem('assemblyId')
+  code.value = ''
+  qrImage.value = ''
+  state.value = null
+  void refresh()
 }
 
 function deleteAssemblyData() {
@@ -1124,8 +1129,9 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           </section>
           <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>Asamblea finalizada</strong><p>El sistema está en modo de consulta.<template v-if="completionTime"> Se registró {{ completionTime }}.</template></p></div></section>
           <section v-if="assemblyStatus === 'completed'" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Acta y borrado de datos</h2>
-            <ol class="after-steps"><li>Imprime el acta o guárdala como PDF. Si quieres los conteos en una hoja de cálculo, descarga también el CSV.</li><li>Entrega el acta a Secretaría: es el registro oficial.</li><li>Borra los datos. Se eliminan nombres, votos y registros de esta laptop.</li></ol>
-            <div class="action-row"><button class="primary" @click="printActa">Imprimir o guardar PDF</button><button class="secondary" @click="downloadActaCsv">Descargar CSV</button><button class="danger" :disabled="loading" @click="deleteAssemblyData">Borrar datos de la Asamblea</button></div>
+            <ol class="after-steps"><li>Imprime el acta o guárdala como PDF. Si quieres los conteos en Excel, descarga también la hoja de cálculo.</li><li>Entrega el acta a Secretaría: es el registro oficial.</li><li>Borra los datos. Se eliminan nombres, votos y registros de esta laptop.</li></ol>
+            <div class="action-row"><button class="primary" @click="printActa">Imprimir o guardar PDF</button><button class="secondary" @click="downloadActaSpreadsheet">Descargar hoja de cálculo</button><button class="danger" :disabled="loading" @click="deleteAssemblyData">Borrar datos de la Asamblea</button></div>
+            <p class="status-line">¿Aún no vas a borrar? <button class="link-button" @click="closeActa">Cerrar el acta sin borrar</button>. Seguirá en la lista de Asambleas finalizadas.</p>
           </section>
           <template v-else>
           <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh">Actualizar lista</button></div>

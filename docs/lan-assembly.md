@@ -79,9 +79,10 @@ Por decisión de Secretaría, los datos solo se guardan durante la Asamblea; des
 1. En el panel, finaliza la Asamblea.
 2. En la tarjeta «Acta y borrado de datos»:
    1. **Imprimir o guardar PDF:** abre el diálogo de impresión con el acta (resultados por papeleta, anulaciones, declaraciones de la mesa y lista de participantes, con espacio para firmas). Elige la impresora o «Guardar como PDF».
-   2. **Descargar CSV** (opcional): los mismos conteos para una hoja de cálculo.
+   2. **Descargar hoja de cálculo** (opcional): los mismos conteos en un archivo de Excel (`.xlsx`). Los nombres van como texto, así que nada de lo que un participante haya escrito puede ejecutarse como fórmula.
    3. Entrega el acta a Secretaría.
-   4. **Borrar datos de la Asamblea:** escribe `BORRAR` para confirmar. Se eliminan nombres, votos, resultados y registros, y se compacta la base para que no queden en sus archivos.
+   4. Si todavía no vas a borrar, pulsa «Cerrar el acta sin borrar». La Asamblea queda en «Asambleas finalizadas con datos guardados» para volver luego.
+   5. **Borrar datos de la Asamblea:** escribe `BORRAR` para confirmar. Se eliminan nombres, votos, resultados y registros, y se compacta la base para que no queden en sus archivos.
 3. Al apagar, borra la base de datos completa y las claves:
 
    ```sh
@@ -90,7 +91,7 @@ Por decisión de Secretaría, los datos solo se guardan durante la Asamblea; des
 
    Pide escribir `BORRAR`. Elimina el volumen de PostgreSQL, que también contiene los registros internos de la base. La siguiente Asamblea empieza otra vez con `scripts/lan.sh preparar`.
 
-Si guardaste el acta en PDF o el CSV en la laptop, entrégalos a Secretaría y bórralos también de la laptop.
+Si guardaste el acta en PDF o la hoja de cálculo en la laptop, entrégalos a Secretaría y bórralos también de la laptop.
 
 ## Seguridad en esta red
 

@@ -1,5 +1,12 @@
-import { readFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
+
+/** Reads the downloaded acta sheet back as typed values: inline strings stay strings, <v> cells are numbers. */
+function sheetRows(xml: string) {
+  const unescape = (text: string) => text.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  return [...xml.matchAll(/<row [^>]*>(.*?)<\/row>/g)].map(([, row]) => [...row!.matchAll(/<c [^>]*?(t="inlineStr")?>(.*?)<\/c>/g)]
+    .map(([, inline, body]) => inline ? unescape(body!.replace(/^<is><t xml:space="preserve">|<\/t><\/is>$/g, '')) : Number(body!.replace(/<\/?v>/g, ''))))
+}
 
 const api = '**/api/v1/**'
 
@@ -617,7 +624,7 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
   await expect(page.getByRole('button', { name: 'Publicar resultados' })).toHaveCount(0)
 })
 
-test('después de finalizar, la mesa imprime el acta, descarga el CSV y borra los datos', async ({ page }) => {
+test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálculo y borra los datos', async ({ page }) => {
   let deleted = false
   let deleteBody: unknown
   await page.addInitScript(() => {
@@ -659,14 +666,15 @@ test('después de finalizar, la mesa imprime el acta, descarga el CSV y borra lo
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
 
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Descargar CSV' }).click()
-  const csv = await readFile(await (await download).path(), 'utf8')
-  expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.csv')
-  expect(csv).toContain('Presidencia,publicada,3,1,Rosa,2,sí')
-  expect(csv).toContain('Presidencia,publicada,3,,Voto nulo,1,')
-  expect(csv).toContain('Secretaría,anulada: Nombre mal escrito,1')
-  expect(csv).toContain(`Tesorería,publicada,1,1,"'=HYPERLINK(""http://x"",""y"")",1,`)
-  expect(csv).not.toMatch(/,=HYPERLINK/)
+  await page.getByRole('button', { name: 'Descargar hoja de cálculo' }).click()
+  expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
+  const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 1, 'Rosa', 2, 'sí'])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, '', 'Voto nulo', 1, ''])
+  expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', 1, '', '', '', ''])
+  // A name typed as a formula is a text cell: no formula element exists, and re-saving keeps it as text.
+  expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', 1, 1, '=HYPERLINK("http://x","y")', 1, ''])
+  expect(sheet).not.toContain('<f>')
 
   const acta = page.locator('.acta-print')
   await expect(acta).toHaveCount(0)
@@ -719,6 +727,43 @@ test('con la pestaña cerrada, la mesa recupera una Asamblea finalizada para el 
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Borrar datos de la Asamblea' })).toBeEnabled()
   expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBe('done-assembly')
+})
+
+test('la mesa cierra un acta recuperada sin borrarla y vuelve a la lista', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token'))
+  let deleteCalls = 0
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'DELETE') deleteCalls += 1
+    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) {
+      await route.fulfill({ json: { assembly: null, completed: [
+        { id: 'first', name: 'Primera Asamblea', completedAt: '2026-10-02T18:30:00.000Z' },
+        { id: 'second', name: 'Segunda Asamblea', completedAt: '2026-10-01T18:30:00.000Z' },
+      ] } })
+      return
+    }
+    const id = url.pathname.split('/').pop()
+    if (id === 'first' || id === 'second') {
+      await route.fulfill({ json: { id, name: id === 'first' ? 'Primera Asamblea' : 'Segunda Asamblea', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z', participants: [], participantCount: 0, rounds: [] } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await page.getByRole('listitem').filter({ hasText: 'Primera Asamblea' }).getByRole('button', { name: 'Abrir acta y borrado' }).click()
+  await expect(page.getByText('Sesión: Primera Asamblea')).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Cerrar el acta sin borrar' }).click()
+  await expect(page.getByRole('heading', { name: 'Asambleas finalizadas con datos guardados' })).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBeNull()
+  await page.getByRole('listitem').filter({ hasText: 'Segunda Asamblea' }).getByRole('button', { name: 'Abrir acta y borrado' }).click()
+  await expect(page.getByText('Sesión: Segunda Asamblea')).toBeVisible()
+  expect(deleteCalls).toBe(0)
 })
 
 test('el proyector muestra la dirección de la red que da el servidor, no la de la laptop', async ({ page }) => {
