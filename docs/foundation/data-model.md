@@ -20,3 +20,9 @@ El modelo es conceptual para Fase 01; nombres y tipos físicos quedan para migra
 `Ronda 1—N Voto anónimo`; `Opción 1—N Voto anónimo`.
 
 Voto y Participación solo comparten el identificador de ronda. No crear una tabla de enlace, vista administrativa ni log que asocie participante y opción. El servidor necesariamente procesa temporalmente la solicitud autenticada y la selección; reducir persistencia y trazas no elimina la posibilidad de correlación privilegiada.
+
+### Desvinculación física al cerrar la ronda
+
+Voto y Participación se insertan en la misma transacción para garantizar un único voto. Mientras la ronda está abierta, PostgreSQL permite enlazarlos por el identificador de transacción (`xmin`) y por el orden físico de inserción. Al cerrar la ronda, el servidor vuelve a insertar los votos de esa ronda en orden aleatorio dentro de la transacción de cierre y ejecuta `VACUUM FULL anonymous_votes` para eliminar las versiones antiguas. `test/vote-secrecy.integration.spec.ts` verifica que no quede ningún enlace.
+
+Riesgo residual durante una ronda abierta: no tomar respaldos ni copias de la base, no activar `log_statement` y limitar el acceso directo a PostgreSQL. El WAL puede conservar temporalmente las inserciones originales.

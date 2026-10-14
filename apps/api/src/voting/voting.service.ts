@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common'
@@ -17,6 +18,8 @@ const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 
 @Injectable()
 export class VotingService {
+  private readonly logger = new Logger(VotingService.name)
+
   constructor(private readonly prisma: PrismaService, private readonly realtime: RealtimeGateway) {}
 
   async createAssembly(name: string) {
@@ -660,6 +663,7 @@ export class VotingService {
       if (current.status !== 'open') throw new ConflictException('Solo se puede cerrar una papeleta abierta')
       const updated = await tx.round.update({ where: { id: roundId }, data: { status: 'closed', closedAt: new Date() }, select: { id: true, assemblyId: true, status: true } })
       await tx.auditEvent.create({ data: { assemblyId: current.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.closed' } })
+      await this.unlinkRoundVotes(tx, roundId)
       let tieBreakRoundId: string | null = null
       if (current.category === 'committee' && current.committee_type === 'nomination' && ['election', 'tie_break'].includes(current.committee_stage ?? '')) {
         const rootRoundId = current.committee_root_round_id ?? current.id
@@ -711,6 +715,7 @@ export class VotingService {
       }
       return { ...updated, changed: true, tieBreakRoundId }
     })
+    if (round.changed) await this.compactAnonymousVotes()
     const [recorded, eligible, title] = await Promise.all([
       this.prisma.participation.count({ where: { roundId } }),
       this.prisma.participantSession.count({ where: { assemblyId: round.assemblyId, status: 'active' } }),
@@ -878,6 +883,28 @@ export class VotingService {
     if (!result) return null
     const serialized = this.serializeOfficialResult(result)
     return { elected: serialized.elected, note: serialized.note, declaredAt: serialized.declaredAt }
+  }
+
+  /**
+   * A vote and its participation receipt are written in the same transaction, so until this runs
+   * PostgreSQL can link them through the shared `xmin` and through physical insertion order.
+   * Re-inserting the round's votes in random order gives them the closing transaction's id instead.
+   */
+  private async unlinkRoundVotes(tx: Prisma.TransactionClient, roundId: string) {
+    await tx.$executeRaw`
+      WITH removed AS (DELETE FROM anonymous_votes WHERE round_id = ${roundId}::uuid RETURNING option_id)
+      INSERT INTO anonymous_votes (id, round_id, option_id)
+      SELECT gen_random_uuid(), ${roundId}::uuid, option_id FROM removed ORDER BY random()
+    `
+  }
+
+  /** Physically removes the dead pre-shuffle tuples, which otherwise keep their original `xmin` until vacuumed. */
+  private async compactAnonymousVotes() {
+    try {
+      await this.prisma.$executeRawUnsafe('VACUUM FULL anonymous_votes')
+    } catch (error) {
+      this.logger.error(`VACUUM FULL anonymous_votes failed; old vote tuples may remain linkable until vacuumed: ${(error as Error).message}`)
+    }
   }
 
   private async publishedResults(roundId: string) {
