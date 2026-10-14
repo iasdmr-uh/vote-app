@@ -15,6 +15,7 @@ import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CommitteeApprovalDto, CommitteeConfigurationUpdateDto, CreateRoundDto, OfficialResultDto } from './dtos.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
+const RESUME_CODE_TTL_MS = 10 * 60_000
 
 @Injectable()
 export class VotingService {
@@ -48,9 +49,66 @@ export class VotingService {
     })
     this.realtime.assemblyState(assembly.id, { status: assembly.status })
     this.realtime.lobbyState(assembly.id, { status: 'open', participantCount: 0 })
+    return { assemblyId: assembly.id, name: assembly.name, status: assembly.status, joinCode, joinUrl: this.appUrl({ join: joinCode }) }
+  }
+
+  private appUrl(params: Record<string, string>) {
     const url = new URL(process.env.PUBLIC_APP_URL!)
-    url.searchParams.set('join', joinCode)
-    return { assemblyId: assembly.id, name: assembly.name, status: assembly.status, joinCode, joinUrl: url.toString() }
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+    return url.toString()
+  }
+
+  /**
+   * Lets the moderator move a delegate to a new device after check-in closed. The participation
+   * receipts stay on the same session, so moving devices can never yield a second vote.
+   */
+  async issueResumeCode(participantId: string) {
+    const resumeCode = newOpaqueCredential()
+    const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
+    const participant = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.participantSession.findUnique({
+        where: { id: participantId }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, assembly: { select: { status: true } } },
+      })
+      if (!current || current.status !== 'active') throw new NotFoundException('Participante no encontrado')
+      if (current.assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      await tx.participantSession.update({ where: { id: participantId }, data: { resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt } })
+      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: 'participant.resume_code_issued', metadata: { participantId } } })
+      return current
+    })
+    return {
+      participantId,
+      name: `${participant.firstName} ${participant.lastName}`,
+      resumeUrl: this.appUrl({ resume: resumeCode }),
+      expiresAt: expiresAt.toISOString(),
+    }
+  }
+
+  async redeemResumeCode(resumeCode: string) {
+    const participantSessionToken = newOpaqueCredential()
+    const resumeCodeHash = hashCredential(resumeCode)
+    const participant = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.participantSession.findUnique({
+        where: { resumeCodeHash }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, resumeExpiresAt: true },
+      })
+      if (!current || current.status !== 'active' || !current.resumeExpiresAt || current.resumeExpiresAt <= new Date()) {
+        throw new NotFoundException('El código de reconexión no es válido o ya venció')
+      }
+      // Conditional update makes the code single-use even if two devices redeem it at once.
+      const claimed = await tx.participantSession.updateMany({
+        where: { id: current.id, resumeCodeHash },
+        data: { tokenHash: hashCredential(participantSessionToken), resumeCodeHash: null, resumeExpiresAt: null },
+      })
+      if (claimed.count !== 1) throw new NotFoundException('El código de reconexión no es válido o ya venció')
+      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: 'participant.resume_code_redeemed', metadata: { participantId: current.id } } })
+      return current
+    })
+    this.realtime.participantSessionReplaced(participant.id)
+    const state = await this.participantState(participant.id)
+    return {
+      participantSessionToken,
+      participant: { firstName: participant.firstName, lastName: participant.lastName },
+      ...state,
+    }
   }
 
   async joinAssembly(assemblyCode: string, firstName: string, lastName: string) {
@@ -287,8 +345,54 @@ export class VotingService {
     }
   }
 
+  async activeAssembly() {
+    const assembly = await this.prisma.assembly.findFirst({
+      where: { organizationId: ORGANIZATION_ID, status: { in: ['lobby_open', 'lobby_closed', 'in_progress'] } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, status: true },
+    })
+    return { assembly }
+  }
+
+  /** The join code is stored only as a hash, so a lost QR can be replaced but never shown again. */
+  async rotateJoinCode(assemblyId: string) {
+    const joinCode = newOpaqueCredential()
+    await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
+      `
+      if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
+      if (rows[0].status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      await tx.assembly.update({ where: { id: assemblyId }, data: { joinCodeHash: hashCredential(joinCode) } })
+      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'assembly.join_code_rotated' } })
+    })
+    return { joinCode, joinUrl: this.appUrl({ join: joinCode }) }
+  }
+
+  async reopenLobby(assemblyId: string) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
+      `
+      const assembly = rows[0]
+      if (!assembly) throw new NotFoundException('Asamblea no encontrada')
+      if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      if (assembly.status === 'lobby_open') return { id: assembly.id, status: assembly.status, changed: false }
+      const openRound = await tx.round.findFirst({ where: { assemblyId, status: 'open' }, select: { id: true } })
+      if (openRound) throw new ConflictException('Cierra la papeleta abierta antes de reabrir el ingreso')
+      const updated = await tx.assembly.update({ where: { id: assemblyId }, data: { status: 'lobby_open' }, select: { id: true, status: true } })
+      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'lobby.reopened', metadata: { previousStatus: assembly.status } } })
+      return { ...updated, changed: true }
+    })
+    if (!result.changed) return { id: result.id, status: result.status }
+    const count = await this.prisma.participantSession.count({ where: { assemblyId, status: 'active' } })
+    this.realtime.assemblyState(assemblyId, { status: 'lobby_open' })
+    this.realtime.lobbyState(assemblyId, { status: 'open', participantCount: count })
+    return { id: result.id, status: result.status }
+  }
+
   async changeLobby(assemblyId: string, status: 'lobby_open' | 'lobby_closed') {
-    if (status === 'lobby_open') throw new ForbiddenException('La reapertura está deshabilitada hasta validación de Secretaría/mesa')
+    if (status === 'lobby_open') return this.reopenLobby(assemblyId)
     const result = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
         SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE

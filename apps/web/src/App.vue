@@ -31,10 +31,11 @@ const route = ref(window.location.pathname)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
-const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown } | null>(null)
+const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
 const state = ref<PublicState | null>(null)
 const urlParams = new URLSearchParams(window.location.search)
 const incomingJoinCode = urlParams.get('join') || urlParams.get('code') || ''
+const incomingResumeCode = urlParams.get('resume') || ''
 const code = ref(incomingJoinCode || localStorage.getItem('assemblyJoinCode') || '')
 const firstName = ref('')
 const lastName = ref('')
@@ -70,6 +71,7 @@ const reviewingVote = ref(false)
 const voteSubmitting = ref(false)
 const reviewHeading = ref<HTMLElement | null>(null)
 const qrImage = ref('')
+const resumeQr = ref<{ name: string; image: string; url: string; expiresAt: string } | null>(null)
 const officialSelections = ref<Record<string, string[]>>({})
 const officialNotes = ref<Record<string, string>>({})
 watch(() => state.value?.rounds, (rounds) => {
@@ -325,6 +327,7 @@ async function refresh() {
       moderatorAuthState.value = 'authenticated'
       sessionStorage.setItem('moderatorToken', moderatorToken.value)
       error.value = ''
+      await recoverActiveAssembly()
     } catch (e) {
       const message = (e as Error).message
       state.value = null
@@ -338,6 +341,7 @@ async function refresh() {
         error.value = message
       }
     } finally { loading.value = false }
+    if (assemblyId.value) await refresh()
   }
 }
 
@@ -506,7 +510,10 @@ async function updateParticipantCommitteeStatus(person: NonNullable<PublicState[
 
 async function moderatorAction(path: string, method = 'POST', body?: unknown) {
   const removed = body && typeof body === 'object' && 'status' in body && body.status === 'removed'
-  const config = path.endsWith('/lobby')
+  const reopening = body && typeof body === 'object' && 'status' in body && body.status === 'lobby_open'
+  const config = path.endsWith('/lobby') && reopening
+    ? { title: '¿Reabrir el ingreso?', consequence: 'Nuevas personas podrán unirse con el QR. Quedará registrado. Cierra el ingreso de nuevo antes de abrir la siguiente papeleta.', label: 'Reabrir ingreso' }
+    : path.endsWith('/lobby')
     ? { title: '¿Cerrar el ingreso?', consequence: 'Las personas que todavía no se hayan unido ya no podrán entrar.', label: 'Cerrar ingreso' }
     : path.endsWith('/rounds')
       ? { title: '¿Preparar esta papeleta?', consequence: 'Revisa el cargo y las opciones. No se podrán editar después de abrir la votación.', label: 'Preparar papeleta' }
@@ -530,13 +537,87 @@ async function confirmModeratorAction() {
   loading.value = true
   let succeeded = false
   try {
-    await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
+    const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
     notice.value = 'Acción registrada.'
     succeeded = true
+    await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
   if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada y disponible en modo de consulta.'
   if (succeeded) await refresh()
+}
+
+function rotateJoinCode() {
+  if (!assemblyId.value) return
+  moderationConfirmation.value = {
+    title: '¿Generar un nuevo código de ingreso?',
+    consequence: 'El QR y el enlace del proyector anteriores dejarán de funcionar. Vuelve a abrir el proyector después de generarlo.',
+    label: 'Generar código',
+    path: `/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/join-code`,
+    method: 'POST',
+    onSuccess: async (result: { joinCode: string; joinUrl: string }) => {
+      rememberJoinCode(result.joinCode)
+      qrImage.value = await QRCode.toDataURL(result.joinUrl, { width: 300, margin: 2 })
+      notice.value = 'Nuevo código generado. Abre de nuevo el proyector para mostrar el QR actualizado.'
+    },
+  }
+}
+
+function issueResumeCode(person: { id?: string; firstName: string; lastName: string }) {
+  if (!person.id) return
+  moderationConfirmation.value = {
+    title: `¿Reconectar a ${person.firstName} ${person.lastName}?`,
+    consequence: 'Se mostrará un QR de un solo uso (válido 10 minutos) para su nuevo dispositivo. El dispositivo anterior dejará de funcionar. Si ya votó en esta papeleta, no podrá votar de nuevo.',
+    label: 'Generar QR de reconexión',
+    path: `/moderator/participants/${encodeURIComponent(person.id)}/resume-code`,
+    method: 'POST',
+    onSuccess: async (result: { name: string; resumeUrl: string; expiresAt: string }) => {
+      resumeQr.value = { name: result.name, url: result.resumeUrl, expiresAt: result.expiresAt, image: await QRCode.toDataURL(result.resumeUrl, { width: 300, margin: 2 }) }
+      notice.value = ''
+    },
+  }
+}
+
+async function resumeParticipantSession(resumeCode: string) {
+  history.replaceState({}, '', window.location.pathname)
+  loading.value = true
+  try {
+    const resumed = await request<Record<string, any>>('/assemblies/resume', { method: 'POST', body: JSON.stringify({ resumeCode }) })
+    clearParticipantSession()
+    sessionToken.value = resumed.participantSessionToken
+    sessionAssemblyId.value = String(resumed.assembly?.id || '')
+    localStorage.setItem('participantSessionToken', resumed.participantSessionToken)
+    if (sessionAssemblyId.value) localStorage.setItem('participantAssemblyId', sessionAssemblyId.value)
+    state.value = normalizeState(resumed)
+    notice.value = 'Tu sesión se reconectó en este dispositivo.'
+  } catch (e) {
+    error.value = e instanceof ApiRequestError && e.status === 404
+      ? 'El código de reconexión no es válido o ya venció. Pide uno nuevo a la mesa.'
+      : (e as Error).message
+  } finally { loading.value = false }
+}
+
+/** Without this, closing the moderator tab would leave the live assembly with no way to control it. */
+async function recoverActiveAssembly() {
+  if (assemblyId.value) return
+  let assembly: { id: string; name: string } | null = null
+  try {
+    assembly = (await request<{ assembly: { id: string; name: string } | null }>('/moderator/assemblies/active', {}, moderatorToken.value)).assembly
+  } catch {
+    // Non-fatal: the server still refuses to create a second live assembly.
+    return
+  }
+  if (!assembly) return
+  assemblyId.value = assembly.id
+  sessionStorage.setItem('assemblyId', assembly.id)
+  if (localStorage.getItem('assemblyJoinCodeAssemblyId') !== assembly.id) code.value = ''
+  notice.value = `Se recuperó la Asamblea activa: ${assembly.name}.`
+}
+
+function rememberJoinCode(joinCode: string) {
+  code.value = joinCode
+  localStorage.setItem('assemblyJoinCode', joinCode)
+  localStorage.setItem('assemblyJoinCodeAssemblyId', assemblyId.value)
 }
 
 async function completeAssembly() {
@@ -560,8 +641,7 @@ async function createAssembly() {
     }, moderatorToken.value)
     assemblyId.value = result.assemblyId
     sessionStorage.setItem('assemblyId', result.assemblyId)
-    code.value = result.joinCode
-    localStorage.setItem('assemblyJoinCode', result.joinCode)
+    rememberJoinCode(result.joinCode)
     qrImage.value = await QRCode.toDataURL(result.joinUrl || `${window.location.origin}/?join=${encodeURIComponent(result.joinCode)}`, { width: 300, margin: 2 })
     notice.value = `Asamblea creada. Código de ingreso: ${result.joinCode}`
     created = true
@@ -646,6 +726,7 @@ async function signInModerator() {
     moderatorAuthState.value = 'authenticated'
     sessionStorage.setItem('moderatorToken', credential)
     error.value = ''
+    await recoverActiveAssembly()
     if (assemblyId.value) void refresh()
   } catch (e) {
     const message = (e as Error).message
@@ -694,7 +775,8 @@ onMounted(() => {
     route.value = nextRoute
     void refresh()
   })
-  void refresh()
+  if (incomingResumeCode && role.value === 'participant') void resumeParticipantSession(incomingResumeCode)
+  else void refresh()
   void refreshQr()
   syncRealtime()
   refreshTimer = window.setInterval(() => {
@@ -834,8 +916,9 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); realti
           <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>Asamblea finalizada</strong><p>El sistema está en modo de consulta.<template v-if="completionTime"> Se registró {{ completionTime }}.</template></p></div></section>
           <template v-else>
           <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh">Actualizar lista</button></div>
-            <ul class="participant-list"><li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`"><div><span>{{ person.firstName }} {{ person.lastName }}</span><div v-if="person.id" class="committee-profile"><label>Rol para reglas de comisión<select v-model="person.assemblyRole" @change="updateParticipantCommitteeStatus(person)"><option value="">Sin confirmar</option><option value="delegate">Delegado</option><option value="president">Presidente</option><option value="vice_president">Vicepresidente</option><option value="secretary">Secretario</option><option value="treasurer">Tesorero</option></select></label><label class="checkbox-label"><input v-model="person.committeeEligible" type="checkbox" @change="updateParticipantCommitteeStatus(person)" /> Elegibilidad confirmada por Secretaría/mesa</label></div></div><span v-if="person.id && (assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed')" class="person-actions"><button class="link-button" @click="editParticipant(person)">Corregir</button><button class="link-button remove-link" @click="moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button></span></li><li v-if="!state?.participants?.length" class="empty">La lista aparecerá aquí cuando se unan.</li></ul>
-            <div class="action-row"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><span v-else class="status-line">El ingreso está cerrado.</span><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a></div>
+            <ul class="participant-list"><li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`"><div><span>{{ person.firstName }} {{ person.lastName }}</span><div v-if="person.id" class="committee-profile"><label>Rol para reglas de comisión<select v-model="person.assemblyRole" @change="updateParticipantCommitteeStatus(person)"><option value="">Sin confirmar</option><option value="delegate">Delegado</option><option value="president">Presidente</option><option value="vice_president">Vicepresidente</option><option value="secretary">Secretario</option><option value="treasurer">Tesorero</option></select></label><label class="checkbox-label"><input v-model="person.committeeEligible" type="checkbox" @change="updateParticipantCommitteeStatus(person)" /> Elegibilidad confirmada por Secretaría/mesa</label></div></div><span v-if="person.id && (assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed')" class="person-actions"><button class="link-button" @click="editParticipant(person)">Corregir</button><button class="link-button remove-link" @click="moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button></span><span v-if="person.id" class="person-actions"><button class="link-button" @click="issueResumeCode(person)">Reconectar dispositivo</button></span></li><li v-if="!state?.participants?.length" class="empty">La lista aparecerá aquí cuando se unan.</li></ul>
+            <div class="action-row"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><template v-else><span class="status-line">El ingreso está cerrado.</span><button v-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button></template><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button class="link-button" :disabled="loading" @click="rotateJoinCode">Generar nuevo código</button></div>
+            <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>Reconexión de {{ resumeQr.name }}</strong><p>Pide a la persona que escanee este QR con su nuevo dispositivo. Es de un solo uso y vence {{ formatDateTime(resumeQr.expiresAt) }}. No lo muestres en el proyector.</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
             <div v-if="qrImage" class="qr-panel"><img :src="qrImage" alt="Código QR para unirse a la Asamblea" /><div><strong>Escanea para unirte</strong><p>Abre este enlace en el proyector y muestra el código QR durante el ingreso.</p><a :href="`/?code=${encodeURIComponent(code)}`">{{ origin }}/?code={{ code }}</a></div></div>
           </section>
           <section class="card"><p class="eyebrow">PAPELETA</p><h2>{{ round?.title || 'Preparar votación' }}</h2>

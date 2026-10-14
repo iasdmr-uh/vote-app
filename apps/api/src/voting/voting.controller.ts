@@ -26,6 +26,7 @@ import {
   LobbyPatchDto,
   ParticipantPatchDto,
   OfficialResultDto,
+  ResumeSessionDto,
   VoteDto,
 } from './dtos.js'
 
@@ -39,6 +40,11 @@ function sessionId(request: SessionRequest): string {
 @Controller('assemblies')
 export class PublicAssemblyController {
   constructor(private readonly voting: VotingService) {}
+
+  @Post('resume')
+  resume(@Body() input: ResumeSessionDto) {
+    return this.voting.redeemResumeCode(input.resumeCode)
+  }
 
   @Post(':assemblyCode/join')
   join(@Param('assemblyCode') assemblyCode: string, @Body() input: JoinAssemblyDto) {
@@ -92,6 +98,17 @@ export class ModeratorController {
     return this.voting.createAssembly(input.name)
   }
 
+  // Declared before 'assemblies/:assemblyId' so that route does not capture "active".
+  @Get('assemblies/active')
+  activeAssembly() {
+    return this.voting.activeAssembly()
+  }
+
+  @Post('assemblies/:assemblyId/join-code')
+  rotateJoinCode(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
+    return this.voting.rotateJoinCode(assemblyId)
+  }
+
   @Get('assemblies/:assemblyId')
   assembly(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
     return this.voting.moderatorAssembly(assemblyId)
@@ -110,6 +127,11 @@ export class ModeratorController {
   @Patch('participants/:participantId')
   participant(@Param('participantId', ParseUUIDPipe) participantId: string, @Body() input: ParticipantPatchDto) {
     return this.voting.patchParticipant(participantId, input)
+  }
+
+  @Post('participants/:participantId/resume-code')
+  participantResumeCode(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.issueResumeCode(participantId)
   }
 
   @Post('assemblies/:assemblyId/rounds')

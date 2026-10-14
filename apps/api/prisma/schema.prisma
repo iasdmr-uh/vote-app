@@ -90,6 +90,8 @@ model ParticipantSession {
   firstName      String            @map("first_name")
   lastName       String            @map("last_name")
   tokenHash      String            @unique @map("token_hash") @db.Char(64)
+  resumeCodeHash String?           @unique @map("resume_code_hash") @db.Char(64)
+  resumeExpiresAt DateTime?        @map("resume_expires_at")
   status         ParticipantStatus @default(active)
   assemblyRole   AssemblyRole?     @map("assembly_role")
   committeeEligible Boolean        @default(false) @map("committee_eligible")

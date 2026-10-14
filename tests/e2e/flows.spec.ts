@@ -548,6 +548,10 @@ test('moderador valida la credencial antes de mostrar el panel cuando aún no ha
       await route.fulfill({ json: { authenticated: true } })
       return
     }
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/active')) {
+      await route.fulfill({ json: { assembly: null } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
   })
 
@@ -557,6 +561,48 @@ test('moderador valida la credencial antes de mostrar el panel cuando aún no ha
   await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toBeVisible()
   expect(authorization).toBe('Bearer synthetic-moderator-token')
+})
+
+test('moderador recupera la Asamblea activa en una pestaña nueva y puede reabrir el ingreso', async ({ page }) => {
+  let lobbyPatch: unknown
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/moderator/session')) {
+      await route.fulfill({ json: { authenticated: true } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) {
+      await route.fulfill({ json: { assembly: { id: 'synthetic-assembly', name: 'Asamblea recuperada', status: 'lobby_closed' } } })
+      return
+    }
+    if (request.method() === 'PATCH' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/lobby')) {
+      lobbyPatch = request.postDataJSON()
+      await route.fulfill({ json: { id: 'synthetic-assembly', status: 'lobby_open' } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea recuperada', status: 'lobby_closed', completedAt: null,
+        participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético', status: 'active', assemblyRole: null, committeeEligible: false }],
+        participantCount: 1, rounds: [],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await page.getByLabel('Credencial de moderación').fill('synthetic-moderator-token')
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  await expect(page.getByText('Se recuperó la Asamblea activa: Asamblea recuperada.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toHaveCount(0)
+  await expect(page.getByText('El código de ingreso no está disponible en este dispositivo.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await page.getByRole('button', { name: 'Reabrir ingreso' }).click()
+  await expect(page.getByRole('heading', { name: '¿Reabrir el ingreso?' })).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: 'Reabrir ingreso' }).click()
+  await expect.poll(() => lobbyPatch).toEqual({ status: 'lobby_open' })
 })
 
 test('error temporal al validar conserva la credencial guardada y permite reintentar', async ({ page }) => {
@@ -608,4 +654,30 @@ test('proyector presenta estado y progreso sintético sin nombres ni opciones', 
   await expect(page.getByText('de 42 votos recibidos')).toBeVisible()
   await expect(page.getByText('Delegado Sintético')).toHaveCount(0)
   await expect(page.getByText('Opción Alfa (prueba)')).toHaveCount(0)
+})
+
+test('delegado reconecta su sesión en un dispositivo nuevo con el QR de la mesa', async ({ page }) => {
+  let resumeBody: unknown
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/resume')) {
+      resumeBody = request.postDataJSON()
+      await route.fulfill({ json: { participantSessionToken: 'synthetic-resumed-token', ...participantState('recorded') } })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      expect(request.headers().authorization).toBe('Bearer synthetic-resumed-token')
+      await route.fulfill({ json: participantState('recorded') })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/?resume=synthetic-resume-code-0123456789')
+  await expect(page.getByText('Tu sesión se reconectó en este dispositivo.')).toBeVisible()
+  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  expect(resumeBody).toEqual({ resumeCode: 'synthetic-resume-code-0123456789' })
+  await expect(page).toHaveURL(/\/$/)
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('synthetic-resumed-token')
 })

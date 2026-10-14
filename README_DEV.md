@@ -67,6 +67,8 @@ Para preparar una instalación candidata reproducible con Caddy/HTTPS, servicios
 - Delegado: `POST /api/v1/assemblies/:assemblyCode/join`, `GET /api/v1/participant/me` y `POST /api/v1/participant/rounds/:roundId/vote`.
 - Proyector: `GET /api/v1/assemblies/:assemblyCode/public-state`; durante el ingreso abierto expone nombres y total de participantes. Cuando inicia una papeleta, oculta la lista y expone solo progreso agregado; los resultados por opción aparecen después de su publicación.
 - Moderador: crear/consultar Asamblea, cerrar lobby, corregir/retirar participante, preparar/abrir/cerrar ronda y publicar resultados bajo `/api/v1/moderator/*`.
+- Recuperación: `GET /api/v1/moderator/assemblies/active` permite retomar la Asamblea activa desde otra pestaña o equipo; `POST /api/v1/moderator/assemblies/:id/join-code` genera un nuevo código/QR (el anterior deja de funcionar); `POST /api/v1/moderator/participants/:id/resume-code` emite un QR de reconexión de un solo uso (10 minutos) que el delegado canjea con `POST /api/v1/assemblies/resume`. La reconexión conserva la participación registrada, por lo que no habilita un segundo voto.
+- `PATCH /api/v1/moderator/assemblies/:id/lobby` con `lobby_open` reabre el ingreso solo si no hay papeleta abierta, y queda registrado como `lobby.reopened`.
 - La única regla de conteo implementada es `kind: count_only`: se agregan votos por opción tras publicación y no se proclama ganador. La mayoría, abstención, nulidad, empate, repetición y cancelación requieren decisión institucional.
 
 ## Documentos de fundamento

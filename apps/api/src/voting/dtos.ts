@@ -37,6 +37,11 @@ export class LobbyPatchDto {
   status!: 'lobby_open' | 'lobby_closed'
 }
 
+export class ResumeSessionDto {
+  @IsString() @MinLength(20) @MaxLength(100)
+  resumeCode!: string
+}
+
 export class CompleteAssemblyDto {
   @Equals(true)
   confirmation!: true

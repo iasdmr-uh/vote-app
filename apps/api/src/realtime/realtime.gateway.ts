@@ -101,6 +101,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   participantJoined(assemblyId: string, payload: Parameters<RealtimePublisher['participantJoined']>[1]): void { this.publisher().participantJoined(assemblyId, payload) }
   participantUpdated(assemblyId: string, payload: Parameters<RealtimePublisher['participantUpdated']>[1]): void { this.publisher().participantUpdated(assemblyId, payload) }
   participantRemoved(assemblyId: string, participantId: string): void { this.publisher().participantRemoved(assemblyId, participantId) }
+  participantSessionReplaced(participantId: string): void { this.publisher().participantSessionReplaced(participantId) }
   participantState(sessionId: string, payload: Parameters<RealtimePublisher['participantState']>[1]): void { this.publisher().participantState(sessionId, payload) }
   roundState(assemblyId: string, payload: Parameters<RealtimePublisher['roundState']>[1]): void { this.publisher().roundState(assemblyId, payload) }
   roundOpened(assemblyId: string, payload: Parameters<RealtimePublisher['roundOpened']>[1]): void { this.publisher().roundOpened(assemblyId, payload) }
@@ -166,6 +167,11 @@ export class RealtimePublisher {
     this.server.to(moderatorRoom(assemblyId)).emit('participant.removed', { participantId })
     // Revoke the live socket immediately after the session is removed. Re-authentication
     // also rejects it, but without this step it could still receive assembly-wide events.
+    this.server.in(`participant:${participantId}`).disconnectSockets(true)
+  }
+
+  /** The previous device's token no longer authenticates, so its live sockets must not keep receiving events. */
+  participantSessionReplaced(participantId: string): void {
     this.server.in(`participant:${participantId}`).disconnectSockets(true)
   }
 
