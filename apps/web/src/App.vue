@@ -367,6 +367,7 @@ async function loadState() {
       }
       state.value = normalizeState(await request<Record<string, any>>(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}`, {}, moderatorToken.value))
       moderatorAuthState.value = 'authenticated'
+      void loadAssemblyLists().catch(() => undefined)
       sessionStorage.setItem('moderatorToken', moderatorToken.value)
       error.value = ''
     }
@@ -710,29 +711,70 @@ async function resumeParticipantSession(resumeCode: string) {
 /** Completed assemblies whose data was not erased yet; the mesa can reopen them for the acta and deletion. */
 const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
 
-function openCompletedAssembly(id: string) {
+/** The live assembly, kept apart so the mesa can browse pending actas without losing its way back. */
+const liveAssembly = ref<{ id: string; name: string } | null>(null)
+/** Set while the mesa looks at pending actas, so recovery does not jump back to the live assembly. */
+const browsingActas = ref(sessionStorage.getItem('browsingActas') === 'true')
+
+function setBrowsingActas(value: boolean) {
+  browsingActas.value = value
+  if (value) sessionStorage.setItem('browsingActas', 'true')
+  else sessionStorage.removeItem('browsingActas')
+}
+
+function selectAssembly(id: string) {
   assemblyId.value = id
   sessionStorage.setItem('assemblyId', id)
-  code.value = ''
+  // The join code lives only on this device; bring it back when returning to the assembly it belongs to.
+  code.value = localStorage.getItem('assemblyJoinCodeAssemblyId') === id ? localStorage.getItem('assemblyJoinCode') || '' : ''
   qrImage.value = ''
+}
+
+function openCompletedAssembly(id: string) {
+  setBrowsingActas(false)
+  selectAssembly(id)
   void refresh()
 }
+
+function openLiveAssembly() {
+  if (!liveAssembly.value) return
+  setBrowsingActas(false)
+  selectAssembly(liveAssembly.value.id)
+  void refresh()
+}
+
+/** Leaves the current assembly (live or completed) without changing it and shows the pending actas. */
+function showPendingActas() {
+  setBrowsingActas(true)
+  assemblyId.value = ''
+  sessionStorage.removeItem('assemblyId')
+  code.value = ''
+  qrImage.value = ''
+  state.value = null
+  void refresh()
+}
+
+async function loadAssemblyLists() {
+  const recovered = await request<{ assembly: { id: string; name: string } | null; completed?: Array<{ id: string; name: string; completedAt: string | null }> }>('/moderator/assemblies/active', {}, moderatorToken.value)
+  liveAssembly.value = recovered.assembly
+  completedAssemblies.value = recovered.completed || []
+  return recovered.assembly
+}
+
+/** Completed assemblies other than the one on screen, still waiting for the acta and deletion. */
+const otherPendingActas = computed(() => completedAssemblies.value.filter((item) => item.id !== assemblyId.value))
 
 async function recoverActiveAssembly() {
   if (assemblyId.value) return
   let assembly: { id: string; name: string } | null = null
   try {
-    const recovered = await request<{ assembly: { id: string; name: string } | null; completed?: Array<{ id: string; name: string; completedAt: string | null }> }>('/moderator/assemblies/active', {}, moderatorToken.value)
-    assembly = recovered.assembly
-    completedAssemblies.value = recovered.completed || []
+    assembly = await loadAssemblyLists()
   } catch {
     // Non-fatal: the server still refuses to create a second live assembly.
     return
   }
-  if (!assembly) return
-  assemblyId.value = assembly.id
-  sessionStorage.setItem('assemblyId', assembly.id)
-  if (localStorage.getItem('assemblyJoinCodeAssemblyId') !== assembly.id) code.value = ''
+  if (!assembly || browsingActas.value) return
+  selectAssembly(assembly.id)
   notice.value = `Se recuperó la Asamblea activa: ${assembly.name}.`
 }
 
@@ -795,15 +837,6 @@ function downloadActaSpreadsheet() {
   URL.revokeObjectURL(link.href)
 }
 
-/** Leaves a completed assembly without erasing it; it stays listed until the mesa deletes its data. */
-function closeActa() {
-  assemblyId.value = ''
-  sessionStorage.removeItem('assemblyId')
-  code.value = ''
-  qrImage.value = ''
-  state.value = null
-  void refresh()
-}
 
 function deleteAssemblyData() {
   if (!assemblyId.value || assemblyStatus.value !== 'completed') return
@@ -841,6 +874,7 @@ async function createAssembly() {
     const result = await request<{ assemblyId: string; joinCode: string; joinUrl?: string }>('/moderator/assemblies', {
       method: 'POST', body: JSON.stringify({ name: assemblyName.value }),
     }, moderatorToken.value)
+    setBrowsingActas(false)
     assemblyId.value = result.assemblyId
     sessionStorage.setItem('assemblyId', result.assemblyId)
     rememberJoinCode(result.joinCode)
@@ -1110,7 +1144,8 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
       <template v-else-if="moderatorAuthState === 'authenticated'">
         <section class="page-heading"><div class="heading-copy"><p class="eyebrow">PANEL DE MODERACIÓN</p><h1>Control de Asamblea</h1><p>{{ moderatorSessionSummary }}</p></div><div class="heading-projector"><button class="primary" @click="openProjectorWindow">Abrir proyector en otra ventana</button><p>La moderación permanece en esta ventana privada; la pantalla externa muestra solo la vista pública.</p></div></section>
         <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Asambleas finalizadas con datos guardados</h2><p>Ábrela para imprimir el acta y borrar sus datos.</p><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · finalizada {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta y borrado</button></li></ul></section>
-        <section v-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
+        <section v-if="!assemblyId && liveAssembly" class="card"><p class="eyebrow">ASAMBLEA ACTIVA</p><h2>{{ liveAssembly.name }}</h2><p>Sigue en curso. Vuelve a ella cuando termines con las actas.</p><button class="primary" @click="openLiveAssembly">Volver a la Asamblea activa</button></section>
+        <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
         <template v-else>
           <ol class="workflow-steps" aria-label="Pasos de la moderación">
             <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep }" :aria-current="index === moderatorWorkflowStep ? 'step' : undefined">
@@ -1122,6 +1157,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
             <div class="card metric"><span>Participación</span><strong v-if="round">{{ state?.recordedCount ?? 0 }}<small> / {{ eligibleVotes }} {{ eligibleVotes === 1 ? 'voto' : 'votos' }}</small></strong><strong v-else>{{ totalParticipants }} {{ totalParticipants === 1 ? 'participante' : 'participantes' }}</strong></div>
             <div class="card metric"><span>Papeleta</span><strong>{{ round?.status === 'annulled' ? 'Anulada' : round?.status === 'published' ? 'Publicada' : round?.status === 'closed' ? 'Cerrada' : round ? 'Preparada' : 'Sin iniciar' }}</strong></div>
           </section>
+          <p v-if="otherPendingActas.length" class="status-line pending-actas">{{ otherPendingActas.length === 1 ? 'Hay 1 Asamblea finalizada' : `Hay ${otherPendingActas.length} Asambleas finalizadas` }} con datos guardados. <button class="link-button" @click="showPendingActas">Ver actas pendientes</button></p>
           <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
             <strong>Limpieza del secreto del voto pendiente.</strong>
             No se podrán publicar resultados ni finalizar la Asamblea hasta completarla ({{ secrecyCleanupPendingRounds.map((item) => item.title).join(', ') }}). Los votos ya no se aceptan en esas papeletas.
@@ -1131,7 +1167,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <section v-if="assemblyStatus === 'completed'" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Acta y borrado de datos</h2>
             <ol class="after-steps"><li>Imprime el acta o guárdala como PDF. Si quieres los conteos en Excel, descarga también la hoja de cálculo.</li><li>Entrega el acta a Secretaría: es el registro oficial.</li><li>Borra los datos. Se eliminan nombres, votos y registros de esta laptop.</li></ol>
             <div class="action-row"><button class="primary" @click="printActa">Imprimir o guardar PDF</button><button class="secondary" @click="downloadActaSpreadsheet">Descargar hoja de cálculo</button><button class="danger" :disabled="loading" @click="deleteAssemblyData">Borrar datos de la Asamblea</button></div>
-            <p class="status-line">¿Aún no vas a borrar? <button class="link-button" @click="closeActa">Cerrar el acta sin borrar</button>. Seguirá en la lista de Asambleas finalizadas.</p>
+            <p class="status-line">¿Aún no vas a borrar? <button class="link-button" @click="showPendingActas">Cerrar el acta sin borrar</button>. Seguirá en la lista de Asambleas finalizadas.</p>
           </section>
           <template v-else>
           <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh">Actualizar lista</button></div>

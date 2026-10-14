@@ -766,6 +766,51 @@ test('la mesa cierra un acta recuperada sin borrarla y vuelve a la lista', async
   expect(deleteCalls).toBe(0)
 })
 
+test('con otra Asamblea activa, la mesa abre un acta pendiente, la cierra sin borrar y vuelve a la activa', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    localStorage.setItem('assemblyJoinCode', 'LIVE-CODE')
+    localStorage.setItem('assemblyJoinCodeAssemblyId', 'live')
+  })
+  let deleteCalls = 0
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'DELETE') deleteCalls += 1
+    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) {
+      await route.fulfill({ json: { assembly: { id: 'live', name: 'Asamblea en curso', status: 'lobby_closed' }, completed: [{ id: 'old', name: 'Asamblea anterior', completedAt: '2026-10-02T18:30:00.000Z' }] } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/assemblies/live')) {
+      await route.fulfill({ json: { id: 'live', name: 'Asamblea en curso', status: 'lobby_closed', completedAt: null, participants: [], participantCount: 0, rounds: [] } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/assemblies/old')) {
+      await route.fulfill({ json: { id: 'old', name: 'Asamblea anterior', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z', participants: [], participantCount: 0, rounds: [] } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByText('Sesión: Asamblea en curso')).toBeVisible()
+  await page.getByRole('button', { name: 'Ver actas pendientes' }).click()
+  await page.getByRole('button', { name: 'Abrir acta y borrado' }).click()
+  await expect(page.getByText('Sesión: Asamblea anterior')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Cerrar el acta sin borrar' }).click()
+  await expect(page.getByRole('heading', { name: 'Asambleas finalizadas con datos guardados' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Asambleas finalizadas con datos guardados' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Volver a la Asamblea activa' }).click()
+  await expect(page.getByText('Sesión: Asamblea en curso')).toBeVisible()
+  await expect(page.getByText('Código: LIVE-CODE')).toBeVisible()
+  expect(deleteCalls).toBe(0)
+})
+
 test('el proyector muestra la dirección de la red que da el servidor, no la de la laptop', async ({ page }) => {
   const joinUrl = 'http://192.168.1.50/?join=DEMO-ROOM'
   await page.route(api, async (route) => {
