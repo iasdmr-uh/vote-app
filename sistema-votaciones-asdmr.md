@@ -197,6 +197,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
   - Existe el voto en blanco y se llama «Voto nulo».
   - La mesa puede anular una papeleta.
   - En la Comisión de Nombramiento se registran el número de integrantes y el número de candidatos.
+  - Tampoco se valida quién puede proponer, apoyar o ser propuesto en la Comisión de Nombramiento: cualquier participante puede hacerlo y la delegación decide cada candidatura en la aprobación.
   - Las llegadas tarde las decide la Asamblea; la mesa reabre el ingreso.
   - Una persona técnica modera; una laptop funciona como servidor en una red Wi-Fi propia (Starlink).
   - El proyector muestra nombres y cantidad durante el ingreso.

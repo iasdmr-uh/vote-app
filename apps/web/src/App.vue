@@ -60,8 +60,6 @@ const committeeInstitutionallyValidated = ref(false)
 const committeeDecisionReference = ref('')
 const committeeEligibilityRule = ref('')
 const committeeVotingMethod = ref('')
-const committeeProposalRule = ref('')
-const committeeSupportRule = ref('')
 const committeeSupportMinimum = ref<number | null>(null)
 const committeeCandidateCount = ref<number | null>(null)
 const committeeCandidateSelections = ref<string[]>([])
@@ -132,7 +130,8 @@ function resultPercent(results: Array<{ count: number }>, count: number) {
   const total = results.reduce((sum, result) => sum + result.count, 0)
   return total ? Math.round((count / total) * 100) : 0
 }
-const eligibleCommitteeCandidates = computed(() => (state.value?.participants || []).filter((person) => person.assemblyRole === 'delegate' && person.committeeEligible))
+/** Secretaría (Oct 2026): the system does not check eligibility; any active participant can be listed. */
+const committeeCandidateChoices = computed(() => (state.value?.participants || []).filter((person) => person.id))
 const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar resultados']
 const moderatorWorkflowStep = computed(() => {
   if (assemblyStatus.value === 'completed') return moderatorWorkflow.length
@@ -518,8 +517,6 @@ async function configureCommittee(targetRound: NonNullable<PublicState['rounds']
       eligibilityRule: committeeEligibilityRule.value,
       votingMethod: committeeVotingMethod.value,
       ...(targetRound.committeeType === 'nomination' ? {
-        proposalRule: committeeProposalRule.value,
-        ...(committeeSupportRule.value ? { supportRule: committeeSupportRule.value } : {}),
         supportMinimum: committeeSupportMinimum.value,
         ...(committeeCandidateCount.value ? { candidateCount: committeeCandidateCount.value } : {}),
       } : {}),
@@ -538,8 +535,6 @@ function editCommitteeConfiguration(targetRound: NonNullable<PublicState['rounds
   committeeDecisionReference.value = rules.validationReference || ''
   committeeEligibilityRule.value = rules.eligibilityRule || ''
   committeeVotingMethod.value = rules.votingMethod || ''
-  committeeProposalRule.value = rules.proposalRule || ''
-  committeeSupportRule.value = rules.supportRule || ''
   committeeSupportMinimum.value = rules.supportMinimum ?? null
   committeeCandidateCount.value = rules.candidateCount ?? null
 }
@@ -588,14 +583,6 @@ function repeatRound(target: NonNullable<PublicState['rounds']>[number], optionI
 
 function repeatAllOptions(target: NonNullable<PublicState['rounds']>[number] | undefined) {
   if (target) repeatRound(target, target.options.filter((option) => !option.isNullVote).map((option) => option.id))
-}
-
-async function updateParticipantCommitteeStatus(person: NonNullable<PublicState['participants']>[number]) {
-  if (!person.id) return
-  await moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', {
-    assemblyRole: person.assemblyRole,
-    committeeEligible: person.committeeEligible,
-  })
 }
 
 async function moderatorAction(path: string, method = 'POST', body?: unknown) {
@@ -779,11 +766,11 @@ function editParticipant(person: { id?: string; firstName: string; lastName: str
 
 async function createRound() {
   const options = roundCategory.value === 'committee' && committeeType.value !== 'nomination'
-    ? eligibleCommitteeCandidates.value.filter((person) => person.id && committeeCandidateSelections.value.includes(person.id))
+    ? committeeCandidateChoices.value.filter((person) => person.id && committeeCandidateSelections.value.includes(person.id))
       .map((person) => ({ label: `${person.firstName} ${person.lastName}`, candidateParticipantId: person.id }))
     : optionsText.value.split('\n').map((label) => label.trim()).filter(Boolean).map((label) => ({ label }))
   if (roundCategory.value === 'office' && options.length < 2) { error.value = 'Agrega al menos dos opciones, una por línea.'; return }
-  if (roundCategory.value === 'committee' && committeeType.value !== 'nomination' && options.length === 0) { error.value = 'Selecciona participantes con elegibilidad confirmada o deja el proceso bloqueado hasta validar la lista.'; return }
+  if (roundCategory.value === 'committee' && committeeType.value !== 'nomination' && options.length === 0) { error.value = 'Selecciona al menos un participante como candidato.'; return }
   showNextBallotForm.value = false
   await moderatorAction(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/rounds`, 'POST', {
     title: roundTitle.value, format: roundCategory.value === 'committee' ? 'multiple_choice' : 'single_choice', options,
@@ -798,8 +785,6 @@ async function createRound() {
         eligibilityRule: committeeEligibilityRule.value,
         votingMethod: committeeVotingMethod.value,
         ...(committeeType.value === 'nomination' ? {
-          proposalRule: committeeProposalRule.value,
-          ...(committeeSupportRule.value ? { supportRule: committeeSupportRule.value } : {}),
           ...(committeeSupportMinimum.value ? { supportMinimum: committeeSupportMinimum.value } : {}),
           ...(committeeCandidateCount.value ? { candidateCount: committeeCandidateCount.value } : {}),
         } : {}),
@@ -987,12 +972,12 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         </template>
         <div v-else-if="round?.status === 'annulled'" class="status-panel"><span class="status-dot"></span><div><strong>La mesa anuló esta votación</strong><p>Nada de lo registrado en esta papeleta se contará. Espera la siguiente indicación de la mesa.</p></div></div>
         <template v-else-if="round?.category === 'committee' && round.committeeStage === 'proposals'">
-          <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Registrar propuesta</h2><p class="lead">Presenta una candidatura de la lista confirmada como elegible por moderación. No se admiten personas con los cargos excluidos.</p><form @submit.prevent="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals`, { candidateParticipantId: participantCandidateSelection })"><label>Candidatura<select v-model="participantCandidateSelection" required><option value="" disabled>Selecciona un delegado elegible</option><option v-for="candidate in state?.committeeCandidates || []" :key="candidate.id" :value="candidate.id">{{ candidate.firstName }} {{ candidate.lastName }}</option></select></label><button class="primary" :disabled="loading || !participantCandidateSelection">Registrar propuesta</button></form><ul class="option-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id">{{ proposal.candidateName }}</li></ul></section>
+          <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Registrar propuesta</h2><p class="lead">Propón a una persona de la Asamblea. La delegación decidirá cada candidatura en la etapa de aprobación.</p><form @submit.prevent="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals`, { candidateParticipantId: participantCandidateSelection })"><label>Candidatura<select v-model="participantCandidateSelection" required><option value="" disabled>Selecciona a una persona</option><option v-for="candidate in state?.committeeCandidates || []" :key="candidate.id" :value="candidate.id">{{ candidate.firstName }} {{ candidate.lastName }}</option></select></label><button class="primary" :disabled="loading || !participantCandidateSelection">Registrar propuesta</button></form><ul class="option-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id">{{ proposal.candidateName }}</li></ul></section>
         </template>
         <template v-else-if="round?.category === 'committee' && round.committeeStage === 'support'">
-          <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Apoyar propuestas</h2><p class="lead">Cada delegado elegible puede registrar un apoyo por propuesta. Solo se muestra el total, no quién apoyó.</p><ul class="participant-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id"><span>{{ proposal.candidateName }} · {{ proposal.supportCount }} apoyos</span><button class="secondary" :disabled="loading || proposal.supportedByMe" @click="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals/${encodeURIComponent(proposal.id)}/support`)">{{ proposal.supportedByMe ? 'Apoyo registrado' : 'Apoyar' }}</button></li></ul></section>
+          <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Apoyar propuestas</h2><p class="lead">Puedes registrar un apoyo por propuesta. Solo se muestra el total, no quién apoyó.</p><ul class="participant-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id"><span>{{ proposal.candidateName }} · {{ proposal.supportCount }} apoyos</span><button class="secondary" :disabled="loading || proposal.supportedByMe" @click="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals/${encodeURIComponent(proposal.id)}/support`)">{{ proposal.supportedByMe ? 'Apoyo registrado' : 'Apoyar' }}</button></li></ul></section>
         </template>
-        <div v-else-if="round?.category === 'committee' && round.committeeStage === 'configuration_required'" class="status-panel"><span class="status-dot"></span><div><strong>La comisión aún no está lista para votar</strong><p>Secretaría o la mesa debe validar elegibilidad, método y las reglas pendientes.</p></div></div>
+        <div v-else-if="round?.category === 'committee' && round.committeeStage === 'configuration_required'" class="status-panel"><span class="status-dot"></span><div><strong>La comisión aún no está lista para votar</strong><p>Secretaría o la mesa debe validar el método y las reglas pendientes.</p></div></div>
         <div v-else class="status-panel"><span class="status-dot"></span><div><strong>{{ round?.status === 'closed' ? 'La papeleta está cerrada' : 'Esperando la siguiente papeleta' }}</strong><p>La mesa anunciará cuando comience la votación.</p></div></div>
       </section>
     </template>
@@ -1037,7 +1022,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>Asamblea finalizada</strong><p>El sistema está en modo de consulta.<template v-if="completionTime"> Se registró {{ completionTime }}.</template></p></div></section>
           <template v-else>
           <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh">Actualizar lista</button></div>
-            <ul class="participant-list"><li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`"><div><span>{{ person.firstName }} {{ person.lastName }}</span><div v-if="person.id" class="committee-profile"><label>Rol para reglas de comisión<select v-model="person.assemblyRole" @change="updateParticipantCommitteeStatus(person)"><option value="">Sin confirmar</option><option value="delegate">Delegado</option><option value="president">Presidente</option><option value="vice_president">Vicepresidente</option><option value="secretary">Secretario</option><option value="treasurer">Tesorero</option></select></label><label class="checkbox-label"><input v-model="person.committeeEligible" type="checkbox" @change="updateParticipantCommitteeStatus(person)" /> Elegibilidad confirmada por Secretaría/mesa</label></div></div><span v-if="person.id && (assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed')" class="person-actions"><button class="link-button" @click="editParticipant(person)">Corregir</button><button class="link-button remove-link" @click="moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button></span><span v-if="person.id" class="person-actions"><button class="link-button" @click="issueResumeCode(person)">Reconectar dispositivo</button></span></li><li v-if="!state?.participants?.length" class="empty">La lista aparecerá aquí cuando se unan.</li></ul>
+            <ul class="participant-list"><li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`"><div><span>{{ person.firstName }} {{ person.lastName }}</span></div><span v-if="person.id && (assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed')" class="person-actions"><button class="link-button" @click="editParticipant(person)">Corregir</button><button class="link-button remove-link" @click="moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button></span><span v-if="person.id" class="person-actions"><button class="link-button" @click="issueResumeCode(person)">Reconectar dispositivo</button></span></li><li v-if="!state?.participants?.length" class="empty">La lista aparecerá aquí cuando se unan.</li></ul>
             <div class="action-row"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><template v-else><span class="status-line">El ingreso está cerrado.</span><button v-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button></template><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button class="link-button" :disabled="loading" @click="rotateJoinCode">Generar nuevo código</button></div>
             <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>Reconexión de {{ resumeQr.name }}</strong><p>Pide a la persona que escanee este QR con su nuevo dispositivo. Es de un solo uso y vence {{ formatDateTime(resumeQr.expiresAt) }}. No lo muestres en el proyector.</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
             <div v-if="qrImage" class="qr-panel"><img :src="qrImage" alt="Código QR para unirse a la Asamblea" /><div><strong>Escanea para unirte</strong><p>Abre este enlace en el proyector y muestra el código QR durante el ingreso.</p><a :href="`/?code=${encodeURIComponent(code)}`">{{ origin }}/?code={{ code }}</a></div></div>
@@ -1055,10 +1040,10 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                   <label class="checkbox-label"><input v-model="committeeInstitutionallyValidated" type="checkbox" /> Configuración validada por Secretaría o la mesa</label>
                   <label>Referencia de la decisión institucional<input v-model="committeeDecisionReference" maxlength="200" placeholder="Acta, acuerdo o referencia" /></label>
                   <label>Decisión/validación de Secretaría o mesa<textarea v-model="committeeDecisionNote" rows="2" maxlength="1000" placeholder="Describe la decisión que valida este proceso"></textarea></label>
-                  <label>Regla de elegibilidad validada<textarea v-model="committeeEligibilityRule" rows="2" maxlength="1000" placeholder="Quiénes pueden ser candidatos y electores"></textarea></label>
+                  <label>Regla de elegibilidad validada<textarea v-model="committeeEligibilityRule" rows="2" maxlength="1000" placeholder="Quiénes pueden ser candidatos y electores (la aplica la mesa; el sistema no la verifica)"></textarea></label>
                   <label>Método de votación validado<textarea v-model="committeeVotingMethod" rows="2" maxlength="1000" placeholder="Método confirmado y tratamiento de abstenciones/nulos si aplica"></textarea></label>
-                  <template v-if="committeeType === 'nomination'"><label>Regla validada para presentar propuestas<select v-model="committeeProposalRule"><option value="">Pendiente de decisión institucional</option><option value="eligible_delegate_only">Solo delegados elegibles pueden presentar</option></select></label><label>Regla validada para registrar apoyos<select v-model="committeeSupportRule"><option value="">Pendiente de decisión institucional</option><option value="one_per_eligible_delegate">Un apoyo por delegado elegible y por propuesta</option></select></label><label>Mínimo de apoyos requerido<input v-model.number="committeeSupportMinimum" type="number" min="1" placeholder="Definido por Secretaría/mesa" /></label><label>Número de candidatos <span class="hint">Lo fija la delegación; no puede ser menor que el número de integrantes.</span><input v-model.number="committeeCandidateCount" type="number" min="1" placeholder="Definido por la delegación" /></label><p class="status-line">El flujo permanece bloqueado hasta validar las reglas, el mínimo de apoyos y el número de candidatos.</p></template>
-                  <template v-else><fieldset class="official-options"><legend>Candidaturas/integrantes con elegibilidad confirmada</legend><label v-for="candidate in eligibleCommitteeCandidates" :key="candidate.id"><input v-model="committeeCandidateSelections" type="checkbox" :value="candidate.id" />{{ candidate.firstName }} {{ candidate.lastName }}</label><p v-if="!eligibleCommitteeCandidates.length" class="status-line">Primero confirma roles y elegibilidad en la lista de participantes.</p></fieldset></template>
+                  <template v-if="committeeType === 'nomination'"><label>Mínimo de apoyos requerido<input v-model.number="committeeSupportMinimum" type="number" min="1" placeholder="Definido por Secretaría/mesa" /></label><label>Número de candidatos <span class="hint">Lo fija la delegación; no puede ser menor que el número de integrantes.</span><input v-model.number="committeeCandidateCount" type="number" min="1" placeholder="Definido por la delegación" /></label><p class="status-line">Cualquier participante puede proponer, apoyar una vez cada propuesta y ser propuesto; la delegación decide cada candidatura en la aprobación. El flujo permanece bloqueado hasta validar el mínimo de apoyos y el número de candidatos.</p></template>
+                  <template v-else><fieldset class="official-options"><legend>Candidaturas o integrantes</legend><label v-for="candidate in committeeCandidateChoices" :key="candidate.id"><input v-model="committeeCandidateSelections" type="checkbox" :value="candidate.id" />{{ candidate.firstName }} {{ candidate.lastName }}</label><p v-if="!committeeCandidateChoices.length" class="status-line">La lista aparecerá cuando se unan participantes.</p></fieldset></template>
                   <p class="privacy-note">Los votos de la elección son secretos. Si falta una validación, el proceso queda bloqueado y no se puede abrir.</p>
                 </template>
                 <label v-else>Opciones o candidaturas <span class="hint">Una por línea</span><textarea v-model="optionsText" rows="4" required placeholder="Nombre o descripción de cada opción"></textarea></label><button class="primary" :disabled="loading">{{ roundCategory === 'committee' ? 'Guardar configuración de comisión' : 'Preparar papeleta' }}</button></form>
@@ -1081,7 +1066,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                   <label>Elegibilidad<textarea v-model="committeeEligibilityRule" required rows="2"></textarea></label>
                   <label>Método de votación<textarea v-model="committeeVotingMethod" required rows="2"></textarea></label>
                   <label>Tamaño confirmado<input v-model.number="committeeMemberCount" type="number" min="1" required /></label>
-                  <template v-if="historyRound.committeeType === 'nomination'"><label>Regla de propuestas<select v-model="committeeProposalRule" required><option value="">Pendiente</option><option value="eligible_delegate_only">Solo delegados elegibles pueden presentar</option></select></label><label>Regla de apoyos<select v-model="committeeSupportRule" required><option value="">Pendiente</option><option value="one_per_eligible_delegate">Un apoyo por delegado elegible y por propuesta</option></select></label><label>Mínimo de apoyos<input v-model.number="committeeSupportMinimum" type="number" min="1" required /></label><label>Número de candidatos<input v-model.number="committeeCandidateCount" type="number" min="1" required /></label></template>
+                  <template v-if="historyRound.committeeType === 'nomination'"><label>Mínimo de apoyos<input v-model.number="committeeSupportMinimum" type="number" min="1" required /></label><label>Número de candidatos<input v-model.number="committeeCandidateCount" type="number" min="1" required /></label></template>
                   <button class="primary" :disabled="loading">Guardar validación</button>
                 </form>
                 <div v-if="historyRound.committeeProposals?.length" class="committee-proposals">
