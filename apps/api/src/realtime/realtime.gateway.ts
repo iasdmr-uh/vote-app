@@ -17,6 +17,7 @@ import {
   roomFor,
 } from './realtime.types.js'
 import { isAllowedWebOrigin } from '../config/origins.js'
+import { isModeratorChannelAllowed } from '../config/moderator-channel.js'
 
 export type RealtimeServer = Server<
   RealtimeClientToServerEvents,
@@ -67,7 +68,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
 
   async handleConnection(client: RealtimeSocket): Promise<void> {
     const credentials = readCredentials(client.handshake.auth)
-    if (!credentials) {
+    if (!credentials || (credentials.audience === 'moderator' && !isModeratorChannelAllowed(client.handshake.headers))) {
       client.disconnect(true)
       return
     }
@@ -103,6 +104,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   participantRemoved(assemblyId: string, participantId: string): void { this.publisher().participantRemoved(assemblyId, participantId) }
   participantSessionReplaced(participantId: string): void { this.publisher().participantSessionReplaced(participantId) }
   publicSessionsRevoked(assemblyId: string): void { this.publisher().publicSessionsRevoked(assemblyId) }
+  assemblyDeleted(assemblyId: string): void { this.publisher().assemblyDeleted(assemblyId) }
   participantState(sessionId: string, payload: Parameters<RealtimePublisher['participantState']>[1]): void { this.publisher().participantState(sessionId, payload) }
   roundState(assemblyId: string, payload: Parameters<RealtimePublisher['roundState']>[1]): void { this.publisher().roundState(assemblyId, payload) }
   roundOpened(assemblyId: string, payload: Parameters<RealtimePublisher['roundOpened']>[1]): void { this.publisher().roundOpened(assemblyId, payload) }
@@ -179,6 +181,11 @@ export class RealtimePublisher {
   /** Public sockets authenticated with a rotated join code must not keep receiving assembly events. */
   publicSessionsRevoked(assemblyId: string): void {
     this.server.in(publicRoom(assemblyId)).disconnectSockets(true)
+  }
+
+  /** Every credential of a deleted assembly stopped authenticating; its sockets must not linger. */
+  assemblyDeleted(assemblyId: string): void {
+    this.server.in([publicRoom(assemblyId), moderatorRoom(assemblyId), participantBroadcastRoom(assemblyId)]).disconnectSockets(true)
   }
 
   participantState(sessionId: string, payload: RealtimeServerToClientEvents['participant.state'] extends (arg: infer P) => void ? P : never): void {

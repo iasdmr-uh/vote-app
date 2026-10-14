@@ -31,6 +31,9 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): void 
   if (!['true', 'false', undefined].includes(env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP)) {
     throw new Error('ALLOW_START_WITH_PENDING_VOTE_CLEANUP must be true or false')
   }
+  if (!['true', 'false', undefined].includes(env.MODERATOR_LOCAL_ONLY)) {
+    throw new Error('MODERATOR_LOCAL_ONLY must be true or false')
+  }
   const port = Number(env.API_PORT ?? 3000)
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('API_PORT must be an integer from 1 to 65535')

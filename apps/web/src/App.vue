@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
+import { xlsxBlob, type Cell } from './xlsx'
 
 type PublicState = {
   assembly?: { id?: string; name?: string; status?: string; completedAt?: string | null; lobbyStatus?: string }
@@ -18,8 +19,10 @@ type PublicState = {
   committeeProposals?: Array<{ id: string; candidateName: string; supportCount: number; supportedByMe?: boolean }>
   results?: Array<{ label: string; count: number; isNullVote?: boolean }>
   officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredAt: string }
+  joinUrl?: string
+  publicAppUrl?: string
   rounds?: Array<{
-    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null; decidedAt?: string | null }>; electionSeats?: number | null; annulledAt?: string | null; annulReason?: string | null; options: Array<{ id: string; label: string; candidateParticipantId?: string | null; isNullVote?: boolean }>
+    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null; decidedAt?: string | null }>; electionSeats?: number | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; options: Array<{ id: string; label: string; candidateParticipantId?: string | null; isNullVote?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number; isNullVote?: boolean }>
     officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null } | null
     secrecyCleanupPending?: boolean
@@ -32,7 +35,7 @@ const route = ref(window.location.pathname)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
-const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
 /** Required reason typed in the confirmation dialog; sent as `reason` in the request body. */
 const moderationReason = ref('')
 const state = ref<PublicState | null>(null)
@@ -124,6 +127,14 @@ function isDecidable(target: NonNullable<PublicState['rounds']>[number]) {
   const chain = roundChain(target)
   return !target.committeeRootRoundId && !chain.some((item) => item.status === 'open') && chain.some((item) => item.status === 'closed' || item.status === 'published')
 }
+/** Panel and projector run on the server laptop; only the server knows the address phones can reach. */
+const projectorJoinUrl = computed(() => {
+  if (state.value?.joinUrl) return state.value.joinUrl
+  const url = new URL(state.value?.publicAppUrl || origin)
+  url.searchParams.set('join', code.value)
+  return url.toString()
+})
+const projectorJoinHost = computed(() => { try { return new URL(projectorJoinUrl.value).host } catch { return '' } })
 function rankOf(results: Array<{ count: number; isNullVote?: boolean }>, index: number) {
   return results[index]?.isNullVote ? '' : `${index + 1}.`
 }
@@ -356,6 +367,7 @@ async function loadState() {
       }
       state.value = normalizeState(await request<Record<string, any>>(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}`, {}, moderatorToken.value))
       moderatorAuthState.value = 'authenticated'
+      void loadAssemblyLists().catch(() => undefined)
       sessionStorage.setItem('moderatorToken', moderatorToken.value)
       error.value = ''
     }
@@ -628,7 +640,8 @@ async function confirmModeratorAction() {
   if (!action || loading.value) return
   const reason = moderationReason.value.trim()
   if (action.reasonLabel && !reason) return
-  if (action.reasonLabel) action.body = { ...(action.body as object | undefined), reason }
+  if (action.typedConfirmation && reason !== action.typedConfirmation) return
+  if (action.reasonLabel && !action.typedConfirmation) action.body = { ...(action.body as object | undefined), reason }
   moderationConfirmation.value = null
   error.value = ''
   loading.value = true
@@ -640,7 +653,7 @@ async function confirmModeratorAction() {
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
-  if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada y disponible en modo de consulta.'
+  if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.'
   if (succeeded) await refresh()
 }
 
@@ -695,19 +708,73 @@ async function resumeParticipantSession(resumeCode: string) {
 }
 
 /** Without this, closing the moderator tab would leave the live assembly with no way to control it. */
+/** Completed assemblies whose data was not erased yet; the mesa can reopen them for the acta and deletion. */
+const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
+
+/** The live assembly, kept apart so the mesa can browse pending actas without losing its way back. */
+const liveAssembly = ref<{ id: string; name: string } | null>(null)
+/** Set while the mesa looks at pending actas, so recovery does not jump back to the live assembly. */
+const browsingActas = ref(sessionStorage.getItem('browsingActas') === 'true')
+
+function setBrowsingActas(value: boolean) {
+  browsingActas.value = value
+  if (value) sessionStorage.setItem('browsingActas', 'true')
+  else sessionStorage.removeItem('browsingActas')
+}
+
+function selectAssembly(id: string) {
+  assemblyId.value = id
+  sessionStorage.setItem('assemblyId', id)
+  // The join code lives only on this device; bring it back when returning to the assembly it belongs to.
+  code.value = localStorage.getItem('assemblyJoinCodeAssemblyId') === id ? localStorage.getItem('assemblyJoinCode') || '' : ''
+  qrImage.value = ''
+}
+
+function openCompletedAssembly(id: string) {
+  setBrowsingActas(false)
+  selectAssembly(id)
+  void refresh()
+}
+
+function openLiveAssembly() {
+  if (!liveAssembly.value) return
+  setBrowsingActas(false)
+  selectAssembly(liveAssembly.value.id)
+  void refresh()
+}
+
+/** Leaves the current assembly (live or completed) without changing it and shows the pending actas. */
+function showPendingActas() {
+  setBrowsingActas(true)
+  assemblyId.value = ''
+  sessionStorage.removeItem('assemblyId')
+  code.value = ''
+  qrImage.value = ''
+  state.value = null
+  void refresh()
+}
+
+async function loadAssemblyLists() {
+  const recovered = await request<{ assembly: { id: string; name: string } | null; completed?: Array<{ id: string; name: string; completedAt: string | null }> }>('/moderator/assemblies/active', {}, moderatorToken.value)
+  liveAssembly.value = recovered.assembly
+  completedAssemblies.value = recovered.completed || []
+  return recovered.assembly
+}
+
+/** Completed assemblies other than the one on screen, still waiting for the acta and deletion. */
+const otherPendingActas = computed(() => completedAssemblies.value.filter((item) => item.id !== assemblyId.value))
+
 async function recoverActiveAssembly() {
   if (assemblyId.value) return
   let assembly: { id: string; name: string } | null = null
   try {
-    assembly = (await request<{ assembly: { id: string; name: string } | null }>('/moderator/assemblies/active', {}, moderatorToken.value)).assembly
+    assembly = await loadAssemblyLists()
   } catch {
     // Non-fatal: the server still refuses to create a second live assembly.
     return
   }
-  if (!assembly) return
-  assemblyId.value = assembly.id
-  sessionStorage.setItem('assemblyId', assembly.id)
-  if (localStorage.getItem('assemblyJoinCodeAssemblyId') !== assembly.id) code.value = ''
+  if (!assembly || browsingActas.value) return
+  selectAssembly(assembly.id)
   notice.value = `Se recuperó la Asamblea activa: ${assembly.name}.`
 }
 
@@ -742,6 +809,63 @@ async function completeAssembly() {
   }
 }
 
+/** The acta exists in the page only while printing, so it never duplicates the panel on screen. */
+const printingActa = ref(false)
+async function printActa() {
+  printingActa.value = true
+  await nextTick()
+  window.print()
+}
+
+/** The acta stays with Secretaría after the data is erased, so it carries every count and declaration. */
+function downloadActaSpreadsheet() {
+  // Typed cells, not CSV: names come from participants, and a text cell stays text when re-saved in Excel.
+  const rows: Cell[][] = [['Papeleta', 'Estado', 'Votantes', 'Lugar', 'Opción', 'Votos', 'Declarada electa']]
+  for (const item of state.value?.rounds || []) {
+    const status = roundStatusLabels[item.status] || item.status
+    const elected = new Set((item.officialResult?.elected || []).map((person) => person.optionId))
+    if (item.results?.length) {
+      item.results.forEach((result, index) => rows.push([item.title, status, item.participationCount ?? '', result.isNullVote ? '' : index + 1, result.label, result.count, elected.has(result.optionId) ? 'sí' : '']))
+    } else {
+      rows.push([item.title, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, item.participationCount ?? '', '', '', '', (item.officialResult?.elected || []).map((person) => person.label).join('; ')])
+    }
+  }
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(xlsxBlob('Acta', rows))
+  link.download = `acta-${(state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}.xlsx`
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
+
+
+function deleteAssemblyData() {
+  if (!assemblyId.value || assemblyStatus.value !== 'completed') return
+  const deletedId = assemblyId.value
+  moderationConfirmation.value = {
+    title: '¿Borrar todos los datos de la Asamblea?',
+    consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta.',
+    label: 'Borrar datos',
+    reasonLabel: 'Escribe BORRAR para confirmar',
+    typedConfirmation: 'BORRAR',
+    path: `/moderator/assemblies/${encodeURIComponent(deletedId)}`,
+    method: 'DELETE', body: { confirmation: true },
+    onSuccess: (result: { vacuumed: boolean }) => {
+      notice.value = result.vacuumed
+        ? 'Se borraron los datos de la Asamblea. Al apagar, sigue el cierre de la guía del técnico.'
+        : 'Se borraron los datos de la Asamblea, pero la compactación de la base no terminó. Al apagar, sigue el cierre de la guía del técnico para borrarla por completo.'
+      assemblyId.value = ''
+      sessionStorage.removeItem('assemblyId')
+      if (localStorage.getItem('assemblyJoinCodeAssemblyId') === deletedId) {
+        localStorage.removeItem('assemblyJoinCode')
+        localStorage.removeItem('assemblyJoinCodeAssemblyId')
+      }
+      code.value = ''
+      qrImage.value = ''
+      state.value = null
+    },
+  }
+}
+
 async function createAssembly() {
   error.value = ''
   loading.value = true
@@ -750,6 +874,7 @@ async function createAssembly() {
     const result = await request<{ assemblyId: string; joinCode: string; joinUrl?: string }>('/moderator/assemblies', {
       method: 'POST', body: JSON.stringify({ name: assemblyName.value }),
     }, moderatorToken.value)
+    setBrowsingActas(false)
     assemblyId.value = result.assemblyId
     sessionStorage.setItem('assemblyId', result.assemblyId)
     rememberJoinCode(result.joinCode)
@@ -763,7 +888,7 @@ async function createAssembly() {
 
 async function refreshQr() {
   if (!code.value) { qrImage.value = ''; return }
-  qrImage.value = await QRCode.toDataURL(`${origin}/?join=${encodeURIComponent(code.value)}`, { width: 420, margin: 2 })
+  qrImage.value = await QRCode.toDataURL(projectorJoinUrl.value, { width: 420, margin: 2 })
 }
 
 function editParticipant(person: { id?: string; firstName: string; lastName: string }) {
@@ -876,6 +1001,7 @@ function syncRealtime() {
 }
 
 onMounted(() => {
+  window.addEventListener('afterprint', () => { printingActa.value = false })
   document.addEventListener('fullscreenchange', syncProjectorFullscreen)
   window.addEventListener('popstate', () => {
     const nextRoute = window.location.pathname
@@ -898,7 +1024,7 @@ onMounted(() => {
   }, POLL_WHILE_DISCONNECTED_MS)
 })
 watch([route, sessionToken, moderatorToken, code], () => syncRealtime())
-watch(code, () => { void refreshQr() })
+watch(projectorJoinUrl, () => { void refreshQr() })
 onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (scheduledRefresh !== undefined) window.clearTimeout(scheduledRefresh); realtimeSocket?.disconnect(); document.removeEventListener('fullscreenchange', syncProjectorFullscreen) })
 </script>
 
@@ -924,7 +1050,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <label v-if="moderationConfirmation.reasonLabel" class="confirmation-reason">{{ moderationConfirmation.reasonLabel }}<textarea v-model="moderationReason" rows="3" maxlength="1000" required :placeholder="moderationConfirmation.reasonPlaceholder"></textarea></label>
         <div class="confirmation-actions">
           <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
-          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim())" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
+          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim()) || (!!moderationConfirmation.typedConfirmation && moderationReason.trim() !== moderationConfirmation.typedConfirmation)" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
         </div>
       </section>
     </div>
@@ -1017,7 +1143,9 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
       </section>
       <template v-else-if="moderatorAuthState === 'authenticated'">
         <section class="page-heading"><div class="heading-copy"><p class="eyebrow">PANEL DE MODERACIÓN</p><h1>Control de Asamblea</h1><p>{{ moderatorSessionSummary }}</p></div><div class="heading-projector"><button class="primary" @click="openProjectorWindow">Abrir proyector en otra ventana</button><p>La moderación permanece en esta ventana privada; la pantalla externa muestra solo la vista pública.</p></div></section>
-        <section v-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
+        <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Asambleas finalizadas con datos guardados</h2><p>Ábrela para imprimir el acta y borrar sus datos.</p><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · finalizada {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta y borrado</button></li></ul></section>
+        <section v-if="!assemblyId && liveAssembly" class="card"><p class="eyebrow">ASAMBLEA ACTIVA</p><h2>{{ liveAssembly.name }}</h2><p>Sigue en curso. Vuelve a ella cuando termines con las actas.</p><button class="primary" @click="openLiveAssembly">Volver a la Asamblea activa</button></section>
+        <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
         <template v-else>
           <ol class="workflow-steps" aria-label="Pasos de la moderación">
             <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep }" :aria-current="index === moderatorWorkflowStep ? 'step' : undefined">
@@ -1029,12 +1157,18 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
             <div class="card metric"><span>Participación</span><strong v-if="round">{{ state?.recordedCount ?? 0 }}<small> / {{ eligibleVotes }} {{ eligibleVotes === 1 ? 'voto' : 'votos' }}</small></strong><strong v-else>{{ totalParticipants }} {{ totalParticipants === 1 ? 'participante' : 'participantes' }}</strong></div>
             <div class="card metric"><span>Papeleta</span><strong>{{ round?.status === 'annulled' ? 'Anulada' : round?.status === 'published' ? 'Publicada' : round?.status === 'closed' ? 'Cerrada' : round ? 'Preparada' : 'Sin iniciar' }}</strong></div>
           </section>
+          <p v-if="otherPendingActas.length" class="status-line pending-actas">{{ otherPendingActas.length === 1 ? 'Hay 1 Asamblea finalizada' : `Hay ${otherPendingActas.length} Asambleas finalizadas` }} con datos guardados. <button class="link-button" @click="showPendingActas">Ver actas pendientes</button></p>
           <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
             <strong>Limpieza del secreto del voto pendiente.</strong>
             No se podrán publicar resultados ni finalizar la Asamblea hasta completarla ({{ secrecyCleanupPendingRounds.map((item) => item.title).join(', ') }}). Los votos ya no se aceptan en esas papeletas.
             <button class="secondary" :disabled="loading" @click="retrySecrecyCleanup">Reintentar limpieza</button>
           </section>
           <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>Asamblea finalizada</strong><p>El sistema está en modo de consulta.<template v-if="completionTime"> Se registró {{ completionTime }}.</template></p></div></section>
+          <section v-if="assemblyStatus === 'completed'" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Acta y borrado de datos</h2>
+            <ol class="after-steps"><li>Imprime el acta o guárdala como PDF. Si quieres los conteos en Excel, descarga también la hoja de cálculo.</li><li>Entrega el acta a Secretaría: es el registro oficial.</li><li>Borra los datos. Se eliminan nombres, votos y registros de esta laptop.</li></ol>
+            <div class="action-row"><button class="primary" @click="printActa">Imprimir o guardar PDF</button><button class="secondary" @click="downloadActaSpreadsheet">Descargar hoja de cálculo</button><button class="danger" :disabled="loading" @click="deleteAssemblyData">Borrar datos de la Asamblea</button></div>
+            <p class="status-line">¿Aún no vas a borrar? <button class="link-button" @click="showPendingActas">Cerrar el acta sin borrar</button>. Seguirá en la lista de Asambleas finalizadas.</p>
+          </section>
           <template v-else>
           <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh">Actualizar lista</button></div>
             <ul class="participant-list"><li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`"><div><span>{{ person.firstName }} {{ person.lastName }}</span><div v-if="person.id" class="committee-profile"><label>Rol para reglas de comisión<select v-model="person.assemblyRole" @change="updateParticipantCommitteeStatus(person)"><option value="">Sin confirmar</option><option value="delegate">Delegado</option><option value="president">Presidente</option><option value="vice_president">Vicepresidente</option><option value="secretary">Secretario</option><option value="treasurer">Tesorero</option></select></label><label class="checkbox-label"><input v-model="person.committeeEligible" type="checkbox" @change="updateParticipantCommitteeStatus(person)" /> Elegibilidad confirmada por Secretaría/mesa</label></div></div><span v-if="person.id && (assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed')" class="person-actions"><button class="link-button" @click="editParticipant(person)">Corregir</button><button class="link-button remove-link" @click="moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button></span><span v-if="person.id" class="person-actions"><button class="link-button" @click="issueResumeCode(person)">Reconectar dispositivo</button></span></li><li v-if="!state?.participants?.length" class="empty">La lista aparecerá aquí cuando se unan.</li></ul>
@@ -1067,7 +1201,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <section v-if="assemblyStatus !== 'preparing' && round?.status !== 'published'" class="card assembly-close"><p class="eyebrow">CIERRE DE SESIÓN</p><h2>Finalizar Asamblea</h2><p>Registra el cierre después de que la mesa haya aprobado la decisión. Se conservarán resultados y registros para consulta.</p><p v-if="round?.status === 'open'" class="status-line">Cierra la papeleta abierta antes de finalizar la Asamblea.</p><button class="danger" :disabled="loading || round?.status === 'open'" @click="completeAssembly">Finalizar Asamblea</button></section>
           </template>
           <section v-if="state?.rounds?.length" class="card official-history">
-            <p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones oficiales de la mesa</h2>
+            <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones oficiales de la mesa</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
             <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
               <div class="section-heading"><div><h3>{{ historyRound.title }}</h3><p class="status-line">{{ historyRound.category === 'committee' ? `Comisión · ${historyRound.committeeType} · ${historyRound.memberCount ?? 'tamaño pendiente'}` : 'Cargo' }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}</p><p v-if="historyRound.decisionNote" class="status-line">Configuración institucional: {{ historyRound.decisionNote }}</p></div></div>
               <template v-if="historyRound.category === 'committee'">
@@ -1159,7 +1293,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <section v-if="lobbyStatus === 'lobby_open'" class="projector-lobby" aria-label="Ingreso abierto">
           <div class="projector-lobby-summary">
             <img v-if="qrImage" class="projector-qr" :src="qrImage" alt="Código QR para unirse a la Asamblea" />
-            <div><p class="eyebrow">INGRESO ABIERTO</p><strong class="projector-join-count">{{ state?.participantCount ?? 0 }}</strong><span>personas han ingresado</span><p>Código: <strong>{{ code }}</strong></p></div>
+            <div><p class="eyebrow">INGRESO ABIERTO</p><strong class="projector-join-count">{{ state?.participantCount ?? 0 }}</strong><span>personas han ingresado</span><p>Código: <strong>{{ code }}</strong></p><p v-if="projectorJoinHost" class="projector-join-address">Sin QR: abre <strong>{{ projectorJoinHost }}</strong> en el navegador e ingresa el código.</p></div>
           </div>
           <div class="projector-participant-panel">
             <h2>Personas que ya ingresaron <span>{{ state?.participantCount ?? 0 }}</span></h2>
@@ -1172,6 +1306,22 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         </section>
       </section>
     </template>
+    <section v-if="printingActa && role === 'moderator' && moderatorAuthState === 'authenticated' && state?.rounds" class="acta-print">
+      <h1>Acta de resultados</h1>
+      <p><strong>{{ state.assembly?.name }}</strong><template v-if="completionTime"> · finalizada {{ completionTime }}</template> · impresa {{ formatDateTime(new Date().toISOString()) }}</p>
+      <p>Participantes registrados: {{ state.participants?.length ?? 0 }}. Los votos son secretos: el sistema no guarda quién votó por quién.</p>
+      <article v-for="item in state.rounds" :key="`acta-${item.id}`">
+        <h2>{{ item.title }}</h2>
+        <p>{{ item.category === 'committee' ? 'Comisión' : 'Cargo' }} · papeleta {{ roundStatusLabels[item.status] || item.status }}<template v-if="item.participationCount !== undefined"> · {{ item.participationCount }} {{ item.participationCount === 1 ? 'persona votó' : 'personas votaron' }}</template><template v-if="item.committeeRootRoundId"> · repetición de «{{ state.rounds.find((root) => root.id === item.committeeRootRoundId)?.title }}»</template></p>
+        <p v-if="item.status === 'annulled'">Anulada por la mesa<template v-if="item.annulReason">: {{ item.annulReason }}</template>. Sus votos no se contaron.</p>
+        <table v-if="item.results?.length"><thead><tr><th>Lugar</th><th>Opción</th><th>Votos</th></tr></thead><tbody><tr v-for="(result, index) in item.results" :key="result.optionId"><td>{{ rankOf(item.results, index) }}</td><td>{{ result.label }}</td><td>{{ result.count }}</td></tr></tbody></table>
+        <p v-else-if="item.status !== 'annulled'">Conteo no publicado.</p>
+        <p v-if="item.officialResult"><strong>Declarado electo por la mesa:</strong> {{ item.officialResult.elected.map((person) => person.label).join(', ') }} ({{ formatDateTime(item.officialResult.declaredAt) }})<template v-if="item.officialResult.note">. Observación: {{ item.officialResult.note }}</template></p>
+      </article>
+      <h2>Participantes</h2>
+      <ol><li v-for="person in state.participants || []" :key="`acta-person-${person.id}`">{{ person.firstName }} {{ person.lastName }}<template v-if="person.assemblyRole"> · {{ person.assemblyRole }}</template></li></ol>
+      <p class="acta-signatures"><span>Moderación</span><span>Secretaría</span></p>
+    </section>
   </main>
   <footer v-if="role !== 'projector'"><span>V1 · Herramienta operativa de la Asamblea</span><button class="link-button" @click="refresh">Sincronizar estado</button></footer>
 </template>

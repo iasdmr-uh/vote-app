@@ -311,6 +311,8 @@ export class VotingService implements OnModuleInit {
     const officialResult = officialRoundId ? await this.publishedOfficialResult(officialRoundId) : null
     return {
       assembly: { id: assembly.id, name: assembly.name, status: assembly.status, completedAt: assembly.completedAt?.toISOString() ?? null },
+      // The projector runs on the server laptop, whose own address is not the one phones can reach.
+      joinUrl: this.appUrl({ join: assemblyCode }),
       participantCount,
       ...(participants ? { participants } : {}),
       ...(recordedCount !== undefined ? { recordedCount, eligibleCount: participantCount } : {}),
@@ -368,6 +370,8 @@ export class VotingService implements OnModuleInit {
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants,
       participantCount: assembly.participants.length,
+      // The join code is only stored hashed, so the panel builds the QR from this base and the code it kept.
+      publicAppUrl: process.env.PUBLIC_APP_URL,
       rounds,
     }
   }
@@ -378,7 +382,14 @@ export class VotingService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
       select: { id: true, name: true, status: true },
     })
-    return { assembly }
+    // A completed assembly stays until the mesa erases it, so a closed tab must not lose the acta or the delete button.
+    const completed = await this.prisma.assembly.findMany({
+      where: { organizationId: ORGANIZATION_ID, status: 'completed' },
+      orderBy: { completedAt: 'desc' },
+      take: 10,
+      select: { id: true, name: true, completedAt: true },
+    })
+    return { assembly, completed: completed.map((item) => ({ ...item, completedAt: item.completedAt?.toISOString() ?? null })) }
   }
 
   /** The join code is stored only as a hash, so a lost QR can be replaced but never shown again. */
@@ -439,6 +450,35 @@ export class VotingService implements OnModuleInit {
     this.realtime.assemblyState(assemblyId, { status: result.status as AssemblyStatus })
     this.realtime.lobbyState(assemblyId, { status: 'closed', participantCount: count })
     return result
+  }
+
+  /**
+   * After the assembly the acta is the record, not the database (Secretaría, Oct 2026). Only a completed
+   * assembly can be erased: names, receipts, votes and the audit trail go with it, and VACUUM FULL
+   * rewrites the tables so the deleted rows do not stay in their files.
+   */
+  async deleteAssemblyData(assemblyId: string, confirmation: true) {
+    await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: AssemblyStatus }>>`
+        SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
+      `
+      if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
+      if (rows[0].status !== 'completed') throw new ConflictException('Finaliza la Asamblea antes de borrar sus datos')
+      if (confirmation !== true) throw new UnprocessableEntityException('Confirma explícitamente el borrado de los datos')
+      // Rounds first: their options, proposals and winners reference the participant sessions.
+      await tx.round.deleteMany({ where: { assemblyId } })
+      await tx.participantSession.deleteMany({ where: { assemblyId } })
+      await tx.auditEvent.deleteMany({ where: { assemblyId } })
+      await tx.assembly.delete({ where: { id: assemblyId } })
+    })
+    this.realtime.assemblyDeleted(assemblyId)
+    try {
+      await this.vacuumDatabase()
+      return { assemblyId, deleted: true, vacuumed: true }
+    } catch (error) {
+      this.logger.error(`Deleted assembly ${assemblyId}, but VACUUM FULL did not complete: ${(error as Error).message}`)
+      return { assemblyId, deleted: true, vacuumed: false }
+    }
   }
 
   async completeAssembly(assemblyId: string, confirmation: true) {
@@ -1203,6 +1243,17 @@ export class VotingService implements OnModuleInit {
     try {
       await client.query(`SET lock_timeout = ${Math.trunc(this.vacuumLockTimeoutMs)}`)
       await client.query('VACUUM FULL anonymous_votes')
+    } finally {
+      await client.end()
+    }
+  }
+
+  protected async vacuumDatabase() {
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+    await client.connect()
+    try {
+      await client.query(`SET lock_timeout = ${Math.trunc(this.vacuumLockTimeoutMs)}`)
+      await client.query('VACUUM FULL')
     } finally {
       await client.end()
     }

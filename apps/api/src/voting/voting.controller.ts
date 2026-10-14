@@ -132,6 +132,11 @@ export class ModeratorController {
     return this.voting.completeAssembly(assemblyId, input.confirmation)
   }
 
+  @Delete('assemblies/:assemblyId')
+  deleteAssemblyData(@Param('assemblyId', ParseUUIDPipe) assemblyId: string, @Body() input: CompleteAssemblyDto) {
+    return this.voting.deleteAssemblyData(assemblyId, input.confirmation)
+  }
+
   @Patch('participants/:participantId')
   participant(@Param('participantId', ParseUUIDPipe) participantId: string, @Body() input: ParticipantPatchDto) {
     return this.voting.patchParticipant(participantId, input)

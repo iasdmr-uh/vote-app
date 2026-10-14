@@ -199,9 +199,10 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
   - En la Comisión de Nombramiento se registran el número de integrantes y el número de candidatos.
   - Las llegadas tarde las decide la Asamblea; la mesa reabre el ingreso.
   - Una persona técnica modera; una laptop funciona como servidor en una red Wi-Fi propia (Starlink).
+  - En esa red los teléfonos usan HTTP sin cifrar: riesgo aceptado (octubre 2026), con las medidas de `docs/lan-assembly.md`.
   - El proyector muestra nombres y cantidad durante el ingreso.
   - Los datos se conservan solo durante la Asamblea; después rige el acta.
-- Determinar quién puede operar el panel de moderación y cómo se entregará/acreditará su acceso.
-- Definir conservación y eliminación de nombres, participaciones, votos y bitácoras después de la Asamblea.
-- Confirmar infraestructura, cobertura y capacidad de la red Wi-Fi del recinto, dominio y plan de contingencia.
+- ~~Determinar quién puede operar el panel de moderación y cómo se entregará/acreditará su acceso.~~ Lo opera la persona técnica, solo desde la laptop servidor (`docs/lan-assembly.md`).
+- ~~Definir conservación y eliminación de nombres, participaciones, votos y bitácoras después de la Asamblea.~~ Tras imprimir el acta, la mesa borra los datos desde el panel y el técnico borra la base completa (`docs/lan-assembly.md`).
+- Confirmar la cobertura y capacidad del Wi-Fi de Starlink en la sala con un ensayo con teléfonos reales. Ya no se usa dominio; la red es local (`docs/lan-assembly.md`).
 - Precisar si el proyector mostrará solamente cantidad de participantes durante el ingreso o también la lista completa de nombres, considerando tamaño y privacidad.
