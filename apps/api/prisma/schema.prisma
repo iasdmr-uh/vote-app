@@ -30,6 +30,7 @@ enum RoundStatus {
   open
   closed
   published
+  annulled
 }
 
 enum RoundCategory {
@@ -127,6 +128,8 @@ model Round {
   closedAt       DateTime?       @map("closed_at")
   publishedAt    DateTime?       @map("published_at")
   votesUnlinkedAt DateTime?      @map("votes_unlinked_at")
+  annulledAt     DateTime?       @map("annulled_at")
+  annulReason    String?         @map("annul_reason")
   createdAt      DateTime        @default(now()) @map("created_at")
   assembly       Assembly        @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   options        BallotOption[]
@@ -172,6 +175,7 @@ model BallotOption {
   roundId         String                 @map("round_id") @db.Uuid
   label           String
   order           Int
+  isNullVote      Boolean                @default(false) @map("is_null_vote")
   candidateParticipantId String? @map("candidate_participant_id") @db.Uuid
   round           Round                  @relation(fields: [roundId], references: [id], onDelete: Cascade)
   votes           AnonymousVote[]

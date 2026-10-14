@@ -18,7 +18,7 @@ export const REALTIME_AUTHORIZER = Symbol('REALTIME_AUTHORIZER')
 
 export type LobbyStatus = 'open' | 'closed'
 export type AssemblyStatus = 'preparing' | 'lobby_open' | 'lobby_closed' | 'in_progress' | 'completed'
-export type RoundStatus = 'draft' | 'open' | 'closed' | 'published'
+export type RoundStatus = 'draft' | 'open' | 'closed' | 'published' | 'annulled'
 
 export interface LobbyStateEvent {
   status: LobbyStatus

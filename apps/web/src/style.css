@@ -81,6 +81,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .option { display: flex; min-height: 58px; align-items: center; gap: .8rem; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: .7rem; cursor: pointer; }
 .option:has(input:checked) { border-color: var(--blue); background: #f2f6ff; }
 .option input { width: 1.15rem; height: 1.15rem; accent-color: var(--blue); }
+.null-vote-option { border-style: dashed; margin-top: .4rem; }
 .vote-review { padding: 1.25rem; border: 1px solid #cbd8ef; border-radius: .85rem; background: #f7f9fe; }
 .vote-review h2 { margin-bottom: 1.25rem; }
 .vote-review h2:focus { outline-offset: 5px; }
@@ -138,6 +139,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .remove-link { color: #8a3028; }
 .participant-list .empty { border: 0; background: transparent; color: var(--muted); }
 .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.button-group { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; margin-left: auto; }
 .text-link { font-size: .9rem; font-weight: 650; }
 .qr-panel { display: flex; align-items: center; gap: 1rem; margin-top: 1.2rem; padding: 1rem; border-radius: .75rem; background: #f5f7fb; }
 .qr-panel img { width: 150px; height: 150px; border-radius: .5rem; background: #fff; }

@@ -15,6 +15,7 @@ import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
 import {
+  AnnulRoundDto,
   CreateAssemblyDto,
   CompleteAssemblyDto,
   CreateRoundDto,
@@ -26,6 +27,7 @@ import {
   LobbyPatchDto,
   ParticipantPatchDto,
   OfficialResultDto,
+  RepeatRoundDto,
   ResumeSessionDto,
   VoteDto,
 } from './dtos.js'
@@ -157,6 +159,16 @@ export class ModeratorController {
   @Post('rounds/:roundId/publish')
   publishRound(@Param('roundId', ParseUUIDPipe) roundId: string) {
     return this.voting.publishRound(roundId)
+  }
+
+  @Post('rounds/:roundId/annul')
+  annulRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: AnnulRoundDto) {
+    return this.voting.annulRound(roundId, input.reason)
+  }
+
+  @Post('rounds/:roundId/repeat')
+  repeatRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: RepeatRoundDto) {
+    return this.voting.repeatRound(roundId, input)
   }
 
   @Post('rounds/:roundId/committee/stage')
