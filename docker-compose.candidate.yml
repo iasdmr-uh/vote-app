@@ -37,6 +37,8 @@ services:
       WEB_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.candidate}
       PUBLIC_APP_URL: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.candidate}
       API_PORT: "3000"
+      # Caddy is the only proxy in front of the API.
+      TRUST_PROXY_HOPS: "1"
     expose:
       - "3000"
     depends_on:

@@ -87,6 +87,11 @@ const realtimeConnected = ref(false)
 const projectorFullscreen = ref(false)
 let refreshTimer: number | undefined
 let realtimeSocket: Socket | null = null
+let lastRefreshAt = 0
+let refreshQueued = false
+let scheduledRefresh: number | undefined
+const POLL_WHILE_DISCONNECTED_MS = 7_000
+const POLL_WHILE_CONNECTED_MS = 30_000
 
 const role = computed(() => route.value.startsWith('/moderator') ? 'moderator' : route.value.startsWith('/projector') ? 'projector' : 'participant')
 const assemblyStatus = computed(() => state.value?.assembly?.status || state.value?.status || 'preparing')
@@ -249,8 +254,27 @@ function normalizeState(value: Record<string, any>): PublicState {
   }
 }
 
+/** A refresh requested while another request is in flight runs once afterwards instead of being dropped. */
 async function refresh() {
-  if (loading.value) return
+  if (loading.value) { refreshQueued = true; return }
+  await loadState()
+  lastRefreshAt = Date.now()
+  if (refreshQueued && !loading.value) {
+    refreshQueued = false
+    await refresh()
+  }
+}
+
+/** Jitter spreads phones reacting to the same broadcast instead of hitting the API in the same instant. */
+function scheduleRefresh() {
+  if (scheduledRefresh !== undefined) return
+  scheduledRefresh = window.setTimeout(() => {
+    scheduledRefresh = undefined
+    void refresh()
+  }, 100 + Math.random() * 400)
+}
+
+async function loadState() {
   if (role.value === 'participant' && sessionToken.value) {
     loading.value = true
     const requestToken = sessionToken.value
@@ -757,7 +781,7 @@ function syncRealtime() {
   realtimeActive.value = true
   realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelayMax: 5000 })
   for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
-    realtimeSocket.on(event, () => { void refresh() })
+    realtimeSocket.on(event, scheduleRefresh)
   }
   realtimeSocket.on('connect', () => { realtimeConnected.value = true; void refresh() })
   realtimeSocket.on('disconnect', () => { realtimeConnected.value = false })
@@ -779,13 +803,16 @@ onMounted(() => {
   else void refresh()
   void refreshQr()
   syncRealtime()
+  // Live updates drive the UI; polling is a fallback, frequent only while the socket is down.
   refreshTimer = window.setInterval(() => {
-    if (!loading.value && !(role.value === 'moderator' && moderatorAuthState.value === 'validation_error')) void refresh()
-  }, 7000)
+    if (loading.value || (role.value === 'moderator' && moderatorAuthState.value === 'validation_error')) return
+    const interval = realtimeConnected.value ? POLL_WHILE_CONNECTED_MS : POLL_WHILE_DISCONNECTED_MS
+    if (Date.now() - lastRefreshAt >= interval - 500) void refresh()
+  }, POLL_WHILE_DISCONNECTED_MS)
 })
 watch([route, sessionToken, moderatorToken, code], () => syncRealtime())
 watch(code, () => { void refreshQr() })
-onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); realtimeSocket?.disconnect(); document.removeEventListener('fullscreenchange', syncProjectorFullscreen) })
+onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (scheduledRefresh !== undefined) window.clearTimeout(scheduledRefresh); realtimeSocket?.disconnect(); document.removeEventListener('fullscreenchange', syncProjectorFullscreen) })
 </script>
 
 <template>
