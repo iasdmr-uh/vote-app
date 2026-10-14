@@ -443,6 +443,7 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
 test('moderador declara el resultado oficial por separado y lo publica explícitamente', async ({ page }) => {
   let officialResult: Record<string, unknown> | null = null
   let publishCount = 0
+  let withdrawCount = 0
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -477,6 +478,12 @@ test('moderador declara el resultado oficial por separado y lo publica explícit
       await route.fulfill({ status: 200, json: officialResult })
       return
     }
+    if (request.method() === 'DELETE' && url.pathname.endsWith('/moderator/rounds/synthetic-round/official-result')) {
+      withdrawCount += 1
+      officialResult = null
+      await route.fulfill({ status: 200, json: { roundId: 'synthetic-round', withdrawn: true } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for official result test' } })
   })
 
@@ -498,6 +505,12 @@ test('moderador declara el resultado oficial por separado y lo publica explícit
   await page.getByRole('dialog').getByRole('button', { name: 'Publicar resultados' }).click()
   await expect(page.getByText('Visible al público')).toBeVisible()
   expect(publishCount).toBe(1)
+
+  await page.getByRole('button', { name: 'Retirar declaración' }).click()
+  await expect(page.getByRole('dialog')).toContainText('¿Retirar la declaración oficial?')
+  await page.getByRole('dialog').getByRole('button', { name: 'Retirar declaración' }).click()
+  await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
+  expect(withdrawCount).toBe(1)
 })
 
 test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de consulta', async ({ page }) => {

@@ -56,6 +56,20 @@ test('the mesa records the delegation decision on a proposal; the system does no
   assert.equal(recorded[0]?.approvalYes, null, 'counts are optional')
 })
 
+test('a recorded delegation decision can be corrected, but proposals that lacked supports cannot be approved', async () => {
+  let where: Record<string, unknown> | undefined
+  const tx = {
+    round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
+    committeeProposal: {
+      findFirst: async (args: { where: Record<string, unknown> }) => { where = args.where; return null },
+      update: async () => assert.fail('must not update'),
+    },
+  }
+  const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx) } as never, {} as never)
+  await assert.rejects(voting.recordCommitteeApproval('round', 'proposal', { decision: 'rejected' }), /Propuesta apoyada no disponible/)
+  assert.deepEqual(where?.OR, [{ status: 'supported' }, { decidedAt: { not: null } }], 'decided proposals stay correctable; support-rejected ones have no decision date')
+})
+
 test('nomination proposals stay blocked until the delegation fixes the number of candidates', async () => {
   const createdRound = { id: 'round', title: 'Comisión', format: 'multiple_choice', category: 'committee', committeeType: 'nomination', memberCount: 5, decisionNote: 'validada', committeeStage: 'configuration_required', committeeConfiguration: {}, countingRule: { kind: 'count_only' }, status: 'draft', options: [] }
   const tx = {

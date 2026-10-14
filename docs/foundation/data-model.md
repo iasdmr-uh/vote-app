@@ -27,7 +27,7 @@ Cada papeleta incluye la opción «Voto nulo» (`ballot_options.is_null_vote`), 
 
 La mesa puede anular una papeleta en cualquier estado anterior a su declaración oficial (`rounds.status = 'annulled'`, `annulled_at`, `annul_reason`). Sus votos se eliminan y la ronda pasa por la misma limpieza que el cierre (`votes_unlinked_at`), porque las tuplas borradas conservan su `xmin` hasta el `VACUUM`. Las participaciones se conservan como registro.
 
-Para repetir una votación (por ejemplo, entre los más votados o tras una anulación), la mesa crea una ronda vinculada con `committee_root_round_id` apuntando a la papeleta original, aunque sea de cargo. El resultado oficial se declara siempre en la papeleta original, cuando ella o una de sus repeticiones ya fue contada. `committee_winners` ya no se escribe: la composición la declara la mesa.
+Para repetir una votación (por ejemplo, entre los más votados o tras una anulación), la mesa crea una ronda vinculada con `committee_root_round_id` apuntando a la papeleta original, aunque sea de cargo. El resultado oficial se declara siempre en la papeleta original, cuando ella o una de sus repeticiones ya fue contada. Mientras exista una declaración (publicada o no), la papeleta original y sus repeticiones no se pueden anular, repetir ni abrir; la mesa debe retirarla primero (`DELETE /moderator/rounds/:id/official-result`, registrado en el historial). Una repetición todavía en preparación sí se puede anular, porque no tiene votos. `committee_winners` ya no se escribe: la composición la declara la mesa.
 
 ### Desvinculación física al cerrar la ronda
 

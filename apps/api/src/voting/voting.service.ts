@@ -350,6 +350,7 @@ export class VotingService implements OnModuleInit {
         supportCount: proposal._count.supporters,
         approvalYes: proposal.approvalYes,
         approvalNo: proposal.approvalNo,
+        decidedAt: proposal.decidedAt?.toISOString() ?? null,
       })),
       annulledAt: round.annulledAt?.toISOString() ?? null,
       annulReason: round.annulReason,
@@ -751,7 +752,8 @@ export class VotingService implements OnModuleInit {
     return this.prisma.$transaction(async (tx) => {
       const round = await tx.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
       if (!round || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'approval') throw new ConflictException('El proceso no está en aprobación de candidaturas')
-      const proposal = await tx.committeeProposal.findFirst({ where: { id: proposalId, roundId, status: 'supported' }, select: { id: true } })
+      // Proposals rejected for lacking supports have no decision date and stay out; decided ones can be corrected.
+      const proposal = await tx.committeeProposal.findFirst({ where: { id: proposalId, roundId, OR: [{ status: 'supported' }, { decidedAt: { not: null } }] }, select: { id: true } })
       if (!proposal) throw new NotFoundException('Propuesta apoyada no disponible')
       // Secretaría decided the system does not compute majorities: the mesa records what the delegation decided.
       const yesVotes = input.yesVotes ?? null
@@ -764,8 +766,8 @@ export class VotingService implements OnModuleInit {
 
   async openRound(roundId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
-      const rounds = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; category: string; committee_stage: string | null }>>`
-        SELECT id, assembly_id, status, category, committee_stage FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+      const rounds = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; category: string; committee_stage: string | null; committee_root_round_id: string | null }>>`
+        SELECT id, assembly_id, status, category, committee_stage, committee_root_round_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
       `
       const round = rounds[0]
       if (!round) throw new NotFoundException('Ronda no encontrada')
@@ -780,6 +782,8 @@ export class VotingService implements OnModuleInit {
       if (!assembly || !['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('El ingreso debe estar cerrado antes de abrir una papeleta')
       const otherOpen = await tx.round.findFirst({ where: { assemblyId: round.assembly_id, status: 'open' }, select: { id: true } })
       if (otherOpen) throw new ConflictException('Ya hay una papeleta abierta')
+      // A repetition prepared before the declaration must not open while that declaration is shown as official.
+      if (round.committee_root_round_id) await this.assertNoOfficialResult(tx, round.committee_root_round_id, 'La papeleta original ya tiene un resultado oficial; retíralo antes de abrir esta votación')
       const updated = await tx.round.update({ where: { id: round.id }, data: { status: 'open', openedAt: new Date() }, select: { id: true, assemblyId: true, title: true } })
       if (assembly.status === 'lobby_closed') await tx.assembly.update({ where: { id: round.assembly_id }, data: { status: 'in_progress' } })
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId: round.id, actorRef: MODERATOR_ACTOR, action: 'round.opened', metadata: { committeeStage: round.committee_stage } } })
@@ -961,8 +965,8 @@ export class VotingService implements OnModuleInit {
    */
   async annulRound(roundId: string, reason: string) {
     const annulled = await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; title: string }>>`
-        SELECT id, assembly_id, status, title FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+      const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; title: string; committee_root_round_id: string | null }>>`
+        SELECT id, assembly_id, status, title, committee_root_round_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
       `
       const round = rows[0]
       if (!round) throw new NotFoundException('Ronda no encontrada')
@@ -970,9 +974,9 @@ export class VotingService implements OnModuleInit {
       const assembly = await tx.assembly.findUnique({ where: { id: round.assembly_id }, select: { status: true } })
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
       if (round.status === 'annulled') return { assemblyId: round.assembly_id, title: round.title, previousStatus: round.status, changed: false }
-      if (await tx.officialResult.count({ where: { roundId } })) {
-        throw new ConflictException('Esta papeleta ya tiene un resultado oficial registrado; corrige la declaración en lugar de anularla')
-      }
+      // A repetition's result is declared on the original ballot, so that is where the declaration lives.
+      // A draft has no votes, so discarding it cannot affect the declaration.
+      if (round.status !== 'draft') await this.assertNoOfficialResult(tx, round.committee_root_round_id ?? round.id, 'Ya hay un resultado oficial registrado con esta votación; retíralo antes de anularla')
       if (await tx.round.count({ where: { committeeRootRoundId: roundId, status: 'open' } })) {
         throw new ConflictException('Cierra primero la repetición abierta de esta papeleta')
       }
@@ -1014,6 +1018,7 @@ export class VotingService implements OnModuleInit {
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten nuevas papeletas')
       if (!['lobby_closed', 'in_progress'].includes(assembly?.status ?? '')) throw new ConflictException('Cierra el ingreso antes de preparar una papeleta')
       if (!['closed', 'published', 'annulled'].includes(source.status)) throw new ConflictException('Solo se puede repetir una papeleta cerrada, publicada o anulada')
+      await this.assertNoOfficialResult(tx, source.committeeRootRoundId ?? source.id, 'La papeleta original ya tiene un resultado oficial; retíralo antes de repetir la votación')
       if (source.category === 'committee' && !source.options.some((option) => !option.isNullVote)) throw new ConflictException('Esta comisión todavía no tiene candidaturas para votar')
       const selected = source.options.filter((option) => optionIds.includes(option.id))
       if (selected.length !== optionIds.length) throw new UnprocessableEntityException('Todas las opciones deben pertenecer a la papeleta original')
@@ -1048,6 +1053,34 @@ export class VotingService implements OnModuleInit {
       return round
     })
     return { id: created.id, title: created.title, status: created.status, committeeRootRoundId: created.committeeRootRoundId, electionSeats: created.electionSeats, options: created.options }
+  }
+
+  /** Removes the mesa's declaration (published or not) so the ballot can be repeated or annulled; the audit keeps it. */
+  async withdrawOfficialResult(roundId: string) {
+    const withdrawn = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ assembly_id: string; title: string; status: string }>>`
+        SELECT assembly_id, title, status FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+      `
+      const round = rows[0]
+      if (!round) throw new NotFoundException('Ronda no encontrada')
+      await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${round.assembly_id}::uuid FOR UPDATE`
+      const assembly = await tx.assembly.findUnique({ where: { id: round.assembly_id }, select: { status: true } })
+      if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus resultados')
+      const current = await tx.officialResult.findUnique({ where: { roundId }, include: { options: { include: { option: { select: { label: true } } } } } })
+      if (!current) throw new NotFoundException('Esta papeleta no tiene un resultado oficial registrado')
+      await tx.officialResult.delete({ where: { roundId } })
+      await tx.auditEvent.create({ data: {
+        assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.official_result.withdrawn',
+        metadata: { previous: { optionLabels: current.options.map((item) => item.option.label), note: current.note, publishedAt: current.publishedAt?.toISOString() ?? null } },
+      } })
+      return round
+    })
+    this.realtime.roundState(withdrawn.assembly_id, { roundId, status: withdrawn.status as RoundStatus, title: withdrawn.title })
+    return { roundId, withdrawn: true }
+  }
+
+  private async assertNoOfficialResult(tx: Prisma.TransactionClient, rootRoundId: string, message: string) {
+    if (await tx.officialResult.count({ where: { roundId: rootRoundId } })) throw new ConflictException(message)
   }
 
   private nullVoteOption(order: number) {

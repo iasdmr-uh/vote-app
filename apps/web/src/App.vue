@@ -19,7 +19,7 @@ type PublicState = {
   results?: Array<{ label: string; count: number; isNullVote?: boolean }>
   officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredAt: string }
   rounds?: Array<{
-    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null }>; electionSeats?: number | null; annulledAt?: string | null; annulReason?: string | null; options: Array<{ id: string; label: string; candidateParticipantId?: string | null; isNullVote?: boolean }>
+    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null; decidedAt?: string | null }>; electionSeats?: number | null; annulledAt?: string | null; annulReason?: string | null; options: Array<{ id: string; label: string; candidateParticipantId?: string | null; isNullVote?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number; isNullVote?: boolean }>
     officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null } | null
     secrecyCleanupPending?: boolean
@@ -602,6 +602,8 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown) {
             ? { title: '¿Anular esta papeleta?', consequence: 'Sus votos se eliminarán y nunca se contarán ni publicarán. Quedará registrado el motivo. Después puedes repetir la votación.', label: 'Anular papeleta' }
           : path.endsWith('/repeat')
             ? { title: '¿Preparar una nueva votación?', consequence: 'Se crea una papeleta con las opciones seleccionadas y «Voto nulo». Ábrela cuando la Asamblea lo decida.', label: 'Preparar nueva votación' }
+          : method === 'DELETE' && path.endsWith('/official-result')
+            ? { title: '¿Retirar la declaración oficial?', consequence: 'Dejará de mostrarse en teléfonos y proyector. Quedará registrada en el historial. Después puedes repetir o anular la votación.', label: 'Retirar declaración' }
           : path.endsWith('/publish')
             ? { title: '¿Publicar resultados?', consequence: 'Los conteos agregados se harán visibles para participantes y proyector.', label: 'Publicar resultados' }
             : removed
@@ -907,7 +909,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <p id="moderation-confirm-description">{{ moderationConfirmation.consequence }}</p>
         <div class="confirmation-actions">
           <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
-          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
+          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
         </div>
       </section>
     </div>
@@ -1070,8 +1072,8 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                 <div v-if="historyRound.committeeProposals?.length" class="committee-proposals">
                   <h4>Propuestas, apoyos y aprobación<span v-if="historyRound.committeeConfiguration?.candidateCount"> · {{ historyRound.committeeProposals.filter((proposal) => proposal.status === 'approved').length }} de {{ historyRound.committeeConfiguration.candidateCount }} candidatos aprobados</span></h4>
                   <ul class="option-list"><li v-for="proposal in historyRound.committeeProposals" :key="proposal.id">{{ proposal.candidateName }} · {{ proposal.supportCount }} apoyos · {{ proposal.status }}<span v-if="proposal.approvalYes !== null"> · aprobación agregada: {{ proposal.approvalYes }} sí / {{ proposal.approvalNo }} no</span></li></ul>
-                  <div v-if="historyRound.committeeStage === 'approval'" v-for="proposal in historyRound.committeeProposals" :key="`approval-${proposal.id}`" class="approval-entry">
-                    <strong>{{ proposal.candidateName }}</strong><label>Sí (opcional)<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.yesVotes ?? ''" @input="updateCommitteeApproval(proposal.id, 'yesVotes', ($event.target as HTMLInputElement).value)" /></label><label>No (opcional)<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.noVotes ?? ''" @input="updateCommitteeApproval(proposal.id, 'noVotes', ($event.target as HTMLInputElement).value)" /></label><button class="secondary" @click="recordCommitteeApproval(historyRound, proposal.id, 'approved')">Aprobada por la delegación</button><button class="link-button remove-link" @click="recordCommitteeApproval(historyRound, proposal.id, 'rejected')">Rechazada</button>
+                  <div v-if="historyRound.committeeStage === 'approval'" v-for="proposal in historyRound.committeeProposals.filter((item) => item.status === 'supported' || item.decidedAt)" :key="`approval-${proposal.id}`" class="approval-entry">
+                    <strong>{{ proposal.candidateName }}<template v-if="proposal.decidedAt"> · {{ proposal.status === 'approved' ? 'aprobada' : 'rechazada' }} (se puede corregir)</template></strong><label>Sí (opcional)<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.yesVotes ?? ''" @input="updateCommitteeApproval(proposal.id, 'yesVotes', ($event.target as HTMLInputElement).value)" /></label><label>No (opcional)<input type="number" min="0" :value="committeeApprovalCounts[proposal.id]?.noVotes ?? ''" @input="updateCommitteeApproval(proposal.id, 'noVotes', ($event.target as HTMLInputElement).value)" /></label><button class="secondary" @click="recordCommitteeApproval(historyRound, proposal.id, 'approved')">Aprobada por la delegación</button><button class="link-button remove-link" @click="recordCommitteeApproval(historyRound, proposal.id, 'rejected')">Rechazada</button>
                   </div>
                 </div>
                 <div class="action-row" v-if="historyRound.status === 'draft' && historyRound.committeeStage">
@@ -1109,6 +1111,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                   <button class="secondary" :disabled="loading">{{ historyRound.officialResult ? 'Corregir declaración' : 'Registrar resultado oficial' }}</button>
                   <button v-if="historyRound.officialResult && !historyRound.officialResult.publishedAt && roundChain(historyRound).some((item) => item.status === 'published')" type="button" class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result/publish`)">Publicar declaración</button>
                   <span v-else-if="historyRound.officialResult?.publishedAt" class="status-line">Visible al público</span>
+                  <button v-if="historyRound.officialResult && assemblyStatus !== 'completed'" type="button" class="link-button remove-link" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result`, 'DELETE')">Retirar declaración</button>
                 </div>
               </form>
             </article>

@@ -77,6 +77,21 @@ test('the mesa can annul a ballot, repeat it, and count the null vote apart', {
     assert.deepEqual((await service.publicState(created.joinCode)).officialResult?.elected.map((item) => item.label), ['María López'])
     assert.equal((await service.annulRound(round.id, 'otra vez')).status, 'annulled', 'annulling again is a no-op')
 
+    // Review of PR #28: a standing declaration cannot be undermined by annulling or repeating its votes.
+    await assert.rejects(service.annulRound(repeat.id, 'después de declarar'), /retíralo antes de anularla/)
+    await assert.rejects(service.repeatRound(repeat.id, { optionIds: [repeat.options[0]!.id] }), /retíralo antes de repetir/)
+    await assert.rejects(service.repeatRound(round.id, { optionIds: [round.options[1]!.id] }), /retíralo antes de repetir/)
+    assert.equal((await service.publicState(created.joinCode)).officialResult?.elected[0]?.label, 'María López', 'the published declaration still matches counted votes')
+    await service.withdrawOfficialResult(round.id)
+    assert.equal('officialResult' in await service.publicState(created.joinCode), false, 'a withdrawn declaration disappears from public screens')
+    assert.equal(await prisma.auditEvent.count({ where: { roundId: round.id, action: 'round.official_result.withdrawn' } }), 1)
+    // A repetition prepared before a new declaration cannot open while that declaration stands, but can be discarded.
+    const second = await service.repeatRound(round.id, { optionIds: [round.options[1]!.id] })
+    await service.declareOfficialResult(round.id, { optionIds: [round.options[1]!.id] })
+    await assert.rejects(service.openRound(second.id), /retíralo antes de abrir/)
+    assert.equal((await service.annulRound(second.id, 'Ya no hace falta')).status, 'annulled')
+    await assert.rejects(service.annulRound(repeat.id, 'después de declarar'), /retíralo antes de anularla/)
+
     const secretary = await service.createRound(assemblyId, {
       title: 'Secretaría', format: 'single_choice', options: [{ label: 'Rosa' }, { label: 'Pedro' }], countingRule: { kind: 'count_only' },
     })

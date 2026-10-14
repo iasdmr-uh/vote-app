@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -189,6 +190,11 @@ export class ModeratorController {
   @Put('rounds/:roundId/official-result')
   officialResult(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: OfficialResultDto) {
     return this.voting.declareOfficialResult(roundId, input)
+  }
+
+  @Delete('rounds/:roundId/official-result')
+  withdrawOfficialResult(@Param('roundId', ParseUUIDPipe) roundId: string) {
+    return this.voting.withdrawOfficialResult(roundId)
   }
 
   @Post('rounds/:roundId/official-result/publish')
