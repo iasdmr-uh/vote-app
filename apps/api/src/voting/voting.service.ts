@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
 import { Prisma } from '../generated/prisma/client.js'
@@ -366,6 +367,7 @@ export class VotingService {
       await tx.assembly.update({ where: { id: assemblyId }, data: { joinCodeHash: hashCredential(joinCode) } })
       await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'assembly.join_code_rotated' } })
     })
+    this.realtime.publicSessionsRevoked(assemblyId)
     return { joinCode, joinUrl: this.appUrl({ join: joinCode }) }
   }
 
@@ -819,7 +821,14 @@ export class VotingService {
       }
       return { ...updated, changed: true, tieBreakRoundId }
     })
-    if (round.changed) await this.compactAnonymousVotes()
+    // Also runs when the round was already closed, so repeating "close" retries a failed cleanup.
+    let secrecyCleanupPending = false
+    try {
+      await this.ensureVotesUnlinked(round.assemblyId)
+    } catch (error) {
+      secrecyCleanupPending = true
+      this.logger.error(`Vote unlinking did not complete for assembly ${round.assemblyId}; publishing stays blocked: ${(error as Error).message}`)
+    }
     const [recorded, eligible, title] = await Promise.all([
       this.prisma.participation.count({ where: { roundId } }),
       this.prisma.participantSession.count({ where: { assemblyId: round.assemblyId, status: 'active' } }),
@@ -831,7 +840,11 @@ export class VotingService {
       if (round.status === 'closed') this.realtime.roundClosed(round.assemblyId, roundId)
       this.realtime.participationCount(round.assemblyId, { roundId, recorded, eligible })
     }
-    return { roundId, status: round.status, participation: { recorded, eligible }, ...(round.tieBreakRoundId ? { tieBreakRoundId: round.tieBreakRoundId } : {}) }
+    return {
+      roundId, status: round.status, participation: { recorded, eligible },
+      ...(round.tieBreakRoundId ? { tieBreakRoundId: round.tieBreakRoundId } : {}),
+      ...(secrecyCleanupPending ? { secrecyCleanupPending: true } : {}),
+    }
   }
 
   async publishRound(roundId: string) {
@@ -843,15 +856,23 @@ export class VotingService {
     }
     let publishedNow = false
     if (current.status === 'closed') {
+      try {
+        await this.ensureVotesUnlinked(current.assemblyId)
+      } catch (error) {
+        this.logger.error(`Vote unlinking did not complete for assembly ${current.assemblyId}; refusing to publish: ${(error as Error).message}`)
+        throw new ServiceUnavailableException('No se completó la limpieza que protege el secreto del voto. No se publicaron resultados; reintenta en unos segundos.')
+      }
       await this.prisma.$transaction(async (tx) => {
         const roundRows = await tx.$queryRaw<Array<{ assembly_id: string }>>`SELECT assembly_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
         if (!roundRows[0]) throw new NotFoundException('Ronda no encontrada')
         await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${roundRows[0].assembly_id}::uuid FOR UPDATE`
         const assembly = await tx.assembly.findUnique({ where: { id: roundRows[0].assembly_id }, select: { status: true } })
         if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus resultados')
-        const latest = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true } })
+        const latest = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true, votesUnlinkedAt: true } })
         if (latest.status === 'published') return
         if (latest.status !== 'closed') throw new ConflictException('La papeleta debe estar cerrada para publicar')
+        const stillLinked = await tx.round.count({ where: { assemblyId: current.assemblyId, status: { in: ['closed', 'published'] }, votesUnlinkedAt: null } })
+        if (stillLinked) throw new ServiceUnavailableException('No se completó la limpieza que protege el secreto del voto. No se publicaron resultados; reintenta en unos segundos.')
         await tx.round.update({ where: { id: roundId }, data: { status: 'published', publishedAt: new Date() } })
         await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.results_published' } })
         publishedNow = true
@@ -1002,13 +1023,26 @@ export class VotingService {
     `
   }
 
+  /**
+   * Completes unlinking for every closed round of the assembly that has not finished it, including
+   * committee tie-break rounds that are never published on their own. Safe to repeat: shuffling again
+   * only adds dead tuples that the same VACUUM removes. Throws if the cleanup cannot complete.
+   */
+  private async ensureVotesUnlinked(assemblyId: string) {
+    const pending = await this.prisma.round.findMany({
+      where: { assemblyId, status: { in: ['closed', 'published'] }, votesUnlinkedAt: null }, select: { id: true },
+    })
+    if (!pending.length) return
+    await this.prisma.$transaction(async (tx) => {
+      for (const { id } of pending) await this.unlinkRoundVotes(tx, id)
+    })
+    await this.vacuumAnonymousVotes()
+    await this.prisma.round.updateMany({ where: { id: { in: pending.map(({ id }) => id) } }, data: { votesUnlinkedAt: new Date() } })
+  }
+
   /** Physically removes the dead pre-shuffle tuples, which otherwise keep their original `xmin` until vacuumed. */
-  private async compactAnonymousVotes() {
-    try {
-      await this.prisma.$executeRawUnsafe('VACUUM FULL anonymous_votes')
-    } catch (error) {
-      this.logger.error(`VACUUM FULL anonymous_votes failed; old vote tuples may remain linkable until vacuumed: ${(error as Error).message}`)
-    }
+  protected async vacuumAnonymousVotes() {
+    await this.prisma.$executeRawUnsafe('VACUUM FULL anonymous_votes')
   }
 
   private async publishedResults(roundId: string) {

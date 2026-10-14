@@ -17,8 +17,10 @@ test('moderator and delegates can recover from lost devices without enabling a s
   const prisma = new PrismaService()
   await prisma.$connect()
   const replacedSessions: string[] = []
+  const revokedPublicAssemblies: string[] = []
   const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
     if (name === 'participantSessionReplaced') replacedSessions.push(String(args[0]))
+    if (name === 'publicSessionsRevoked') revokedPublicAssemblies.push(String(args[0]))
   } }) as RealtimeGateway
   const service = new VotingService(prisma, realtime)
   const auth = new AuthService(prisma)
@@ -31,6 +33,7 @@ test('moderator and delegates can recover from lost devices without enabling a s
 
     const rotated = await service.rotateJoinCode(assemblyId)
     assert.ok(rotated.joinUrl.includes(encodeURIComponent(rotated.joinCode)))
+    assert.deepEqual(revokedPublicAssemblies, [assemblyId], 'projector sockets using the old code are disconnected')
     await assert.rejects(service.joinAssembly(created.joinCode, 'Old', 'Code'), NotFoundException)
     const ana = await service.joinAssembly(rotated.joinCode, 'Ana', 'Lopez')
     const anaId = (await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(ana.participantSessionToken) } })).id

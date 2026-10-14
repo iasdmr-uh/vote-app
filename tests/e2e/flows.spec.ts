@@ -681,3 +681,32 @@ test('delegado reconecta su sesión en un dispositivo nuevo con el QR de la mesa
   await expect(page).toHaveURL(/\/$/)
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('synthetic-resumed-token')
 })
+
+test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ page }) => {
+  let publicStateCalls = 0
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'synthetic-participant-token')
+    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: participantState() })
+      return
+    }
+    if (url.pathname.endsWith('/assemblies/ROTATED-CODE/public-state')) {
+      publicStateCalls += 1
+      await route.fulfill({ status: 404, json: { message: 'Asamblea no encontrada' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/?join=ROTATED-CODE')
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
+  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(publicStateCalls).toBe(1)
+})

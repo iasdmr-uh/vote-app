@@ -88,6 +88,7 @@ const projectorFullscreen = ref(false)
 let refreshTimer: number | undefined
 let realtimeSocket: Socket | null = null
 let lastRefreshAt = 0
+let incomingJoinChecked = false
 let refreshQueued = false
 let scheduledRefresh: number | undefined
 const POLL_WHILE_DISCONNECTED_MS = 7_000
@@ -288,16 +289,19 @@ async function loadState() {
         sessionAssemblyId.value = participantAssemblyId
         localStorage.setItem('participantAssemblyId', participantAssemblyId)
       }
-      if (incomingJoinCode && participantAssemblyId) {
+      // Checked once per page load: the QR code in the URL may have been rotated since, which must not break a valid session.
+      if (incomingJoinCode && participantAssemblyId && !incomingJoinChecked) {
+        incomingJoinChecked = true
         const target = await request<Record<string, any>>(`/assemblies/${encodeURIComponent(incomingJoinCode)}/public-state`)
-        const targetAssemblyId = String(target.assembly?.id || '')
+          .catch((e) => { if (e instanceof ApiRequestError && e.status === 404) return null; throw e })
+        const targetAssemblyId = String(target?.assembly?.id || '')
         if (targetAssemblyId && targetAssemblyId !== participantAssemblyId) {
           pendingJoinCode.value = incomingJoinCode
           state.value = null
         }
         else {
           pendingJoinCode.value = ''
-          code.value = incomingJoinCode
+          if (target) code.value = incomingJoinCode
         }
       }
     } catch (e) {
@@ -564,6 +568,10 @@ async function confirmModeratorAction() {
     const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
     notice.value = 'Acción registrada.'
     succeeded = true
+    if ((result as { secrecyCleanupPending?: boolean })?.secrecyCleanupPending) {
+      notice.value = ''
+      error.value = 'La votación se cerró, pero no terminó la limpieza que protege el secreto del voto. No se podrán publicar resultados hasta completarla: vuelve a pulsar «Cerrar votación» o «Publicar resultados» en unos segundos.'
+    }
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }

@@ -102,6 +102,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   participantUpdated(assemblyId: string, payload: Parameters<RealtimePublisher['participantUpdated']>[1]): void { this.publisher().participantUpdated(assemblyId, payload) }
   participantRemoved(assemblyId: string, participantId: string): void { this.publisher().participantRemoved(assemblyId, participantId) }
   participantSessionReplaced(participantId: string): void { this.publisher().participantSessionReplaced(participantId) }
+  publicSessionsRevoked(assemblyId: string): void { this.publisher().publicSessionsRevoked(assemblyId) }
   participantState(sessionId: string, payload: Parameters<RealtimePublisher['participantState']>[1]): void { this.publisher().participantState(sessionId, payload) }
   roundState(assemblyId: string, payload: Parameters<RealtimePublisher['roundState']>[1]): void { this.publisher().roundState(assemblyId, payload) }
   roundOpened(assemblyId: string, payload: Parameters<RealtimePublisher['roundOpened']>[1]): void { this.publisher().roundOpened(assemblyId, payload) }
@@ -173,6 +174,11 @@ export class RealtimePublisher {
   /** The previous device's token no longer authenticates, so its live sockets must not keep receiving events. */
   participantSessionReplaced(participantId: string): void {
     this.server.in(`participant:${participantId}`).disconnectSockets(true)
+  }
+
+  /** Public sockets authenticated with a rotated join code must not keep receiving assembly events. */
+  publicSessionsRevoked(assemblyId: string): void {
+    this.server.in(publicRoom(assemblyId)).disconnectSockets(true)
   }
 
   participantState(sessionId: string, payload: RealtimeServerToClientEvents['participant.state'] extends (arg: infer P) => void ? P : never): void {
