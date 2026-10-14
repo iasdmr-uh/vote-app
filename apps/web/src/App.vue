@@ -32,7 +32,9 @@ const route = ref(window.location.pathname)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
-const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+/** Required reason typed in the confirmation dialog; sent as `reason` in the request body. */
+const moderationReason = ref('')
 const state = ref<PublicState | null>(null)
 const urlParams = new URLSearchParams(window.location.search)
 const incomingJoinCode = urlParams.get('join') || urlParams.get('code') || ''
@@ -124,6 +126,11 @@ function isDecidable(target: NonNullable<PublicState['rounds']>[number]) {
 }
 function rankOf(results: Array<{ count: number; isNullVote?: boolean }>, index: number) {
   return results[index]?.isNullVote ? '' : `${index + 1}.`
+}
+/** Share of all counted votes (null votes included), rounded for the projector. */
+function resultPercent(results: Array<{ count: number }>, count: number) {
+  const total = results.reduce((sum, result) => sum + result.count, 0)
+  return total ? Math.round((count / total) * 100) : 0
 }
 const eligibleCommitteeCandidates = computed(() => (state.value?.participants || []).filter((person) => person.assemblyRole === 'delegate' && person.committeeEligible))
 const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar resultados']
@@ -559,10 +566,16 @@ function updateCommitteeApproval(proposalId: string, field: 'yesVotes' | 'noVote
 }
 
 function annulRound(target: { id: string; title: string }) {
-  const reason = window.prompt(`Motivo para anular «${target.title}» (quedará registrado):`, '')
-  if (reason === null) return
-  if (!reason.trim()) { error.value = 'Escribe el motivo de la anulación.'; return }
-  void moderatorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/annul`, 'POST', { reason: reason.trim() })
+  moderationReason.value = ''
+  moderationConfirmation.value = {
+    title: '¿Anular esta papeleta?',
+    consequence: `Los votos de «${target.title}» se eliminarán y nunca se contarán ni publicarán. Teléfonos y proyector mostrarán «Votación anulada». Después puedes repetir la votación.`,
+    label: 'Anular papeleta',
+    path: `/moderator/rounds/${encodeURIComponent(target.id)}/annul`,
+    method: 'POST',
+    reasonLabel: 'Motivo (obligatorio, queda en el registro)',
+    reasonPlaceholder: 'Ej.: Se detectó un error en las opciones de la papeleta',
+  }
 }
 
 function repeatRound(target: NonNullable<PublicState['rounds']>[number], optionIds = repeatSelections.value[target.id] || []) {
@@ -598,8 +611,6 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown) {
         ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación' }
         : path.endsWith('/close')
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos. Los resultados seguirán ocultos hasta que la mesa decida publicarlos.', label: 'Cerrar votación' }
-          : path.endsWith('/annul')
-            ? { title: '¿Anular esta papeleta?', consequence: 'Sus votos se eliminarán y nunca se contarán ni publicarán. Quedará registrado el motivo. Después puedes repetir la votación.', label: 'Anular papeleta' }
           : path.endsWith('/repeat')
             ? { title: '¿Preparar una nueva votación?', consequence: 'Se crea una papeleta con las opciones seleccionadas y «Voto nulo». Ábrela cuando la Asamblea lo decida.', label: 'Preparar nueva votación' }
           : method === 'DELETE' && path.endsWith('/official-result')
@@ -615,6 +626,9 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown) {
 async function confirmModeratorAction() {
   const action = moderationConfirmation.value
   if (!action || loading.value) return
+  const reason = moderationReason.value.trim()
+  if (action.reasonLabel && !reason) return
+  if (action.reasonLabel) action.body = { ...(action.body as object | undefined), reason }
   moderationConfirmation.value = null
   error.value = ''
   loading.value = true
@@ -907,9 +921,10 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <p class="eyebrow">CONFIRMACIÓN DE MESA</p>
         <h2 id="moderation-confirm-title">{{ moderationConfirmation.title }}</h2>
         <p id="moderation-confirm-description">{{ moderationConfirmation.consequence }}</p>
+        <label v-if="moderationConfirmation.reasonLabel" class="confirmation-reason">{{ moderationConfirmation.reasonLabel }}<textarea v-model="moderationReason" rows="3" maxlength="1000" required :placeholder="moderationConfirmation.reasonPlaceholder"></textarea></label>
         <div class="confirmation-actions">
           <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
-          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
+          <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim())" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
         </div>
       </section>
     </div>
@@ -967,8 +982,8 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <fieldset class="options"><legend>Opciones de la papeleta</legend>
             <label v-for="option in round.options" :key="option.id" :class="['option', { 'null-vote-option': option.isNullVote }]"><input :type="round.format === 'multiple_choice' ? 'checkbox' : 'radio'" name="option" :value="option.id" :checked="selectedOptions.includes(option.id)" @change="toggleBallotOption(option.id, ($event.target as HTMLInputElement).checked)" /><span>{{ option.label }}</span></label>
           </fieldset>
-          <button class="primary" :disabled="loading || voteSubmitting || !selectedOptions.length" @click="reviewVote">Revisar y confirmar voto</button>
-          <p class="privacy-note">Tu selección es definitiva después de confirmarla.</p>
+          <button class="primary ballot-submit" :disabled="loading || voteSubmitting || !selectedOptions.length" @click="reviewVote">Revisar y confirmar voto</button>
+          <p class="ballot-warning">Tu voto es secreto. Una vez confirmado, no podrás cambiarlo.</p>
         </template>
         <template v-else-if="round?.category === 'committee' && round.committeeStage === 'proposals'">
           <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Registrar propuesta</h2><p class="lead">Presenta una candidatura de la lista confirmada como elegible por moderación. No se admiten personas con los cargos excluidos.</p><form @submit.prevent="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals`, { candidateParticipantId: participantCandidateSelection })"><label>Candidatura<select v-model="participantCandidateSelection" required><option value="" disabled>Selecciona un delegado elegible</option><option v-for="candidate in state?.committeeCandidates || []" :key="candidate.id" :value="candidate.id">{{ candidate.firstName }} {{ candidate.lastName }}</option></select></label><button class="primary" :disabled="loading || !participantCandidateSelection">Registrar propuesta</button></form><ul class="option-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id">{{ proposal.candidateName }}</li></ul></section>
@@ -1126,14 +1141,14 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
       <section v-else class="projector-content">
         <p class="eyebrow">ASDMR · UNIÓN HONDUREÑA</p>
         <h1>{{ assemblyStatus === 'completed' ? 'Asamblea finalizada' : round?.status === 'published' ? 'Resultados publicados' : round?.status === 'open' || round?.status === 'closed' || round?.status === 'annulled' ? round.title : 'Sala de Asamblea' }}</h1>
-        <p class="projector-subtitle">{{ assemblyStatus === 'completed' ? `Sesión concluida${completionTime ? ` · ${completionTime}` : ''}` : round?.status === 'annulled' ? 'Votación anulada por la mesa · no se contará' : round?.status === 'open' ? 'Votación abierta' : round?.status === 'closed' ? 'Votación cerrada · resultados ocultos' : round?.status === 'published' ? 'Resultados autorizados por la mesa' : 'Estado: ' + assemblyStatus }}</p>
+        <p class="projector-subtitle">{{ assemblyStatus === 'completed' ? `Sesión concluida${completionTime ? ` · ${completionTime}` : ''}` : round?.status === 'annulled' ? 'Votación anulada por la mesa · no se contará' : round?.status === 'open' ? 'Votación abierta' : round?.status === 'closed' ? 'Votación cerrada · resultados ocultos' : round?.status === 'published' ? `${round.title} · resultados autorizados por la mesa` : 'Estado: ' + assemblyStatus }}</p>
         <p v-if="realtimeActive && !realtimeConnected" class="connection-warning projector-connection-warning" role="status" aria-live="polite">Conexión interrumpida · Intentando reconectar. Los datos mostrados son los últimos confirmados.</p>
-        <div v-if="round?.status === 'published'" class="results-list">
-          <div v-for="(result, index) in state?.results || []" :key="result.label"><span>{{ rankOf(state?.results || [], index) }} {{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong></div>
+        <section v-if="state?.officialResult" class="projector-official-result"><p class="eyebrow">RESULTADO DECLARADO POR LA MESA</p><h2>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</h2><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p><small>Declaración registrada {{ formatDateTime(state.officialResult.declaredAt) }}</small></section>
+        <div v-if="round?.status === 'published'" class="results-list projector-results">
+          <div v-for="(result, index) in state?.results || []" :key="result.label" :class="{ 'null-vote-result': result.isNullVote }"><span>{{ rankOf(state?.results || [], index) }} {{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }} <small>{{ resultPercent(state?.results || [], result.count) }} %</small></strong><span class="result-bar" aria-hidden="true"><span :style="{ width: `${resultPercent(state?.results || [], result.count)}%` }"></span></span></div>
           <p class="projector-result-total">Total: {{ (state?.results || []).reduce((total, result) => total + result.count, 0) }} {{ (state?.results || []).reduce((total, result) => total + result.count, 0) === 1 ? 'voto' : 'votos' }}</p>
           <p class="projector-results-note">Ordenado por votos · la mesa declara el resultado oficial</p>
         </div>
-        <section v-if="state?.officialResult" class="projector-official-result"><p class="eyebrow">RESULTADO DECLARADO POR LA MESA</p><h2>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</h2><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p><small>Declaración registrada {{ formatDateTime(state.officialResult.declaredAt) }}</small></section>
         <div v-if="round?.status === 'open' || round?.status === 'closed'" class="projector-progress" aria-live="polite">
           <strong>{{ state?.recordedCount ?? 0 }}</strong>
           <span>de {{ state?.eligibleCount ?? state?.participantCount ?? 0 }} {{ (state?.eligibleCount ?? state?.participantCount ?? 0) === 1 ? 'voto recibido' : 'votos recibidos' }}</span>

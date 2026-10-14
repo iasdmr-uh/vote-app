@@ -193,10 +193,12 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await expect(ranking).toContainText('2. Alfa')
   await expect(ranking.locator('div').last()).toHaveText(/^\s*Voto nulo\s*2$/)
 
-  page.once('dialog', (dialog) => dialog.accept('Nombre mal escrito'))
   await page.getByRole('button', { name: 'Anular votación' }).click()
-  await expect(page.getByRole('dialog')).toContainText('Sus votos se eliminarán')
-  await page.getByRole('dialog').getByRole('button', { name: 'Anular papeleta' }).click()
+  const annulDialog = page.getByRole('dialog')
+  await expect(annulDialog).toContainText('se eliminarán y nunca se contarán')
+  await expect(annulDialog.getByRole('button', { name: 'Anular papeleta' })).toBeDisabled()
+  await annulDialog.getByLabel('Motivo (obligatorio, queda en el registro)').fill('Nombre mal escrito')
+  await annulDialog.getByRole('button', { name: 'Anular papeleta' }).click()
   await expect(page.getByText('Papeleta anulada: Nombre mal escrito.')).toBeVisible()
 
   const repeatForm = page.locator('.official-round').first().getByRole('group', { name: 'Nueva votación con las opciones seleccionadas' })
