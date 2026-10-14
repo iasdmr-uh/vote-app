@@ -179,21 +179,26 @@ test('database nomination flow keeps votes secret, ranks candidates without elec
     assemblyId = activeAssemblyId
     const candidates = await Promise.all(Array.from({ length: 6 }, (_, index) => prisma.participantSession.create({ data: {
       assemblyId: activeAssemblyId, firstName: `Candidate${index}`, lastName: 'Delegate', tokenHash: hashCredential(newOpaqueCredential()),
-      assemblyRole: 'delegate', committeeEligible: true,
     } })))
-    const president = await prisma.participantSession.create({ data: { assemblyId: activeAssemblyId, firstName: 'President', lastName: 'Excluded', tokenHash: hashCredential(newOpaqueCredential()), assemblyRole: 'president', committeeEligible: true } })
+    // Nobody is marked with a role or eligibility: Secretaría decided the system does not check it.
+    const president = await prisma.participantSession.create({ data: { assemblyId: activeAssemblyId, firstName: 'President', lastName: 'Officer', tokenHash: hashCredential(newOpaqueCredential()), assemblyRole: 'president' } })
+    const outsider = await prisma.participantSession.create({ data: { assemblyId: (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Other', status: 'completed', joinCodeHash: hashCredential(newOpaqueCredential()) } })).id, firstName: 'Other', lastName: 'Assembly', tokenHash: hashCredential(newOpaqueCredential()) } })
     const proposalRound = await prisma.round.create({ data: {
       assemblyId: activeAssemblyId, title: 'Propuestas', format: 'multiple_choice', category: 'committee', committeeType: 'nomination',
       memberCount: 5, committeeStage: 'proposals', status: 'draft', countingRule: { kind: 'count_only' },
-      committeeConfiguration: { proposalRule: 'eligible_delegate_only', supportRule: 'one_per_eligible_delegate', supportMinimum: 1 },
+      committeeConfiguration: { supportMinimum: 1 },
     } })
-    await assert.rejects(service.submitCommitteeProposal(candidates[0]!.id, proposalRound.id, president.id), UnprocessableEntityException)
+    assert.equal((await service.participantState(candidates[0]!.id)).committeeCandidates?.length, 7, 'every active participant can be proposed')
+    await assert.rejects(service.submitCommitteeProposal(candidates[0]!.id, proposalRound.id, outsider.id), UnprocessableEntityException)
+    await service.submitCommitteeProposal(president.id, proposalRound.id, candidates[3]!.id)
+    await service.submitCommitteeProposal(candidates[4]!.id, proposalRound.id, president.id)
     const proposal = await service.submitCommitteeProposal(candidates[0]!.id, proposalRound.id, candidates[1]!.id)
     await prisma.round.update({ where: { id: proposalRound.id }, data: { committeeStage: 'support' } })
+    await service.supportCommitteeProposal(president.id, proposalRound.id, proposal.id)
     await service.supportCommitteeProposal(candidates[2]!.id, proposalRound.id, proposal.id)
     await assert.rejects(service.supportCommitteeProposal(candidates[2]!.id, proposalRound.id, proposal.id), ConflictException)
     const supportState = await service.participantState(candidates[2]!.id)
-    assert.equal(supportState.committeeProposals?.[0]?.supportedByMe, true)
+    assert.equal(supportState.committeeProposals?.find((item) => item.id === proposal.id)?.supportedByMe, true)
     assert.equal(JSON.stringify(supportState).includes('supporterParticipantId'), false)
     const round = await prisma.round.create({ data: {
       assemblyId: activeAssemblyId, title: 'Comisión de Nombramiento', format: 'multiple_choice', category: 'committee', committeeType: 'nomination',
@@ -250,6 +255,8 @@ test('database nomination flow keeps votes secret, ranks candidates without elec
       await prisma.participantSession.deleteMany({ where: { assemblyId } })
       await prisma.assembly.deleteMany({ where: { id: assemblyId } })
     }
+    await prisma.participantSession.deleteMany({ where: { assembly: { organizationId } } })
+    await prisma.assembly.deleteMany({ where: { organizationId } })
     await prisma.organization.deleteMany({ where: { id: organizationId } })
     await prisma.$disconnect()
   }

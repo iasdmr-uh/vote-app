@@ -212,7 +212,8 @@ export class VotingService implements OnModuleInit {
     const liveNominationStage = round?.status === 'draft' ? round.committeeStage : null
     const proposals = liveNominationStage && ['proposals', 'support'].includes(liveNominationStage)
       ? await this.prisma.participantSession.findMany({
-          where: { assemblyId: participant.assemblyId, status: 'active', committeeEligible: true, assemblyRole: 'delegate' },
+          // Secretaría (Oct 2026): eligibility is not checked by the system; the mesa filters at approval.
+          where: { assemblyId: participant.assemblyId, status: 'active' },
           orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], select: { id: true, firstName: true, lastName: true },
         }) : undefined
     const committeeProposals = round && liveNominationStage && ['proposals', 'support'].includes(liveNominationStage)
@@ -243,7 +244,7 @@ export class VotingService implements OnModuleInit {
     if (!optionIds.length || optionIds.some((id) => !id)) throw new UnprocessableEntityException('Selecciona al menos una opción válida')
     const participant = await this.prisma.participantSession.findUnique({
       where: { id: participantId },
-      select: { id: true, assemblyId: true, status: true, assemblyRole: true, committeeEligible: true },
+      select: { id: true, assemblyId: true, status: true },
     })
     if (!participant || participant.status !== 'active') throw new ForbiddenException()
     try {
@@ -591,8 +592,7 @@ export class VotingService implements OnModuleInit {
       rules.institutionallyValidated && input.decisionNote?.trim() && rules.validationReference?.trim() && rules.eligibilityRule?.trim() && rules.votingMethod?.trim(),
     )
     const nominationReady = input.committeeType === 'nomination' && Boolean(
-      validated && rules.proposalRule === 'eligible_delegate_only' && rules.supportRule === 'one_per_eligible_delegate' &&
-      Number.isInteger(Number(rules.supportMinimum)) && Number(rules.supportMinimum) > 0 &&
+      validated && Number.isInteger(Number(rules.supportMinimum)) && Number(rules.supportMinimum) > 0 &&
       Number.isInteger(Number(rules.candidateCount)) && Number(rules.candidateCount) >= (input.memberCount ?? 5),
     )
     let stage: 'configuration_required' | 'proposals' | 'election' | null = category !== 'committee' ? null
@@ -608,18 +608,16 @@ export class VotingService implements OnModuleInit {
       if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten nuevas papeletas')
       if (!['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('Cierra el ingreso antes de preparar una papeleta')
       if (input.committeeType === 'nomination' && stage === 'proposals') {
-        const roleCounts = await Promise.all((['president', 'vice_president', 'secretary', 'treasurer'] as const).map((assemblyRole) =>
-          tx.participantSession.count({ where: { assemblyId, status: 'active', assemblyRole } })))
-        const eligibleCount = await tx.participantSession.count({ where: { assemblyId, status: 'active', assemblyRole: 'delegate', committeeEligible: true } })
-        if (roleCounts.some((count) => count < 1) || eligibleCount < (input.memberCount ?? 5) || Number(rules.supportMinimum) > eligibleCount) stage = 'configuration_required'
+        const participantCount = await tx.participantSession.count({ where: { assemblyId, status: 'active' } })
+        if (Number(rules.supportMinimum) > participantCount) stage = 'configuration_required'
       }
       if (category === 'committee' && input.committeeType !== 'nomination' && validated) {
         const candidateIds = options.map((option) => option.candidateParticipantId)
         if (candidateIds.some((id) => !id) || new Set(candidateIds).size !== candidateIds.length) {
-          throw new UnprocessableEntityException('Selecciona participantes distintos marcados como elegibles para esta comisión')
+          throw new UnprocessableEntityException('Selecciona participantes distintos para esta comisión')
         }
-        const eligibleCandidates = await tx.participantSession.count({ where: { assemblyId, id: { in: candidateIds as string[] }, status: 'active', assemblyRole: 'delegate', committeeEligible: true } })
-        if (eligibleCandidates !== candidateIds.length) throw new UnprocessableEntityException('Cada integrante debe estar activo y confirmado como elegible por Secretaría o la mesa')
+        const activeCandidates = await tx.participantSession.count({ where: { assemblyId, id: { in: candidateIds as string[] }, status: 'active' } })
+        if (activeCandidates !== candidateIds.length) throw new UnprocessableEntityException('Cada integrante debe ser un participante activo de esta Asamblea')
       }
       const created = await tx.round.create({
         data: {
@@ -672,19 +670,17 @@ export class VotingService implements OnModuleInit {
         if (round.committee_type === 'nomination') {
           const supportMinimum = Number(config.supportMinimum)
           const candidateCount = Number(config.candidateCount)
-          const ready = Boolean(config.proposalRule === 'eligible_delegate_only' && config.supportRule === 'one_per_eligible_delegate' && Number.isInteger(supportMinimum) && supportMinimum >= 1 && Number.isInteger(candidateCount) && candidateCount >= memberCount)
-          const roleCounts = await Promise.all((['president', 'vice_president', 'secretary', 'treasurer'] as const).map((assemblyRole) =>
-            tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active', assemblyRole } })))
-          const eligibleCount = await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active', assemblyRole: 'delegate', committeeEligible: true } })
-          if (ready && roleCounts.every((count) => count > 0) && eligibleCount >= memberCount && supportMinimum <= eligibleCount) nextStage = round.committee_stage === 'support' ? 'support' : 'proposals'
+          const ready = Boolean(Number.isInteger(supportMinimum) && supportMinimum >= 1 && Number.isInteger(candidateCount) && candidateCount >= memberCount)
+          const participantCount = await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active' } })
+          if (ready && supportMinimum <= participantCount) nextStage = round.committee_stage === 'support' ? 'support' : 'proposals'
         } else if (round.committee_type === 'finance' || round.committee_type === 'statutes') {
-          const eligibleOptions = await tx.ballotOption.count({ where: { roundId, candidateParticipantId: { not: null }, candidateParticipant: { is: { status: 'active', assemblyRole: 'delegate', committeeEligible: true } } } })
+          const activeOptions = await tx.ballotOption.count({ where: { roundId, candidateParticipantId: { not: null }, candidateParticipant: { is: { status: 'active' } } } })
           const optionCount = await tx.ballotOption.count({ where: { roundId, isNullVote: false } })
-          if ([3, 5].includes(memberCount) && optionCount >= memberCount && eligibleOptions === optionCount) nextStage = 'election'
+          if ([3, 5].includes(memberCount) && optionCount >= memberCount && activeOptions === optionCount) nextStage = 'election'
         } else if (round.committee_type === 'plans' || round.committee_type === 'other') {
           const optionCount = await tx.ballotOption.count({ where: { roundId, isNullVote: false } })
-          const eligibleOptions = await tx.ballotOption.count({ where: { roundId, candidateParticipantId: { not: null }, candidateParticipant: { is: { status: 'active', assemblyRole: 'delegate', committeeEligible: true } } } })
-          if (config.eligibilityRule && config.votingMethod && optionCount > 0 && eligibleOptions === optionCount) nextStage = 'election'
+          const activeOptions = await tx.ballotOption.count({ where: { roundId, candidateParticipantId: { not: null }, candidateParticipant: { is: { status: 'active' } } } })
+          if (config.eligibilityRule && config.votingMethod && optionCount > 0 && activeOptions === optionCount) nextStage = 'election'
         }
       }
       const updated = await tx.round.update({
@@ -700,25 +696,24 @@ export class VotingService implements OnModuleInit {
         select: { id: true, committeeStage: true, memberCount: true, decisionNote: true, committeeConfiguration: true },
       })
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: nextStage === 'configuration_required' ? 'committee.configuration.blocked' : 'committee.configuration.validated', metadata: { stage: nextStage, committeeType: round.committee_type, memberCount } } })
-      const eligibleCount = round.committee_type === 'nomination'
-        ? await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active', assemblyRole: 'delegate', committeeEligible: true } })
+      const participantCount = round.committee_type === 'nomination'
+        ? await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active' } })
         : null
-      const impossibleMinimum = round.committee_type === 'nomination' && Number(config.supportMinimum) > (eligibleCount ?? 0)
+      const impossibleMinimum = round.committee_type === 'nomination' && Number(config.supportMinimum) > (participantCount ?? 0)
       const missingCandidateCount = round.committee_type === 'nomination' && !(Number(config.candidateCount) >= (memberCount ?? 0) && Number.isInteger(Number(config.candidateCount)))
-      return { ...updated, ready: nextStage !== 'configuration_required', message: impossibleMinimum ? `El mínimo de apoyos (${Number(config.supportMinimum)}) supera los ${eligibleCount} delegados elegibles activos; corrígelo antes de continuar.` : missingCandidateCount ? 'Registra el número de candidatos fijado por la delegación; no puede ser menor que el número de integrantes.' : nextStage === 'configuration_required' ? 'Falta completar o validar decisiones institucionales y confirmar la elegibilidad requerida.' : 'Configuración validada; puede continuar el flujo.' }
+      return { ...updated, ready: nextStage !== 'configuration_required', message: impossibleMinimum ? `El mínimo de apoyos (${Number(config.supportMinimum)}) supera los ${participantCount} participantes activos; corrígelo antes de continuar.` : missingCandidateCount ? 'Registra el número de candidatos fijado por la delegación; no puede ser menor que el número de integrantes.' : nextStage === 'configuration_required' ? 'Falta completar o validar decisiones institucionales.' : 'Configuración validada; puede continuar el flujo.' }
     })
   }
 
   async submitCommitteeProposal(participantId: string, roundId: string, candidateParticipantId: string) {
-    const proposer = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { id: true, assemblyId: true, status: true, assemblyRole: true, committeeEligible: true } })
-    if (!proposer || proposer.status !== 'active' || proposer.assemblyRole !== 'delegate' || !proposer.committeeEligible) throw new ForbiddenException('Solo un delegado marcado como elegible puede presentar propuestas')
-    const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { id: true, assemblyId: true, category: true, committeeType: true, committeeStage: true, status: true, committeeConfiguration: true } })
+    // Secretaría (Oct 2026): the system does not check eligibility; the delegation decides each candidacy at approval.
+    const proposer = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { id: true, assemblyId: true, status: true } })
+    if (!proposer || proposer.status !== 'active') throw new ForbiddenException()
+    const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { id: true, assemblyId: true, category: true, committeeType: true, committeeStage: true, status: true } })
     if (!round || round.assemblyId !== proposer.assemblyId) throw new NotFoundException('Proceso no encontrado')
     if (round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'proposals' || round.status !== 'draft') throw new ConflictException('El proceso no está recibiendo propuestas')
-    if ((round.committeeConfiguration as Record<string, unknown> | null)?.proposalRule !== 'eligible_delegate_only') throw new ConflictException('Secretaría o la mesa debe validar una regla de presentación de propuestas que el sistema pueda aplicar')
-    const candidate = await this.prisma.participantSession.findUnique({ where: { id: candidateParticipantId }, select: { id: true, assemblyId: true, status: true, assemblyRole: true, committeeEligible: true } })
-    if (!candidate || candidate.assemblyId !== round.assemblyId || candidate.status !== 'active') throw new UnprocessableEntityException('La candidatura debe pertenecer a un delegado activo de esta Asamblea')
-    if (!candidate.committeeEligible || candidate.assemblyRole !== 'delegate') throw new UnprocessableEntityException('La persona no está confirmada como elegible o tiene un cargo excluido')
+    const candidate = await this.prisma.participantSession.findUnique({ where: { id: candidateParticipantId }, select: { id: true, assemblyId: true, status: true } })
+    if (!candidate || candidate.assemblyId !== round.assemblyId || candidate.status !== 'active') throw new UnprocessableEntityException('La candidatura debe pertenecer a un participante activo de esta Asamblea')
     try {
       return await this.prisma.$transaction(async (tx) => {
         // Shared lock, as for supports: closing proposals or annulling (FOR UPDATE) waits, and a proposal
@@ -735,11 +730,10 @@ export class VotingService implements OnModuleInit {
   }
 
   async supportCommitteeProposal(participantId: string, roundId: string, proposalId: string) {
-    const participant = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { id: true, assemblyId: true, status: true, assemblyRole: true, committeeEligible: true } })
-    if (!participant || participant.status !== 'active' || participant.assemblyRole !== 'delegate' || !participant.committeeEligible) throw new ForbiddenException('Solo un delegado marcado como elegible puede apoyar una propuesta')
-    const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, status: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
+    const participant = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { id: true, assemblyId: true, status: true } })
+    if (!participant || participant.status !== 'active') throw new ForbiddenException()
+    const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, status: true, category: true, committeeType: true, committeeStage: true } })
     if (!round || round.assemblyId !== participant.assemblyId || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'support' || round.status !== 'draft') throw new ConflictException('El proceso no está recibiendo apoyos')
-    if ((round.committeeConfiguration as Record<string, unknown> | null)?.supportRule !== 'one_per_eligible_delegate') throw new ConflictException('Secretaría o la mesa debe validar una regla de apoyo que el sistema pueda aplicar')
     const proposal = await this.prisma.committeeProposal.findFirst({ where: { id: proposalId, roundId, status: 'proposed' }, select: { id: true } })
     if (!proposal) throw new NotFoundException('Propuesta no disponible')
     try {
@@ -770,10 +764,10 @@ export class VotingService implements OnModuleInit {
         if (!proposalCount) throw new ConflictException('Registra al menos una propuesta antes de iniciar apoyos')
         await tx.round.update({ where: { id: roundId }, data: { committeeStage: 'support' } })
       } else if (stage === 'approval' && round.committee_stage === 'support') {
-        const eligibleCount = await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active', assemblyRole: 'delegate', committeeEligible: true } })
+        const participantCount = await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active' } })
         const minimum = Number(config.supportMinimum)
         if (!Number.isInteger(minimum) || minimum < 1) throw new ConflictException('Falta validar el mínimo de apoyos institucional')
-        if (minimum > eligibleCount) throw new ConflictException(`No se pueden cerrar los apoyos: el mínimo configurado (${minimum}) supera los ${eligibleCount} delegados elegibles activos. Corrige la configuración o valida el padrón.`)
+        if (minimum > participantCount) throw new ConflictException(`No se pueden cerrar los apoyos: el mínimo configurado (${minimum}) supera los ${participantCount} participantes activos. Corrige la configuración.`)
         const proposals = await tx.committeeProposal.findMany({ where: { roundId, status: 'proposed' }, include: { _count: { select: { supporters: true } } } })
         for (const proposal of proposals) {
           await tx.committeeProposal.update({ where: { id: proposal.id }, data: { status: proposal._count.supporters >= minimum ? 'supported' : 'rejected' } })

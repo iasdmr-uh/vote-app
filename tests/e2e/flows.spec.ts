@@ -261,6 +261,48 @@ test('una comisión anulada en etapa de apoyos muestra el aviso y no el formular
   await expect(page.getByRole('heading', { name: 'Apoyar propuestas' })).toHaveCount(0)
 })
 
+test('la mesa prepara Nombramiento sin marcar roles ni elegibilidad de los participantes', async ({ page }) => {
+  let createBody: Record<string, any> | undefined
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'lobby_closed', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético', assemblyRole: null, committeeEligible: false }], participantCount: 1, rounds: [],
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/rounds')) {
+      createBody = request.postDataJSON()
+      await route.fulfill({ status: 201, json: { id: 'r1' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByText('Delegado Sintético')).toBeVisible()
+  await expect(page.getByText('Elegibilidad confirmada por Secretaría/mesa')).toHaveCount(0)
+  await expect(page.getByLabel('Rol para reglas de comisión')).toHaveCount(0)
+
+  await page.getByLabel('Tipo de proceso').selectOption('committee')
+  await expect(page.getByText('Regla validada para presentar propuestas')).toHaveCount(0)
+  await expect(page.getByText('Cualquier participante puede proponer, apoyar una vez cada propuesta y ser propuesto')).toBeVisible()
+  await page.getByLabel('Nombre de la comisión o proceso').fill('Comisión de Nombramiento')
+  await page.getByLabel('Mínimo de apoyos requerido').fill('2')
+  await page.getByRole('button', { name: 'Guardar configuración de comisión' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Preparar papeleta' }).click()
+  await expect.poll(() => createBody).toBeTruthy()
+  expect(createBody!.committeeConfiguration).not.toHaveProperty('proposalRule')
+  expect(createBody!.committeeConfiguration).not.toHaveProperty('supportRule')
+  expect(createBody!.committeeConfiguration.supportMinimum).toBe(2)
+})
+
 test('delegado registra una propuesta y apoyo sin mostrar identidades de apoyo', async ({ page }) => {
   let stage: 'proposals' | 'support' = 'proposals'
   let supported = false

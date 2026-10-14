@@ -85,6 +85,7 @@ export class CommitteeConfigurationDto {
   @IsOptional() @IsString() @MaxLength(1000)
   votingMethod?: string
 
+  /** No longer enforced (Secretaría, Oct 2026: no eligibility checks); accepted so stored configurations still validate. */
   @IsOptional() @IsString() @MaxLength(1000)
   @IsIn(['eligible_delegate_only'])
   proposalRule?: 'eligible_delegate_only'
