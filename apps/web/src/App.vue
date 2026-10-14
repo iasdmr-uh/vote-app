@@ -154,8 +154,8 @@ const currentRoundDeclared = computed(() => {
   const rootId = record?.committeeRootRoundId ?? record?.id
   return Boolean(state.value?.rounds?.find((item) => item.id === rootId)?.officialResult)
 })
+/** Steps reached by the current ballot. Completing the Asamblea does not mark unpublished counts or undeclared results as done. */
 const moderatorWorkflowStep = computed(() => {
-  if (assemblyStatus.value === 'completed') return moderatorWorkflow.length
   if (round.value?.status === 'open') return 4
   if (round.value?.status === 'closed') return 5
   if (round.value?.status === 'published') return currentRoundDeclared.value ? 7 : 6
@@ -1146,7 +1146,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
         <template v-else>
           <ol class="workflow-steps" aria-label="Pasos de la moderación">
-            <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep }" :aria-current="index === moderatorWorkflowStep ? 'step' : undefined">
+            <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep && assemblyStatus !== 'completed' }" :aria-current="index === moderatorWorkflowStep && assemblyStatus !== 'completed' ? 'step' : undefined">
               <span class="workflow-step-number">{{ index + 1 }}</span><span>{{ step }}</span>
             </li>
           </ol>

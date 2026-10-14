@@ -669,6 +669,12 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
   await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Preparar papeleta' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toHaveCount(0)
+  // Completing with a closed, unpublished and undeclared ballot leaves those steps pending.
+  const steps = page.getByRole('list', { name: 'Pasos de la moderación' }).getByRole('listitem')
+  await expect(steps.filter({ hasText: 'Cerrar votación' })).toHaveClass(/\bcomplete\b/)
+  await expect(steps.filter({ hasText: 'Publicar conteo' })).not.toHaveClass(/\bcomplete\b/)
+  await expect(steps.filter({ hasText: 'Declarar resultado' })).not.toHaveClass(/\bcomplete\b/)
+  await expect(page.locator('.workflow-steps [aria-current="step"]')).toHaveCount(0)
 })
 
 test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálculo y borra los datos', async ({ page }) => {
