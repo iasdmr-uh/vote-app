@@ -24,15 +24,15 @@ El perfil no publica PostgreSQL ni la API al host. HTTPS/Caddy es la única entr
 
 ```sh
 scripts/candidate-compose.sh config --quiet
-scripts/candidate-compose.sh build
-scripts/candidate-compose.sh --profile tools run --rm migrate
+scripts/candidate-compose.sh --profile tools build
+scripts/candidate-compose.sh --profile tools run --rm --build migrate
 scripts/candidate-compose.sh up -d
 scripts/candidate-compose.sh ps
 APP_DOMAIN="$(sed -n 's/^APP_DOMAIN=//p' .env.candidate)"
 curl --fail "https://${APP_DOMAIN}/api/v1/health"
 ```
 
-Ejecuta las migraciones una vez antes de actualizar el servicio API; no se aplican automáticamente en cada arranque. La API y web tienen healthchecks; Compose espera a PostgreSQL sano antes de migrar o iniciar la API y a ambos servicios antes de iniciar Caddy.
+Ejecuta las migraciones una vez antes de actualizar el servicio API; no se aplican automáticamente en cada arranque. El servicio `migrate` está en el perfil `tools`: un `build` sin `--profile tools` no reconstruye su imagen, y `migrate` aplicaría las migraciones de una imagen anterior informando éxito. Por eso ambos comandos incluyen `--profile tools` y `--build`. Comprueba después que `_prisma_migrations` contiene todas las carpetas de `apps/api/prisma/migrations`. La API y web tienen healthchecks; Compose espera a PostgreSQL sano antes de migrar o iniciar la API y a ambos servicios antes de iniciar Caddy.
 
 Caddy gestiona certificados públicamente confiables para el nombre DNS. Si el host está detrás de NAT, permite el reenvío de 80/443; si DNS o el firewall aún no están listos, el certificado no estará disponible y la prueba móvil HTTPS no debe marcarse como aprobada.
 
@@ -46,13 +46,23 @@ scripts/candidate-compose.sh ps
 curl --fail https://APP_DOMAIN/api/v1/health
 ```
 
-Para una versión nueva, identifica primero el SHA que se pretende desplegar, respalda la base, construye las imágenes desde ese checkout, ejecuta `migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
+Para una versión nueva, identifica primero el SHA que se pretende desplegar, detén la API (`scripts/candidate-compose.sh stop api`) para que ninguna papeleta se abra o cierre durante el respaldo (el script lo exige mientras la base tenga el esquema anterior), respalda la base, construye las imágenes desde ese checkout con `--profile tools build`, ejecuta `--profile tools run --rm --build migrate` y después aplica `up -d`. Revisa los logs si algún healthcheck no pasa:
 
 ```sh
 scripts/candidate-compose.sh logs --tail=200 api caddy
 ```
 
 No ejecutes `prisma migrate dev` en el candidato. Si una migración no es compatible con la versión anterior, no reviertas código a ciegas ni sobrescribas la base: conserva el backup y recupera una copia aislada para diagnosticarla. Los volúmenes `candidate_postgres_data` y `candidate_caddy_data` persisten al recrear contenedores; `down -v` los borra y no forma parte del procedimiento de reinicio.
+
+## Limpieza pendiente al arrancar
+
+Al iniciar, la API completa la desvinculación pendiente de votos (ver `docs/foundation/data-model.md`). Si no puede, por ejemplo por disco lleno, **no arranca** y el log de `api` lo explica. Corrige la causa y reinicia: `scripts/candidate-compose.sh up -d api`.
+
+Solo si ocurre durante una asamblea y la mesa decide explícitamente continuar, se puede arrancar con la limpieza pendiente. Mientras tanto, los votos afectados siguen enlazables en el disco, y la publicación y la finalización quedan bloqueadas.
+
+1. En `.env.candidate`, cambia `ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true` y ejecuta `scripts/candidate-compose.sh up -d api`. Registra quién tomó la decisión y cuándo.
+2. Corrige la causa y pulsa «Reintentar limpieza» en el panel de moderación hasta que desaparezca el aviso.
+3. Vuelve a `ALLOW_START_WITH_PENDING_VOTE_CLEANUP=false` y ejecuta `scripts/candidate-compose.sh up -d api`. Comprueba en el log que arrancó sin el error de limpieza.
 
 ## Respaldo y comprobación de restauración
 
@@ -80,3 +90,12 @@ La corrida construyó las imágenes API y web, arrancó PostgreSQL, aplicó `202
 Esta corrida sí ejecutó los scripts `candidate-*` con la imagen PostgreSQL candidata. No verificó HTTPS público ni CORS desde un móvil fuera del host: el dominio era sintético y Caddy no se inició. La corrida local previa con PostgreSQL 15.15 y verificación de ocho tablas fue una prueba separada anterior; ya no representa el estado de verificación de Docker de esta branch.
 
 La aceptación de issue #6 sigue necesitando desplegar en un host/DNS autorizados, confirmar HTTPS y CORS desde un móvil fuera del host y adjuntar evidencia identificada por SHA. La verificación local de los scripts de respaldo/restauración con la imagen candidata ya está registrada arriba; no sustituye esas comprobaciones externas. Esa infraestructura y sus credenciales no están en el repositorio.
+
+### Ensayo de despliegue del 2026-10-14 (rama `fix/pre-assembly-hardening`)
+
+Con Docker Desktop, `APP_DOMAIN=localhost` (certificado interno de Caddy), secretos aleatorios temporales y datos sintéticos se siguió el procedimiento de esta guía. El primer intento mostró que `build` sin `--profile tools` no reconstruía la imagen `migrate`: tenía 11 días y aplicó solo 2 de 6 migraciones informando éxito. Tras corregir los comandos, una base nueva recibió las 6 migraciones y los cuatro servicios quedaron healthy detrás de HTTPS. A través de Caddy se verificó: ingreso, voto y cierre; votos enlazables por `xmin` con la ronda abierta y ningún enlace tras el cierre con el conteo intacto; rechazo del respaldo con papeleta abierta y respaldo/restauración correctos tras cerrarla; `log_statement=none` y advertencia de la API al activarlo; y que encabezados `X-Forwarded-For` falsificados no evaden el límite de solicitudes (`TRUST_PROXY_HOPS=1`). En una corrida sobre una instalación recién creada fallaron los cuatro ingresos sin que el script mostrara la respuesta; no se reprodujo en dos corridas posteriores (una de ellas también sobre una instalación nueva). Se eliminaron contenedores, volúmenes y archivos de prueba. Sigue pendiente la prueba con DNS público y móviles reales.
+
+### Ensayo de actualización desde `main` (2026-10-14)
+
+Se desplegó `main` (5 migraciones) y 12 delegados sintéticos votaron con elecciones conocidas en una ronda que luego se publicó. El respaldo con el script de `main` guardó los votos exactamente en el orden de los delegados (`XZYZXYYZXZYX`), por lo que cada voto podía atribuirse a un nombre. Sobre la misma base, el script de esta rama produjo otro orden. Después se siguió esta guía: detener la API, respaldar, `--profile tools build`, `--profile tools run --rm --build migrate` (7 migraciones) y `up -d`. Al arrancar, la API marcó la ronda histórica como desvinculada, sin filas enlazables por `xmin` y con el conteo intacto (4/4/4). Si la limpieza al arrancar falla, la API no arranca salvo con `ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true`.
+

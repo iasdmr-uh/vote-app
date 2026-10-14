@@ -10,6 +10,8 @@ services:
   postgres:
     image: postgres:17.11-alpine3.24
     restart: unless-stopped
+    # Never log SQL text or parameters: a logged vote insert next to its participation receipt reveals the vote.
+    command: ["postgres", "-c", "log_statement=none", "-c", "log_min_duration_statement=-1"]
     logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.candidate}
@@ -37,6 +39,10 @@ services:
       WEB_ORIGIN: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.candidate}
       PUBLIC_APP_URL: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.candidate}
       API_PORT: "3000"
+      # Caddy is the only proxy in front of the API.
+      TRUST_PROXY_HOPS: "1"
+      # Emergency only (see docs/candidate-environment.md): lets the API start while vote unlinking is pending.
+      ALLOW_START_WITH_PENDING_VOTE_CLEANUP: ${ALLOW_START_WITH_PENDING_VOTE_CLEANUP:-false}
     expose:
       - "3000"
     depends_on:

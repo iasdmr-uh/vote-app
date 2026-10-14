@@ -2,9 +2,13 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common'
+import pg from 'pg'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { hashCredential, newOpaqueCredential } from '../auth/credentials.js'
@@ -14,10 +18,38 @@ import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CommitteeApprovalDto, CommitteeConfigurationUpdateDto, CreateRoundDto, OfficialResultDto } from './dtos.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
+const RESUME_CODE_TTL_MS = 10 * 60_000
+const VACUUM_LOCK_TIMEOUT_MS = 5_000
+const SECRECY_CLEANUP_PENDING = 'No se completó la limpieza que protege el secreto del voto. La operación no se realizó; usa «Reintentar limpieza» en unos segundos.'
 
 @Injectable()
-export class VotingService {
+export class VotingService implements OnModuleInit {
+  private readonly logger = new Logger(VotingService.name)
+
   constructor(private readonly prisma: PrismaService, private readonly realtime: RealtimeGateway) {}
+
+  /**
+   * Finishes any pending vote unlinking on every deploy or restart, including rounds closed or
+   * published before unlinking existed and assemblies that are already completed. Fails startup
+   * unless the head table explicitly accepts running with linkable votes at rest (for example, a
+   * full disk during an assembly), because a deploy must not come up silently in that state.
+   */
+  async onModuleInit() {
+    try {
+      await this.ensureVotesUnlinked()
+    } catch (error) {
+      const message = `Vote unlinking at startup did not complete: ${(error as Error).message}`
+      if (process.env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP !== 'true') {
+        throw new Error(`${message}. Refusing to start; fix the cause or set ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true as an explicit emergency decision.`)
+      }
+      this.logger.error(`${message}. STARTING ANYWAY because ALLOW_START_WITH_PENDING_VOTE_CLEANUP=true: votes of affected rounds remain linkable at rest; publishing and completing stay blocked until cleanup succeeds.`)
+    }
+  }
+
+  async retrySecrecyCleanup(assemblyId: string) {
+    await this.ensureVotesUnlinkedOrFail(assemblyId)
+    return { assemblyId, secrecyCleanupPending: false }
+  }
 
   async createAssembly(name: string) {
     const joinCode = newOpaqueCredential()
@@ -45,9 +77,66 @@ export class VotingService {
     })
     this.realtime.assemblyState(assembly.id, { status: assembly.status })
     this.realtime.lobbyState(assembly.id, { status: 'open', participantCount: 0 })
+    return { assemblyId: assembly.id, name: assembly.name, status: assembly.status, joinCode, joinUrl: this.appUrl({ join: joinCode }) }
+  }
+
+  private appUrl(params: Record<string, string>) {
     const url = new URL(process.env.PUBLIC_APP_URL!)
-    url.searchParams.set('join', joinCode)
-    return { assemblyId: assembly.id, name: assembly.name, status: assembly.status, joinCode, joinUrl: url.toString() }
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+    return url.toString()
+  }
+
+  /**
+   * Lets the moderator move a delegate to a new device after check-in closed. The participation
+   * receipts stay on the same session, so moving devices can never yield a second vote.
+   */
+  async issueResumeCode(participantId: string) {
+    const resumeCode = newOpaqueCredential()
+    const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
+    const participant = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.participantSession.findUnique({
+        where: { id: participantId }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, assembly: { select: { status: true } } },
+      })
+      if (!current || current.status !== 'active') throw new NotFoundException('Participante no encontrado')
+      if (current.assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      await tx.participantSession.update({ where: { id: participantId }, data: { resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt } })
+      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: 'participant.resume_code_issued', metadata: { participantId } } })
+      return current
+    })
+    return {
+      participantId,
+      name: `${participant.firstName} ${participant.lastName}`,
+      resumeUrl: this.appUrl({ resume: resumeCode }),
+      expiresAt: expiresAt.toISOString(),
+    }
+  }
+
+  async redeemResumeCode(resumeCode: string) {
+    const participantSessionToken = newOpaqueCredential()
+    const resumeCodeHash = hashCredential(resumeCode)
+    const participant = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.participantSession.findUnique({
+        where: { resumeCodeHash }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, resumeExpiresAt: true },
+      })
+      if (!current || current.status !== 'active' || !current.resumeExpiresAt || current.resumeExpiresAt <= new Date()) {
+        throw new NotFoundException('El código de reconexión no es válido o ya venció')
+      }
+      // Conditional update makes the code single-use even if two devices redeem it at once.
+      const claimed = await tx.participantSession.updateMany({
+        where: { id: current.id, resumeCodeHash },
+        data: { tokenHash: hashCredential(participantSessionToken), resumeCodeHash: null, resumeExpiresAt: null },
+      })
+      if (claimed.count !== 1) throw new NotFoundException('El código de reconexión no es válido o ya venció')
+      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: 'participant.resume_code_redeemed', metadata: { participantId: current.id } } })
+      return current
+    })
+    this.realtime.participantSessionReplaced(participant.id)
+    const state = await this.participantState(participant.id)
+    return {
+      participantSessionToken,
+      participant: { firstName: participant.firstName, lastName: participant.lastName },
+      ...state,
+    }
   }
 
   async joinAssembly(assemblyCode: string, firstName: string, lastName: string) {
@@ -270,6 +359,7 @@ export class VotingService {
       })),
       committeeComposition: round.committeeWinners.map((winner) => ({ participantId: winner.candidateParticipantId, name: `${winner.candidate.firstName} ${winner.candidate.lastName}`, order: winner.order })),
       participationCount: round._count.participations,
+      secrecyCleanupPending: ['closed', 'published'].includes(round.status) && !round.votesUnlinkedAt,
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
       officialResult: await this.moderatorOfficialResult(round.id),
     })))
@@ -284,8 +374,55 @@ export class VotingService {
     }
   }
 
+  async activeAssembly() {
+    const assembly = await this.prisma.assembly.findFirst({
+      where: { organizationId: ORGANIZATION_ID, status: { in: ['lobby_open', 'lobby_closed', 'in_progress'] } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true, status: true },
+    })
+    return { assembly }
+  }
+
+  /** The join code is stored only as a hash, so a lost QR can be replaced but never shown again. */
+  async rotateJoinCode(assemblyId: string) {
+    const joinCode = newOpaqueCredential()
+    await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
+      `
+      if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
+      if (rows[0].status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      await tx.assembly.update({ where: { id: assemblyId }, data: { joinCodeHash: hashCredential(joinCode) } })
+      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'assembly.join_code_rotated' } })
+    })
+    this.realtime.publicSessionsRevoked(assemblyId)
+    return { joinCode, joinUrl: this.appUrl({ join: joinCode }) }
+  }
+
+  async reopenLobby(assemblyId: string) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
+      `
+      const assembly = rows[0]
+      if (!assembly) throw new NotFoundException('Asamblea no encontrada')
+      if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      if (assembly.status === 'lobby_open') return { id: assembly.id, status: assembly.status, changed: false }
+      const openRound = await tx.round.findFirst({ where: { assemblyId, status: 'open' }, select: { id: true } })
+      if (openRound) throw new ConflictException('Cierra la papeleta abierta antes de reabrir el ingreso')
+      const updated = await tx.assembly.update({ where: { id: assemblyId }, data: { status: 'lobby_open' }, select: { id: true, status: true } })
+      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'lobby.reopened', metadata: { previousStatus: assembly.status } } })
+      return { ...updated, changed: true }
+    })
+    if (!result.changed) return { id: result.id, status: result.status }
+    const count = await this.prisma.participantSession.count({ where: { assemblyId, status: 'active' } })
+    this.realtime.assemblyState(assemblyId, { status: 'lobby_open' })
+    this.realtime.lobbyState(assemblyId, { status: 'open', participantCount: count })
+    return { id: result.id, status: result.status }
+  }
+
   async changeLobby(assemblyId: string, status: 'lobby_open' | 'lobby_closed') {
-    if (status === 'lobby_open') throw new ForbiddenException('La reapertura está deshabilitada hasta validación de Secretaría/mesa')
+    if (status === 'lobby_open') return this.reopenLobby(assemblyId)
     const result = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
         SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
@@ -307,6 +444,7 @@ export class VotingService {
   }
 
   async completeAssembly(assemblyId: string, confirmation: true) {
+    await this.ensureVotesUnlinkedOrFail(assemblyId)
     const completed = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; status: AssemblyStatus; completed_at: Date | null; updated_at: Date }>>`
         SELECT id, status, completed_at, updated_at FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
@@ -319,6 +457,9 @@ export class VotingService {
       if (assembly.status === 'preparing') throw new ConflictException('La Asamblea aún no ha comenzado y no puede finalizarse')
       const openRound = await tx.round.findFirst({ where: { assemblyId, status: 'open' }, select: { id: true } })
       if (openRound) throw new ConflictException('Cierra la papeleta abierta antes de finalizar la Asamblea')
+      // Once completed, no operation can retry the cleanup, so it must be finished first.
+      const stillLinked = await tx.round.count({ where: { assemblyId, status: { in: ['closed', 'published'] }, votesUnlinkedAt: null } })
+      if (stillLinked) throw new ServiceUnavailableException(SECRECY_CLEANUP_PENDING)
       if (confirmation !== true) throw new UnprocessableEntityException('Confirma explícitamente la finalización de la Asamblea')
       const completedAt = new Date()
       const updated = await tx.assembly.update({
@@ -660,6 +801,7 @@ export class VotingService {
       if (current.status !== 'open') throw new ConflictException('Solo se puede cerrar una papeleta abierta')
       const updated = await tx.round.update({ where: { id: roundId }, data: { status: 'closed', closedAt: new Date() }, select: { id: true, assemblyId: true, status: true } })
       await tx.auditEvent.create({ data: { assemblyId: current.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.closed' } })
+      await this.unlinkRoundVotes(tx, roundId)
       let tieBreakRoundId: string | null = null
       if (current.category === 'committee' && current.committee_type === 'nomination' && ['election', 'tie_break'].includes(current.committee_stage ?? '')) {
         const rootRoundId = current.committee_root_round_id ?? current.id
@@ -711,6 +853,14 @@ export class VotingService {
       }
       return { ...updated, changed: true, tieBreakRoundId }
     })
+    // Also runs when the round was already closed, so repeating "close" retries a failed cleanup.
+    let secrecyCleanupPending = false
+    try {
+      await this.ensureVotesUnlinked(round.assemblyId)
+    } catch (error) {
+      secrecyCleanupPending = true
+      this.logger.error(`Vote unlinking did not complete for assembly ${round.assemblyId}; publishing stays blocked: ${(error as Error).message}`)
+    }
     const [recorded, eligible, title] = await Promise.all([
       this.prisma.participation.count({ where: { roundId } }),
       this.prisma.participantSession.count({ where: { assemblyId: round.assemblyId, status: 'active' } }),
@@ -722,7 +872,11 @@ export class VotingService {
       if (round.status === 'closed') this.realtime.roundClosed(round.assemblyId, roundId)
       this.realtime.participationCount(round.assemblyId, { roundId, recorded, eligible })
     }
-    return { roundId, status: round.status, participation: { recorded, eligible }, ...(round.tieBreakRoundId ? { tieBreakRoundId: round.tieBreakRoundId } : {}) }
+    return {
+      roundId, status: round.status, participation: { recorded, eligible },
+      ...(round.tieBreakRoundId ? { tieBreakRoundId: round.tieBreakRoundId } : {}),
+      ...(secrecyCleanupPending ? { secrecyCleanupPending: true } : {}),
+    }
   }
 
   async publishRound(roundId: string) {
@@ -734,15 +888,18 @@ export class VotingService {
     }
     let publishedNow = false
     if (current.status === 'closed') {
+      await this.ensureVotesUnlinkedOrFail(current.assemblyId)
       await this.prisma.$transaction(async (tx) => {
         const roundRows = await tx.$queryRaw<Array<{ assembly_id: string }>>`SELECT assembly_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
         if (!roundRows[0]) throw new NotFoundException('Ronda no encontrada')
         await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${roundRows[0].assembly_id}::uuid FOR UPDATE`
         const assembly = await tx.assembly.findUnique({ where: { id: roundRows[0].assembly_id }, select: { status: true } })
         if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus resultados')
-        const latest = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true } })
+        const latest = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true, votesUnlinkedAt: true } })
         if (latest.status === 'published') return
         if (latest.status !== 'closed') throw new ConflictException('La papeleta debe estar cerrada para publicar')
+        const stillLinked = await tx.round.count({ where: { assemblyId: current.assemblyId, status: { in: ['closed', 'published'] }, votesUnlinkedAt: null } })
+        if (stillLinked) throw new ServiceUnavailableException(SECRECY_CLEANUP_PENDING)
         await tx.round.update({ where: { id: roundId }, data: { status: 'published', publishedAt: new Date() } })
         await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.results_published' } })
         publishedNow = true
@@ -878,6 +1035,64 @@ export class VotingService {
     if (!result) return null
     const serialized = this.serializeOfficialResult(result)
     return { elected: serialized.elected, note: serialized.note, declaredAt: serialized.declaredAt }
+  }
+
+  /**
+   * A vote and its participation receipt are written in the same transaction, so until this runs
+   * PostgreSQL can link them through the shared `xmin` and through physical insertion order.
+   * Re-inserting the round's votes in random order gives them the closing transaction's id instead.
+   */
+  private async unlinkRoundVotes(tx: Prisma.TransactionClient, roundId: string) {
+    await tx.$executeRaw`
+      WITH removed AS (DELETE FROM anonymous_votes WHERE round_id = ${roundId}::uuid RETURNING option_id)
+      INSERT INTO anonymous_votes (id, round_id, option_id)
+      SELECT gen_random_uuid(), ${roundId}::uuid, option_id FROM removed ORDER BY random()
+    `
+  }
+
+  /**
+   * Completes unlinking for every closed round of the assembly that has not finished it, including
+   * committee tie-break rounds that are never published on their own. Safe to repeat: shuffling again
+   * only adds dead tuples that the same VACUUM removes. Throws if the cleanup cannot complete.
+   */
+  private async ensureVotesUnlinked(assemblyId?: string) {
+    const pending = await this.prisma.round.findMany({
+      where: { ...(assemblyId ? { assemblyId } : {}), status: { in: ['closed', 'published'] }, votesUnlinkedAt: null }, select: { id: true },
+    })
+    if (!pending.length) return
+    // One short transaction per round: a single transaction over many historical rounds could exceed
+    // Prisma's interactive-transaction timeout and roll everything back on every retry.
+    for (const { id } of pending) await this.prisma.$transaction((tx) => this.unlinkRoundVotes(tx, id))
+    await this.vacuumAnonymousVotes()
+    await this.prisma.round.updateMany({ where: { id: { in: pending.map(({ id }) => id) } }, data: { votesUnlinkedAt: new Date() } })
+  }
+
+  private async ensureVotesUnlinkedOrFail(assemblyId: string) {
+    try {
+      await this.ensureVotesUnlinked(assemblyId)
+    } catch (error) {
+      this.logger.error(`Vote unlinking did not complete for assembly ${assemblyId}: ${(error as Error).message}`)
+      throw new ServiceUnavailableException(SECRECY_CLEANUP_PENDING)
+    }
+  }
+
+  protected vacuumLockTimeoutMs = VACUUM_LOCK_TIMEOUT_MS
+
+  /**
+   * Physically removes the dead pre-shuffle tuples, which otherwise keep their original `xmin` until vacuumed.
+   * VACUUM FULL needs an exclusive lock and cannot run in a transaction, so `lock_timeout` must be set on the
+   * same session; a dedicated connection guarantees that, unlike the pool. Without the timeout, a held lock
+   * would leave closing or startup waiting forever instead of reaching the recoverable error.
+   */
+  protected async vacuumAnonymousVotes() {
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL })
+    await client.connect()
+    try {
+      await client.query(`SET lock_timeout = ${Math.trunc(this.vacuumLockTimeoutMs)}`)
+      await client.query('VACUUM FULL anonymous_votes')
+    } finally {
+      await client.end()
+    }
   }
 
   private async publishedResults(roundId: string) {

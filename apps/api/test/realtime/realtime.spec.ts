@@ -102,6 +102,20 @@ test('removing a participant closes their authenticated sockets', () => {
   assert.deepEqual(disconnectedRooms, ['participant:session-3'])
 })
 
+test('rotating the join code closes public sockets authenticated with the old code', () => {
+  const disconnectedRooms: string[] = []
+  const server = {
+    to() { return { emit() {} } },
+    in(room: string) { return { disconnectSockets() { disconnectedRooms.push(room) } } },
+  }
+  const gateway = new RealtimeGateway({ async authenticate() { throw new Error() } })
+  Object.assign(gateway, { server })
+
+  gateway.publicSessionsRevoked('assembly-7')
+
+  assert.deepEqual(disconnectedRooms, ['assembly:assembly-7:public'])
+})
+
 test('assembly completion reaches public, moderator, and participant viewers with timestamp', () => {
   const emissions: Array<{ rooms: unknown; event: string; payload: unknown }> = []
   const server = {
