@@ -710,3 +710,40 @@ test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ pa
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(publicStateCalls).toBe(1)
 })
+
+test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
+  let cleanupDone = false
+  let cleanupRequests = 0
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/secrecy-cleanup')) {
+      cleanupRequests += 1
+      cleanupDone = true
+      await route.fulfill({ json: { assemblyId: 'synthetic-assembly', secrecyCleanupPending: false } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null, participants: [], participantCount: 0,
+        rounds: [{ id: 'synthetic-round', title: 'Presidencia', status: 'closed', options: [{ id: 'a', label: 'A' }], participationCount: 1, secrecyCleanupPending: !cleanupDone }],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const panel = page.getByRole('alert').filter({ hasText: 'Limpieza del secreto del voto pendiente' })
+  await expect(panel).toBeVisible()
+  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
+  await expect(panel).toBeVisible()
+  await panel.getByRole('button', { name: 'Reintentar limpieza' }).click()
+  await expect(page.getByText('Limpieza completada. Ya se pueden publicar resultados.')).toBeVisible()
+  await expect(panel).toHaveCount(0)
+  expect(cleanupRequests).toBe(1)
+})

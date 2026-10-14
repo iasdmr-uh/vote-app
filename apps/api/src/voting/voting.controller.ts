@@ -119,6 +119,11 @@ export class ModeratorController {
     return this.voting.changeLobby(assemblyId, input.status)
   }
 
+  @Post('assemblies/:assemblyId/secrecy-cleanup')
+  secrecyCleanup(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
+    return this.voting.retrySecrecyCleanup(assemblyId)
+  }
+
   @Post('assemblies/:assemblyId/complete')
   completeAssembly(@Param('assemblyId', ParseUUIDPipe) assemblyId: string, @Body() input: CompleteAssemblyDto) {
     return this.voting.completeAssembly(assemblyId, input.confirmation)

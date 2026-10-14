@@ -30,6 +30,23 @@ trap 'rm -f "$TEMP_FILE"' EXIT
   'pg_dump --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --format=custom' > "$TEMP_FILE"
 chmod 600 "$TEMP_FILE"
 "$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres pg_restore --list < "$TEMP_FILE" >/dev/null
+
+# The check above can race with a ballot opening before pg_dump takes its snapshot. pg_dump is a
+# single consistent snapshot, so inspect the archive itself: no round may be open inside it.
+OPEN_IN_DUMP="$("$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres pg_restore --data-only --table=rounds --file=- < "$TEMP_FILE" \
+  | awk -F'\t' '
+      /^COPY public\.rounds / {
+        header = $0; sub(/^[^(]*\(/, "", header); sub(/\).*$/, "", header)
+        n = split(header, columns, /, /); for (i = 1; i <= n; i++) if (columns[i] == "status") index_of_status = i
+        copying = 1; next
+      }
+      copying && $0 == "\\." { copying = 0; next }
+      copying && index_of_status && $index_of_status == "open" { open++ }
+      END { if (!index_of_status) print "unknown"; else print open + 0 }')"
+if [[ "$OPEN_IN_DUMP" != "0" ]]; then
+  printf 'Discarding backup: a ballot was open when the dump was taken (open rounds in snapshot: %s). Retry after it closes.\n' "$OPEN_IN_DUMP" >&2
+  exit 3
+fi
 mv -- "$TEMP_FILE" "$BACKUP_FILE"
 trap - EXIT
 printf 'Backup created and archive verified: %s\n' "$BACKUP_FILE"

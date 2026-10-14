@@ -95,14 +95,68 @@ test('a failed VACUUM keeps the round closed, blocks publication, and is retried
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt, null)
     await assert.rejects(service.publishRound(round.id), ServiceUnavailableException)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).status, 'closed')
+    await assert.rejects(service.completeAssembly(assembly.id, true), ServiceUnavailableException, 'completion would remove every retry path')
+    assert.equal((await prisma.assembly.findUniqueOrThrow({ where: { id: assembly.id } })).status, 'in_progress')
+    assert.equal((await service.moderatorAssembly(assembly.id)).rounds[0]?.secrecyCleanupPending, true, 'the pending state survives reloads')
+    await assert.rejects(service.retrySecrecyCleanup(assembly.id), ServiceUnavailableException)
 
     delete (service as unknown as Record<string, unknown>).vacuumAnonymousVotes
-    const retried = await service.closeRound(round.id)
-    assert.equal('secrecyCleanupPending' in retried, false, 'closing again retries the cleanup')
+    assert.deepEqual(await service.retrySecrecyCleanup(assembly.id), { assemblyId: assembly.id, secrecyCleanupPending: false })
     assert.ok((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt)
+    assert.equal((await service.moderatorAssembly(assembly.id)).rounds[0]?.secrecyCleanupPending, false)
     const published = await service.publishRound(round.id)
     assert.equal(published.status, 'published')
     assert.equal(published.results.find((option) => option.label === 'A')?.count, 1)
+  } finally {
+    if (assemblyId) {
+      await prisma.round.deleteMany({ where: { assemblyId } })
+      await prisma.participantSession.deleteMany({ where: { assemblyId } })
+      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
+    }
+    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('startup unlinks rounds published before this protection existed, even in completed assemblies', {
+  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
+}, async () => {
+  process.env.DATABASE_URL = testDatabaseUrl
+  const prisma = new PrismaService()
+  await prisma.$connect()
+  const organizationId = randomUUID()
+  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
+  const service = new VotingService(prisma, realtime)
+  let assemblyId: string | undefined
+  try {
+    await prisma.organization.create({ data: { id: organizationId, name: `secrecy-legacy-${organizationId}`, type: 'union' } })
+    const assembly = await prisma.assembly.create({ data: {
+      organizationId, name: 'Legacy assembly', status: 'lobby_closed', joinCodeHash: hashCredential(newOpaqueCredential()),
+    } })
+    assemblyId = assembly.id
+    const voter = await prisma.participantSession.create({ data: {
+      assemblyId: assembly.id, firstName: 'Legacy', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
+    } })
+    const round = await prisma.round.create({ data: {
+      assemblyId: assembly.id, title: 'Legacy ballot', countingRule: { kind: 'count_only' },
+      options: { create: [{ label: 'A', order: 0 }, { label: 'B', order: 1 }] },
+    }, include: { options: true } })
+    await service.openRound(round.id)
+    await service.castVote(voter.id, round.id, round.options[1]!.id)
+    // Simulates data written by the previous release: published and completed without any unlinking.
+    await prisma.round.update({ where: { id: round.id }, data: { status: 'published', closedAt: new Date(), publishedAt: new Date() } })
+    await prisma.assembly.update({ where: { id: assembly.id }, data: { status: 'completed', completedAt: new Date() } })
+    const linked = async () => (await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT count(*) AS count FROM participations p JOIN anonymous_votes v ON v.xmin = p.xmin AND v.round_id = p.round_id
+      WHERE p.round_id = ${round.id}::uuid
+    `)[0]!.count
+    assert.equal(await linked(), 1n)
+
+    await service.onModuleInit()
+
+    assert.equal(await linked(), 0n)
+    assert.ok((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt)
+    assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id, optionId: round.options[1]!.id } }), 1)
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })

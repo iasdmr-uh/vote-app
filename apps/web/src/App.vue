@@ -22,6 +22,7 @@ type PublicState = {
     id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null }>; committeeComposition?: Array<{ participantId: string; name: string; order: number }>; options: Array<{ id: string; label: string; candidateParticipantId?: string | null }>
     results?: Array<{ optionId: string; label: string; count: number }>
     officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null } | null
+    secrecyCleanupPending?: boolean
   }>
 }
 
@@ -105,6 +106,8 @@ const completionTime = computed(() => assemblyCompletedAt.value
   ? new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(assemblyCompletedAt.value))
   : '')
 const reviewedOptions = computed(() => round.value?.options?.filter((option) => selectedOptions.value.includes(option.id)) || [])
+// Derived from server state so the warning survives refreshes, reloads and other moderator tabs.
+const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
 const eligibleCommitteeCandidates = computed(() => (state.value?.participants || []).filter((person) => person.assemblyRole === 'delegate' && person.committeeEligible))
 const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar resultados']
 const moderatorWorkflowStep = computed(() => {
@@ -568,10 +571,6 @@ async function confirmModeratorAction() {
     const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
     notice.value = 'Acción registrada.'
     succeeded = true
-    if ((result as { secrecyCleanupPending?: boolean })?.secrecyCleanupPending) {
-      notice.value = ''
-      error.value = 'La votación se cerró, pero no terminó la limpieza que protege el secreto del voto. No se podrán publicar resultados hasta completarla: vuelve a pulsar «Cerrar votación» o «Publicar resultados» en unos segundos.'
-    }
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
@@ -650,6 +649,20 @@ function rememberJoinCode(joinCode: string) {
   code.value = joinCode
   localStorage.setItem('assemblyJoinCode', joinCode)
   localStorage.setItem('assemblyJoinCodeAssemblyId', assemblyId.value)
+}
+
+async function retrySecrecyCleanup() {
+  if (!assemblyId.value || loading.value) return
+  error.value = ''
+  loading.value = true
+  let succeeded = false
+  try {
+    await request(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/secrecy-cleanup`, { method: 'POST' }, moderatorToken.value)
+    notice.value = 'Limpieza completada. Ya se pueden publicar resultados.'
+    succeeded = true
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  if (succeeded) await refresh()
 }
 
 async function completeAssembly() {
@@ -947,6 +960,11 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
             <div class="card metric"><span>Estado</span><strong>{{ round?.status === 'published' ? 'Resultados publicados' : round?.status === 'closed' ? 'Votación cerrada' : round?.status === 'open' ? 'Votación abierta' : lobbyStatus === 'lobby_open' ? 'Ingreso abierto' : assemblyStatus }}</strong></div>
             <div class="card metric"><span>Participación</span><strong v-if="round">{{ state?.recordedCount ?? 0 }}<small> / {{ eligibleVotes }} {{ eligibleVotes === 1 ? 'voto' : 'votos' }}</small></strong><strong v-else>{{ totalParticipants }} {{ totalParticipants === 1 ? 'participante' : 'participantes' }}</strong></div>
             <div class="card metric"><span>Papeleta</span><strong>{{ round?.status === 'published' ? 'Publicada' : round?.status === 'closed' ? 'Cerrada' : round ? 'Preparada' : 'Sin iniciar' }}</strong></div>
+          </section>
+          <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
+            <strong>Limpieza del secreto del voto pendiente.</strong>
+            No se podrán publicar resultados ni finalizar la Asamblea hasta completarla ({{ secrecyCleanupPendingRounds.map((item) => item.title).join(', ') }}). Los votos ya no se aceptan en esas papeletas.
+            <button class="secondary" :disabled="loading" @click="retrySecrecyCleanup">Reintentar limpieza</button>
           </section>
           <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>Asamblea finalizada</strong><p>El sistema está en modo de consulta.<template v-if="completionTime"> Se registró {{ completionTime }}.</template></p></div></section>
           <template v-else>
