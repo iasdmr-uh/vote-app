@@ -121,7 +121,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .heading-projector { display: flex; grid-column: 2; grid-row: 1 / span 3; flex-direction: column; justify-content: center; justify-self: end; width: min(100%, 340px); }
 .heading-projector .primary { width: 100%; min-height: 48px; }
 .heading-projector p { margin: .45rem 0 0; color: #758198; font-size: .76rem; line-height: 1.45; }
-.workflow-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .55rem; margin: 0 0 1.25rem; padding: 0; list-style: none; }
+.workflow-steps { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .55rem; margin: 0 0 1.25rem; padding: 0; list-style: none; }
 .workflow-steps li { display: flex; min-height: 54px; align-items: center; gap: .55rem; padding: .65rem .75rem; border: 1px solid var(--line); border-radius: .7rem; background: #fff; color: var(--muted); font-size: .79rem; font-weight: 650; line-height: 1.3; }
 .workflow-steps li.current { border-color: var(--blue); background: #f2f6ff; color: var(--blue-dark); }
 .workflow-steps li.complete { border-color: #abd9bf; background: #effaf3; color: #205a38; }
@@ -206,12 +206,30 @@ button:not(:disabled):active { transform: translateY(1px); }
 .projector-results { gap: 1rem; }
 .projector-results > div { flex-wrap: wrap; row-gap: .75rem; }
 .projector-results > div > span:first-child { color: var(--blue-dark); font-weight: 600; }
-.projector-content:has(.projector-results) .projector-connection-warning { position: static; width: min(100%, 1500px); margin: 1rem 0 0; }
+.projector-content:has(.projector-results, .projector-annulled) .projector-connection-warning { position: static; width: min(100%, 1500px); margin: 1rem 0 0; }
 .projector-results strong small { margin-left: .6rem; color: var(--muted); font-size: .7em; font-weight: 500; }
 .result-bar { display: block; flex: 1 0 100%; height: .75rem; overflow: hidden; border-radius: 999px; background: #dce2eb; }
 .result-bar span { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
 .projector-results > .null-vote-result > span:first-child, .projector-results > .null-vote-result > strong { color: var(--muted); font-weight: 500; }
 .null-vote-result .result-bar span { background: #98a2b3; }
+.ranked-results > div { flex-wrap: wrap; row-gap: .45rem; }
+.ranked-results strong small { margin-left: .4rem; color: var(--muted); font-weight: 500; }
+.ranked-results .result-bar { height: .45rem; }
+.ranked-results > .null-vote-result > span:first-child, .ranked-results > .null-vote-result > strong { color: var(--muted); }
+.private-results { margin: 1rem 0; padding: 1rem; border: 1px solid #efd19f; border-radius: .75rem; background: #fffdf7; }
+.private-results-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.private-results-heading h3 { margin: 0; color: var(--blue-dark); font-size: 1rem; }
+.private-results .results-list { width: 100%; gap: .5rem; margin: .75rem 0 0; }
+.private-results .results-list > div { min-height: 0; padding: .7rem .9rem; font-size: .95rem; }
+.badge { display: inline-block; padding: .2rem .6rem; border-radius: 999px; font-size: .7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.badge-private { background: #fff8e9; color: #634b1b; }
+.next-step { margin: 1rem 0; padding: .8rem 1rem; border-radius: .65rem; background: #f4f7fc; color: var(--blue-dark); }
+.annulled-panel { border: 1px solid #f2b9b4; background: #fff2f0; }
+.annulled-panel strong { color: #b42318; }
+.annulled-panel .status-dot { background: #b42318; box-shadow: 0 0 0 4px #fbdcd8; }
+.projector-annulled { width: min(100%, 1500px); margin-top: 1.5rem; padding: 1.75rem 2rem; border: 2px solid #f2b9b4; border-radius: 1rem; background: #fff2f0; text-align: left; }
+.projector-annulled h2 { margin: 0 0 .5rem; color: #b42318; font-size: clamp(1.6rem, 3vw, 2.75rem); }
+.projector-annulled p { margin: 0; color: #56647a; font-size: clamp(1rem, 1.8vw, 1.6rem); line-height: 1.4; }
 .projector-official-result h2 { margin: 0 0 .5rem; font-size: clamp(1.8rem, 5vw, 3.5rem); }
 .projector-official-result p { margin: .4rem 0; color: #4e5f79; font-size: clamp(1rem, 2vw, 1.4rem); }
 .projector-result-total { margin: 2.5rem 0 0; color: var(--blue); font-size: 1.45rem; font-weight: 700; }

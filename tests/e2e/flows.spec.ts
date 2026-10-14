@@ -199,7 +199,7 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   const ranking = page.locator('.official-round').first().locator('.results-list')
   await expect(ranking).toContainText('1. Beta')
   await expect(ranking).toContainText('2. Alfa')
-  await expect(ranking.locator('div').last()).toHaveText(/^\s*Voto nulo\s*2$/)
+  await expect(ranking.locator(':scope > div').last()).toHaveText(/^\s*Voto nulo\s*2\s*\d+ %$/)
 
   await page.getByRole('button', { name: 'Anular votación' }).click()
   const annulDialog = page.getByRole('dialog')
@@ -511,6 +511,8 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
         participantCount: 1,
         eligibleCount: 1,
         currentRound: { id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }] },
+        rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }],
+          ...(closed ? { privateResults: [{ optionId: 'b', label: 'Opción Beta (prueba)', count: 3 }, { optionId: 'a', label: 'Opción Alfa (prueba)', count: 1 }] } : {}) }],
       } })
       return
     }
@@ -531,7 +533,10 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(page.getByText('Acción registrada.')).toBeVisible()
   await page.getByRole('button', { name: 'Sincronizar estado' }).click()
   await expect(page.getByText('La papeleta está cerrada.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Publicar resultados' })).toBeVisible()
+  const privateCounts = page.getByRole('region', { name: 'Conteo para revisión de la mesa' })
+  await expect(privateCounts).toContainText('Solo visible para la mesa')
+  await expect(privateCounts.locator('.results-list > div').first()).toHaveText(/1\. Opción Beta \(prueba\)\s*3\s*75 %/)
+  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
 })
 
 test('moderador declara el resultado oficial por separado y lo publica explícitamente', async ({ page }) => {
@@ -595,8 +600,8 @@ test('moderador declara el resultado oficial por separado y lo publica explícit
   expect(publishCount).toBe(0)
 
   await page.getByRole('button', { name: 'Publicar declaración' }).click()
-  await expect(page.getByRole('dialog')).toContainText('¿Publicar resultados?')
-  await page.getByRole('dialog').getByRole('button', { name: 'Publicar resultados' }).click()
+  await expect(page.getByRole('dialog')).toContainText('¿Publicar la declaración oficial?')
+  await page.getByRole('dialog').getByRole('button', { name: 'Publicar declaración' }).click()
   await expect(page.getByText('Visible al público')).toBeVisible()
   expect(publishCount).toBe(1)
 
@@ -663,7 +668,13 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
   await expect(page.getByText(/Se registró/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Preparar papeleta' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Publicar resultados' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toHaveCount(0)
+  // Completing with a closed, unpublished and undeclared ballot leaves those steps pending.
+  const steps = page.getByRole('list', { name: 'Pasos de la moderación' }).getByRole('listitem')
+  await expect(steps.filter({ hasText: 'Cerrar votación' })).toHaveClass(/\bcomplete\b/)
+  await expect(steps.filter({ hasText: 'Publicar conteo' })).not.toHaveClass(/\bcomplete\b/)
+  await expect(steps.filter({ hasText: 'Declarar resultado' })).not.toHaveClass(/\bcomplete\b/)
+  await expect(page.locator('.workflow-steps [aria-current="step"]')).toHaveCount(0)
 })
 
 test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálculo y borra los datos', async ({ page }) => {
