@@ -80,6 +80,10 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
     await assert.rejects(service.castVote(participant.id, round.id, round.options[0].id), ConflictException)
     const hidden = await service.publicState(joinCode)
     assert.equal('results' in hidden, false)
+    assert.equal('results' in closedSnapshot, false, 'delegates do not see counts before publication')
+    const closedModeratorRound = (await service.moderatorAssembly(assemblyId)).rounds[0]
+    assert.equal(closedModeratorRound?.privateResults?.reduce((sum, option) => sum + option.count, 0), 1, 'the mesa reviews the counts before publishing')
+    assert.equal('results' in (closedModeratorRound ?? {}), false)
 
     const published = await service.publishRound(round.id)
     assert.equal(published.status, 'published')

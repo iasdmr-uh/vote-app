@@ -24,6 +24,8 @@ type PublicState = {
   rounds?: Array<{
     id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; committeeType?: string | null; memberCount?: number | null; decisionNote?: string | null; committeeStage?: string | null; committeeConfiguration?: Record<string, any> | null; committeeRootRoundId?: string | null; committeeProposals?: Array<{ id: string; candidateParticipantId: string; candidateName: string; status: string; supportCount: number; approvalYes: number | null; approvalNo: number | null; decidedAt?: string | null }>; electionSeats?: number | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; options: Array<{ id: string; label: string; candidateParticipantId?: string | null; isNullVote?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number; isNullVote?: boolean }>
+    /** Counts of a closed, unpublished ballot; only the moderator state carries them. */
+    privateResults?: Array<{ optionId: string; label: string; count: number; isNullVote?: boolean }>
     officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null } | null
     secrecyCleanupPending?: boolean
   }>
@@ -143,19 +145,28 @@ function resultPercent(results: Array<{ count: number }>, count: number) {
 }
 /** Secretaría (Oct 2026): the system does not check eligibility; any active participant can be listed. */
 const committeeCandidateChoices = computed(() => (state.value?.participants || []).filter((person) => person.id))
-const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar resultados']
+const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar conteo', 'Declarar resultado']
+/** The moderator's record of the current ballot, which carries its private counts. */
+const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
+/** A repetition's declaration lives on the original ballot. */
+const currentRoundDeclared = computed(() => {
+  const record = currentRoundRecord.value
+  const rootId = record?.committeeRootRoundId ?? record?.id
+  return Boolean(state.value?.rounds?.find((item) => item.id === rootId)?.officialResult)
+})
 const moderatorWorkflowStep = computed(() => {
   if (assemblyStatus.value === 'completed') return moderatorWorkflow.length
   if (round.value?.status === 'open') return 4
   if (round.value?.status === 'closed') return 5
-  if (round.value?.status === 'published') return 6
+  if (round.value?.status === 'published') return currentRoundDeclared.value ? 7 : 6
   if (round.value?.status === 'draft') return 3
   return lobbyStatus.value === 'lobby_open' ? 0 : 2
 })
 const moderatorSessionSummary = computed(() => {
   if (!assemblyId.value) return 'El estado de la sesión y las votaciones proviene del servidor.'
-  const status = round.value?.status === 'published' ? 'Resultados publicados'
-    : round.value?.status === 'closed' ? 'Votación cerrada'
+  const status = round.value?.status === 'published' ? (currentRoundDeclared.value ? 'Resultado declarado' : 'Conteo publicado · falta declarar el resultado')
+    : round.value?.status === 'annulled' ? 'Papeleta anulada'
+    : round.value?.status === 'closed' ? 'Votación cerrada · conteo sin publicar'
       : round.value?.status === 'open' ? 'Votación abierta'
         : lobbyStatus.value === 'lobby_open' ? 'Ingreso abierto' : 'Ingreso cerrado'
   return `Sesión: ${state.value?.assembly?.name || 'Asamblea'} · ${status}`
@@ -614,8 +625,10 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown) {
             ? { title: '¿Preparar una nueva votación?', consequence: 'Se crea una papeleta con las opciones seleccionadas y «Voto nulo». Ábrela cuando la Asamblea lo decida.', label: 'Preparar nueva votación' }
           : method === 'DELETE' && path.endsWith('/official-result')
             ? { title: '¿Retirar la declaración oficial?', consequence: 'Dejará de mostrarse en teléfonos y proyector. Quedará registrada en el historial. Después puedes repetir o anular la votación.', label: 'Retirar declaración' }
+          : path.endsWith('/official-result/publish')
+            ? { title: '¿Publicar la declaración oficial?', consequence: 'Teléfonos y proyector mostrarán a quien la mesa declaró electo, con la observación registrada.', label: 'Publicar declaración' }
           : path.endsWith('/publish')
-            ? { title: '¿Publicar resultados?', consequence: 'Los conteos agregados se harán visibles para participantes y proyector.', label: 'Publicar resultados' }
+            ? { title: '¿Publicar el conteo?', consequence: 'Los conteos por opción se harán visibles para participantes y proyector. Publicar no elige a nadie: la mesa declara el resultado después.', label: 'Publicar conteo' }
             : removed
               ? { title: '¿Retirar a esta persona?', consequence: 'Ya no podrá participar desde esta sesión.', label: 'Retirar participante' }
               : { title: '¿Guardar los cambios?', consequence: 'Se actualizarán los datos de esta persona en la lista.', label: 'Guardar cambios' }
@@ -1096,7 +1109,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <button class="primary ballot-submit" :disabled="loading || voteSubmitting || !selectedOptions.length" @click="reviewVote">Revisar y confirmar voto</button>
           <p class="ballot-warning">Tu voto es secreto. Una vez confirmado, no podrás cambiarlo.</p>
         </template>
-        <div v-else-if="round?.status === 'annulled'" class="status-panel"><span class="status-dot"></span><div><strong>La mesa anuló esta votación</strong><p>Nada de lo registrado en esta papeleta se contará. Espera la siguiente indicación de la mesa.</p></div></div>
+        <div v-else-if="round?.status === 'annulled'" class="status-panel annulled-panel" role="status"><span class="status-dot"></span><div><strong>La mesa anuló esta votación</strong><p>Nada de lo registrado en esta papeleta se contará. Espera la siguiente indicación de la mesa.</p></div></div>
         <template v-else-if="round?.category === 'committee' && round.committeeStage === 'proposals'">
           <section class="card"><p class="eyebrow">COMISIÓN DE NOMBRAMIENTO</p><h2>Registrar propuesta</h2><p class="lead">Propón a una persona de la Asamblea. La delegación decidirá cada candidatura en la etapa de aprobación.</p><form @submit.prevent="participantCommitteeAction(`/participant/rounds/${encodeURIComponent(round.id)}/committee/proposals`, { candidateParticipantId: participantCandidateSelection })"><label>Candidatura<select v-model="participantCandidateSelection" required><option value="" disabled>Selecciona a una persona</option><option v-for="candidate in state?.committeeCandidates || []" :key="candidate.id" :value="candidate.id">{{ candidate.firstName }} {{ candidate.lastName }}</option></select></label><button class="primary" :disabled="loading || !participantCandidateSelection">Registrar propuesta</button></form><ul class="option-list"><li v-for="proposal in state?.committeeProposals || []" :key="proposal.id">{{ proposal.candidateName }}</li></ul></section>
         </template>
@@ -1164,7 +1177,14 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           <section class="card"><p class="eyebrow">PAPELETA</p><h2>{{ round?.title || 'Preparar votación' }}</h2>
             <div v-if="round?.status === 'draft' && (round.category !== 'committee' || ['election', 'tie_break'].includes(round.committeeStage || ''))" class="action-row"><div><p class="status-line">Papeleta preparada. Revisa las opciones antes de abrir.</p><ul class="option-list"><li v-for="option in round.options || []" :key="option.id">{{ option.label }}</li></ul></div><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/open`)">Abrir votación</button></div></div>
             <div v-else-if="round?.status === 'open'" class="action-row"><p class="status-line">La votación está abierta. Los resultados permanecerán ocultos hasta que la mesa los publique.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular votación</button><button class="danger" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/close`)">Cerrar votación</button></div></div>
-            <div v-else-if="round?.status === 'closed'" class="action-row"><p class="status-line">La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide en el acta.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/publish`)">Publicar resultados</button></div></div>
+            <template v-else-if="round?.status === 'closed'">
+              <section v-if="currentRoundRecord?.privateResults?.length" class="private-results" aria-labelledby="private-results-title">
+                <div class="private-results-heading"><h3 id="private-results-title">Conteo para revisión de la mesa</h3><span class="badge badge-private">Solo visible para la mesa</span></div>
+                <div class="results-list ranked-results"><div v-for="(result, index) in currentRoundRecord.privateResults" :key="result.optionId" :class="{ 'null-vote-result': result.isNullVote }"><span>{{ rankOf(currentRoundRecord.privateResults, index) }} {{ result.label }}</span><strong>{{ result.count }} <small>{{ resultPercent(currentRoundRecord.privateResults, result.count) }} %</small></strong><span class="result-bar" aria-hidden="true"><span :style="{ width: `${resultPercent(currentRoundRecord.privateResults, result.count)}%` }"></span></span></div></div>
+              </section>
+              <div class="action-row"><p class="status-line">La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide en el acta.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/publish`)">Publicar conteo</button></div></div>
+            </template>
+            <p v-else-if="round?.status === 'published' && !currentRoundDeclared" class="status-line next-step">Conteo publicado. Siguiente paso: declara el resultado oficial en <a href="#acta-de-resultados">Acta de resultados</a>, o repite la votación si hay empate.</p>
             <div v-else-if="round?.status === 'annulled'" class="action-row"><p class="status-line">Papeleta anulada<template v-if="round.annulReason">: {{ round.annulReason }}</template>. Sus votos no se contarán.</p><button v-if="round.category !== 'committee' || round.options?.some((option) => !option.isNullVote)" class="secondary" :disabled="loading" @click="repeatAllOptions(state?.rounds?.find((item) => item.id === round?.id))">Repetir con las mismas opciones</button></div>
             <template v-if="!round || round.status === 'published' || round.status === 'closed' || round.status === 'annulled'">
               <form @submit.prevent="createRound"><label>Tipo de proceso<select v-model="roundCategory"><option value="office">Cargo</option><option value="committee">Comisión temporal</option></select></label><label>{{ roundCategory === 'committee' ? 'Nombre de la comisión o proceso' : 'Título o cargo' }}<input v-model="roundTitle" required :placeholder="roundCategory === 'committee' ? 'Ej. Comisión de Finanzas' : 'Ej. Elección de presidencia'" /></label>
@@ -1185,7 +1205,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
           </section>
           <section v-if="assemblyStatus !== 'preparing' && round?.status !== 'published'" class="card assembly-close"><p class="eyebrow">CIERRE DE SESIÓN</p><h2>Finalizar Asamblea</h2><p>Registra el cierre después de que la mesa haya aprobado la decisión. Se conservarán resultados y registros para consulta.</p><p v-if="round?.status === 'open'" class="status-line">Cierra la papeleta abierta antes de finalizar la Asamblea.</p><button class="danger" :disabled="loading || round?.status === 'open'" @click="completeAssembly">Finalizar Asamblea</button></section>
           </template>
-          <section v-if="state?.rounds?.length" class="card official-history">
+          <section v-if="state?.rounds?.length" id="acta-de-resultados" class="card official-history">
             <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones oficiales de la mesa</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
             <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
               <div class="section-heading"><div><h3>{{ historyRound.title }}</h3><p class="status-line">{{ historyRound.category === 'committee' ? `Comisión · ${historyRound.committeeType} · ${historyRound.memberCount ?? 'tamaño pendiente'}` : 'Cargo' }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}</p><p v-if="historyRound.decisionNote" class="status-line">Configuración institucional: {{ historyRound.decisionNote }}</p></div></div>
@@ -1218,8 +1238,8 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                 </div>
               </template>
               <p v-if="historyRound.status === 'annulled'" class="status-line">Anulada<template v-if="historyRound.annulReason">: {{ historyRound.annulReason }}</template></p>
-              <div v-if="historyRound.results?.length" class="results-list compact-results">
-                <div v-for="(result, index) in historyRound.results" :key="result.optionId"><span>{{ rankOf(historyRound.results, index) }} {{ result.label }}</span><strong>{{ result.count }}</strong></div>
+              <div v-if="historyRound.results?.length" class="results-list compact-results ranked-results">
+                <div v-for="(result, index) in historyRound.results" :key="result.optionId" :class="{ 'null-vote-result': result.isNullVote }"><span>{{ rankOf(historyRound.results, index) }} {{ result.label }}</span><strong>{{ result.count }} <small>{{ resultPercent(historyRound.results, result.count) }} %</small></strong><span class="result-bar" aria-hidden="true"><span :style="{ width: `${resultPercent(historyRound.results, result.count)}%` }"></span></span></div>
               </div>
               <form v-if="assemblyStatus !== 'completed' && ['closed', 'published', 'annulled'].includes(historyRound.status) && historyRound.options.some((option) => !option.isNullVote)" class="official-form" @submit.prevent="repeatRound(historyRound)">
                 <fieldset class="official-options"><legend>Nueva votación con las opciones seleccionadas</legend>
@@ -1262,6 +1282,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <h1>{{ assemblyStatus === 'completed' ? 'Asamblea finalizada' : round?.status === 'published' ? 'Resultados publicados' : round?.status === 'open' || round?.status === 'closed' || round?.status === 'annulled' ? round.title : 'Sala de Asamblea' }}</h1>
         <p class="projector-subtitle">{{ assemblyStatus === 'completed' ? `Sesión concluida${completionTime ? ` · ${completionTime}` : ''}` : round?.status === 'annulled' ? 'Votación anulada por la mesa · no se contará' : round?.status === 'open' ? 'Votación abierta' : round?.status === 'closed' ? 'Votación cerrada · resultados ocultos' : round?.status === 'published' ? `${round.title} · resultados autorizados por la mesa` : 'Estado: ' + assemblyStatus }}</p>
         <p v-if="realtimeActive && !realtimeConnected" class="connection-warning projector-connection-warning" role="status" aria-live="polite">Conexión interrumpida · Intentando reconectar. Los datos mostrados son los últimos confirmados.</p>
+        <section v-if="round?.status === 'annulled'" class="projector-annulled" role="status"><h2>Ningún voto de esta papeleta se contará</h2><p>Espera la indicación de la mesa. Si se repite la votación, volverás a votar desde tu teléfono.</p></section>
         <section v-if="state?.officialResult" class="projector-official-result"><p class="eyebrow">RESULTADO DECLARADO POR LA MESA</p><h2>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</h2><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p><small>Declaración registrada {{ formatDateTime(state.officialResult.declaredAt) }}</small></section>
         <div v-if="round?.status === 'published'" class="results-list projector-results">
           <div v-for="(result, index) in state?.results || []" :key="result.label" :class="{ 'null-vote-result': result.isNullVote }"><span>{{ rankOf(state?.results || [], index) }} {{ result.label }}</span><strong>{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }} <small>{{ resultPercent(state?.results || [], result.count) }} %</small></strong><span class="result-bar" aria-hidden="true"><span :style="{ width: `${resultPercent(state?.results || [], result.count)}%` }"></span></span></div>

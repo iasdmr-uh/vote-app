@@ -362,6 +362,8 @@ export class VotingService implements OnModuleInit {
       participationCount: round._count.participations,
       secrecyCleanupPending: (SETTLED_ROUND_STATUSES as readonly string[]).includes(round.status) && !round.votesUnlinkedAt,
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
+      // Only the mesa sees a closed ballot's counts, so it can review them before deciding to publish.
+      ...(round.status === 'closed' ? { privateResults: await this.rankedCounts(round.id) } : {}),
       officialResult: await this.moderatorOfficialResult(round.id),
     })))
     return {
@@ -1256,6 +1258,11 @@ export class VotingService implements OnModuleInit {
   private async publishedResults(roundId: string) {
     const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { status: true } })
     if (!round || round.status !== 'published') throw new NotFoundException('Resultados no publicados')
+    return this.rankedCounts(roundId)
+  }
+
+  /** Counts per option for any round; callers decide who may see them. */
+  private async rankedCounts(roundId: string) {
     const [options, counts] = await Promise.all([
       this.prisma.ballotOption.findMany({ where: { roundId }, orderBy: { order: 'asc' }, select: { id: true, label: true, isNullVote: true } }),
       this.prisma.anonymousVote.groupBy({ by: ['optionId'], where: { roundId }, _count: { _all: true } }),

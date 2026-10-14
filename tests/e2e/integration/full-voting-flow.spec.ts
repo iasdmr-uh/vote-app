@@ -80,7 +80,7 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   await expect(projector.getByText('Votación cerrada · resultados ocultos')).toBeVisible()
   await expect(projector.getByText('Opción Ámbar')).toHaveCount(0)
 
-  await confirm(moderator, 'Publicar resultados')
+  await confirm(moderator, 'Publicar conteo')
   await expect(projector.getByRole('heading', { name: 'Resultados publicados' })).toBeVisible({ timeout: 12_000 })
   await expect(projector.getByText('Opción Ámbar')).toBeVisible()
 
