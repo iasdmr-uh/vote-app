@@ -382,7 +382,14 @@ export class VotingService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
       select: { id: true, name: true, status: true },
     })
-    return { assembly }
+    // A completed assembly stays until the mesa erases it, so a closed tab must not lose the acta or the delete button.
+    const completed = await this.prisma.assembly.findMany({
+      where: { organizationId: ORGANIZATION_ID, status: 'completed' },
+      orderBy: { completedAt: 'desc' },
+      take: 10,
+      select: { id: true, name: true, completedAt: true },
+    })
+    return { assembly, completed: completed.map((item) => ({ ...item, completedAt: item.completedAt?.toISOString() ?? null })) }
   }
 
   /** The join code is stored only as a hash, so a lost QR can be replaced but never shown again. */

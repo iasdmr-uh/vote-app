@@ -638,6 +638,8 @@ test('después de finalizar, la mesa imprime el acta, descarga el CSV y borra lo
             results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 0 }, { optionId: 'n', label: 'Voto nulo', count: 1, isNullVote: true }],
             officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
           { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
+          { id: 'r3', title: 'Tesorería', status: 'published', participationCount: 1, options: [{ id: 'f', label: '=HYPERLINK("http://x","y")' }],
+            results: [{ optionId: 'f', label: '=HYPERLINK("http://x","y")', count: 1 }] },
         ],
       } })
       return
@@ -663,6 +665,8 @@ test('después de finalizar, la mesa imprime el acta, descarga el CSV y borra lo
   expect(csv).toContain('Presidencia,publicada,3,1,Rosa,2,sí')
   expect(csv).toContain('Presidencia,publicada,3,,Voto nulo,1,')
   expect(csv).toContain('Secretaría,anulada: Nombre mal escrito,1')
+  expect(csv).toContain(`Tesorería,publicada,1,1,"'=HYPERLINK(""http://x"",""y"")",1,`)
+  expect(csv).not.toMatch(/,=HYPERLINK/)
 
   const acta = page.locator('.acta-print')
   await expect(acta).toHaveCount(0)
@@ -690,6 +694,31 @@ test('después de finalizar, la mesa imprime el acta, descarga el CSV y borra lo
   expect(deleteBody).toEqual({ confirmation: true })
   await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toBeVisible()
   expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBeNull()
+})
+
+test('con la pestaña cerrada, la mesa recupera una Asamblea finalizada para el acta y el borrado', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token'))
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) {
+      await route.fulfill({ json: { assembly: null, completed: [{ id: 'done-assembly', name: 'Asamblea finalizada de prueba', completedAt: '2026-10-02T18:30:00.000Z' }] } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/assemblies/done-assembly')) {
+      await route.fulfill({ json: { id: 'done-assembly', name: 'Asamblea finalizada de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z', participants: [], participantCount: 0, rounds: [] } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { name: 'Asambleas finalizadas con datos guardados' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toBeVisible()
+  await page.getByRole('button', { name: 'Abrir acta y borrado' }).click()
+  await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Borrar datos de la Asamblea' })).toBeEnabled()
+  expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBe('done-assembly')
 })
 
 test('el proyector muestra la dirección de la red que da el servidor, no la de la laptop', async ({ page }) => {

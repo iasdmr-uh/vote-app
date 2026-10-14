@@ -706,11 +706,24 @@ async function resumeParticipantSession(resumeCode: string) {
 }
 
 /** Without this, closing the moderator tab would leave the live assembly with no way to control it. */
+/** Completed assemblies whose data was not erased yet; the mesa can reopen them for the acta and deletion. */
+const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
+
+function openCompletedAssembly(id: string) {
+  assemblyId.value = id
+  sessionStorage.setItem('assemblyId', id)
+  code.value = ''
+  qrImage.value = ''
+  void refresh()
+}
+
 async function recoverActiveAssembly() {
   if (assemblyId.value) return
   let assembly: { id: string; name: string } | null = null
   try {
-    assembly = (await request<{ assembly: { id: string; name: string } | null }>('/moderator/assemblies/active', {}, moderatorToken.value)).assembly
+    const recovered = await request<{ assembly: { id: string; name: string } | null; completed?: Array<{ id: string; name: string; completedAt: string | null }> }>('/moderator/assemblies/active', {}, moderatorToken.value)
+    assembly = recovered.assembly
+    completedAssemblies.value = recovered.completed || []
   } catch {
     // Non-fatal: the server still refuses to create a second live assembly.
     return
@@ -762,8 +775,9 @@ async function printActa() {
 }
 
 function csvCell(value: string | number) {
-  const text = String(value)
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+  // Names come from participants: a leading =, +, -, @, tab or CR would run as a spreadsheet formula.
+  const text = typeof value === 'string' && /^[=+\-@\t\r]/.test(value) ? `'${value}` : String(value)
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
 /** The acta stays with Secretaría after the data is erased, so it carries every count and declaration. */
@@ -1090,6 +1104,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
       </section>
       <template v-else-if="moderatorAuthState === 'authenticated'">
         <section class="page-heading"><div class="heading-copy"><p class="eyebrow">PANEL DE MODERACIÓN</p><h1>Control de Asamblea</h1><p>{{ moderatorSessionSummary }}</p></div><div class="heading-projector"><button class="primary" @click="openProjectorWindow">Abrir proyector en otra ventana</button><p>La moderación permanece en esta ventana privada; la pantalla externa muestra solo la vista pública.</p></div></section>
+        <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Asambleas finalizadas con datos guardados</h2><p>Ábrela para imprimir el acta y borrar sus datos.</p><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · finalizada {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta y borrado</button></li></ul></section>
         <section v-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea y generar código</button></form></section>
         <template v-else>
           <ol class="workflow-steps" aria-label="Pasos de la moderación">

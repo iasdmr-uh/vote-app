@@ -141,3 +141,12 @@ test('closing nomination supports rechecks the active eligible roster before cha
   await assert.rejects(voting.advanceCommitteeStage('round', 'approval'), /mínimo configurado \(4\) supera los 3 delegados elegibles activos/)
   assert.equal(proposalsRead, false, 'reject before reading or mutating support results')
 })
+
+test('recovery lists completed assemblies still holding data, so a closed tab does not lose the acta', async () => {
+  const completedAt = new Date('2026-10-14T20:00:00.000Z')
+  const voting = new VotingService({ assembly: {
+    findFirst: async () => null,
+    findMany: async ({ where }: { where: { status: string } }) => where.status === 'completed' ? [{ id: 'done', name: 'Asamblea 2026', completedAt }] : [],
+  } } as never, {} as never)
+  assert.deepEqual(await voting.activeAssembly(), { assembly: null, completed: [{ id: 'done', name: 'Asamblea 2026', completedAt: completedAt.toISOString() }] })
+})
