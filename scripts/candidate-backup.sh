@@ -15,6 +15,15 @@ if [[ -e "$BACKUP_FILE" ]]; then
   exit 2
 fi
 
+# While a ballot is open, votes and participation receipts are still linkable at the storage level
+# (they are unlinked when the round closes), so a dump taken now could reveal individual votes.
+OPEN_ROUNDS="$("$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres sh -ec \
+  'psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT count(*) FROM rounds WHERE status = '"'"'open'"'"'"')"
+if [[ "${OPEN_ROUNDS//[[:space:]]/}" != "0" ]]; then
+  printf 'Refusing to back up while a ballot is open (%s open). Close the round first.\n' "${OPEN_ROUNDS//[[:space:]]/}" >&2
+  exit 3
+fi
+
 TEMP_FILE="${BACKUP_FILE}.partial.$$"
 trap 'rm -f "$TEMP_FILE"' EXIT
 "$ROOT_DIR/scripts/candidate-compose.sh" exec -T postgres sh -ec \

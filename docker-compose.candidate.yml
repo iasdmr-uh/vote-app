@@ -10,6 +10,8 @@ services:
   postgres:
     image: postgres:17.11-alpine3.24
     restart: unless-stopped
+    # Never log SQL text or parameters: a logged vote insert next to its participation receipt reveals the vote.
+    command: ["postgres", "-c", "log_statement=none", "-c", "log_min_duration_statement=-1"]
     logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.candidate}
