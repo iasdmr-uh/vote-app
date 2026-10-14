@@ -233,6 +233,26 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
   await expect(page.getByText('RESULTADOS PUBLICADOS')).toHaveCount(0)
 })
 
+test('una comisión anulada en etapa de apoyos muestra el aviso y no el formulario', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'annulled-committee-session'))
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
+        participationStatus: 'pending',
+        openRound: { roundId: 'nomination', title: 'Comisión de Nombramiento', status: 'annulled', category: 'committee', committeeType: 'nomination', committeeStage: 'support', options: [] },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('La mesa anuló esta votación')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Apoyar propuestas' })).toHaveCount(0)
+})
+
 test('delegado registra una propuesta y apoyo sin mostrar identidades de apoyo', async ({ page }) => {
   let stage: 'proposals' | 'support' = 'proposals'
   let supported = false

@@ -9,7 +9,7 @@ import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 
-test('a decision or support that races with the stage change waits for it and is then refused', {
+test('proposals, supports and decisions are refused once their stage closed or the committee was annulled', {
   skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
 }, async () => {
   process.env.DATABASE_URL = testDatabaseUrl
@@ -54,6 +54,33 @@ test('a decision or support that races with the stage change waits for it and is
     await lockHolder.query('COMMIT')
     await assert.rejects(support, /no está recibiendo apoyos/)
     assert.equal(await prisma.committeeProposalSupport.count({ where: { proposalId: proposal.id } }), 0)
+
+    // And for a proposal arriving while proposals are being closed (review of PR #28).
+    await prisma.round.update({ where: { id: round.id }, data: { committeeStage: 'proposals', committeeConfiguration: { proposalRule: 'eligible_delegate_only', supportRule: 'one_per_eligible_delegate' } } })
+    await lockHolder.query('BEGIN')
+    await lockHolder.query('SELECT id FROM rounds WHERE id = $1 FOR UPDATE', [round.id])
+    const lateProposal = service.submitCommitteeProposal(delegate!.id, round.id, delegate!.id)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await lockHolder.query(`UPDATE rounds SET committee_stage = 'support' WHERE id = $1`, [round.id])
+    await lockHolder.query('COMMIT')
+    await assert.rejects(lateProposal, /no está recibiendo propuestas/)
+    assert.equal(await prisma.committeeProposal.count({ where: { roundId: round.id } }), 1, 'no proposal enters a closed stage')
+
+    // An annulled committee keeps its stage but accepts nothing.
+    for (const stage of ['proposals', 'support', 'approval'] as const) {
+      await prisma.round.update({ where: { id: round.id }, data: { committeeStage: stage, status: 'draft' } })
+      await service.annulRound(round.id, `Anulada en ${stage}`)
+    }
+    await prisma.round.update({ where: { id: round.id }, data: { committeeStage: 'proposals' } })
+    await assert.rejects(service.submitCommitteeProposal(delegate!.id, round.id, delegate!.id), /no está recibiendo propuestas/)
+    await prisma.round.update({ where: { id: round.id }, data: { committeeStage: 'support' } })
+    await assert.rejects(service.supportCommitteeProposal(delegate!.id, round.id, proposal.id), /no está recibiendo apoyos/)
+    const phone = await service.participantState(delegate!.id)
+    assert.equal(phone.openRound?.status, 'annulled', 'the phone receives the annulled status to show instead of a stage form')
+    assert.equal('committeeProposals' in phone, false, 'no support list is offered for an annulled committee')
+    await prisma.round.update({ where: { id: round.id }, data: { committeeStage: 'approval' } })
+    await prisma.committeeProposal.update({ where: { id: proposal.id }, data: { status: 'approved', decidedAt: new Date() } })
+    await assert.rejects(service.recordCommitteeApproval(round.id, proposal.id, { decision: 'rejected' }), /no está en aprobación/)
   } finally {
     await lockHolder.query('ROLLBACK').catch(() => undefined)
     await lockHolder.end()

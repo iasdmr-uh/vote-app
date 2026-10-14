@@ -37,7 +37,7 @@ test('the mesa records the delegation decision on a proposal; the system does no
   const recorded: Record<string, unknown>[] = []
   const tx = {
     $queryRaw: async () => [],
-    round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
+    round: { findUnique: async () => ({ assemblyId: 'assembly', status: 'draft', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
     committeeProposal: {
       findFirst: async () => ({ id: 'proposal' }),
       update: async ({ data }: { data: Record<string, unknown> }) => { recorded.push(data); return { id: 'proposal', ...data } },
@@ -61,7 +61,7 @@ test('a recorded delegation decision can be corrected, but proposals that lacked
   let where: Record<string, unknown> | undefined
   const tx = {
     $queryRaw: async () => [],
-    round: { findUnique: async () => ({ assemblyId: 'assembly', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
+    round: { findUnique: async () => ({ assemblyId: 'assembly', status: 'draft', category: 'committee', committeeType: 'nomination', committeeStage: 'approval', committeeConfiguration: {} }) },
     committeeProposal: {
       findFirst: async (args: { where: Record<string, unknown> }) => { where = args.where; return null },
       update: async () => assert.fail('must not update'),

@@ -208,16 +208,18 @@ export class VotingService implements OnModuleInit {
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
     const results = round?.status === 'published' ? await this.publishedResults(round.id) : undefined
     const officialResult = officialRoundId ? await this.publishedOfficialResult(officialRoundId) : null
-    const proposals = round?.committeeStage && ['proposals', 'support'].includes(round.committeeStage)
+    // An annulled committee keeps its stage; only a live one shows candidates, proposals and supports.
+    const liveNominationStage = round?.status === 'draft' ? round.committeeStage : null
+    const proposals = liveNominationStage && ['proposals', 'support'].includes(liveNominationStage)
       ? await this.prisma.participantSession.findMany({
           where: { assemblyId: participant.assemblyId, status: 'active', committeeEligible: true, assemblyRole: 'delegate' },
           orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], select: { id: true, firstName: true, lastName: true },
         }) : undefined
-    const committeeProposals = round?.committeeStage && ['proposals', 'support'].includes(round.committeeStage)
+    const committeeProposals = round && liveNominationStage && ['proposals', 'support'].includes(liveNominationStage)
       ? await this.prisma.committeeProposal.findMany({
           where: { roundId: round.id, status: 'proposed' }, include: { candidate: { select: { firstName: true, lastName: true } }, _count: { select: { supporters: true } } }, orderBy: { createdAt: 'asc' },
         }) : undefined
-    const supportedProposalIds = round?.committeeStage === 'support'
+    const supportedProposalIds = round && liveNominationStage === 'support'
       ? new Set((await this.prisma.committeeProposalSupport.findMany({ where: { proposal: { roundId: round.id }, supporterParticipantId: participant.id }, select: { proposalId: true } })).map((support) => support.proposalId))
       : new Set<string>()
     return {
@@ -678,9 +680,14 @@ export class VotingService implements OnModuleInit {
     if (!candidate || candidate.assemblyId !== round.assemblyId || candidate.status !== 'active') throw new UnprocessableEntityException('La candidatura debe pertenecer a un delegado activo de esta Asamblea')
     if (!candidate.committeeEligible || candidate.assemblyRole !== 'delegate') throw new UnprocessableEntityException('La persona no está confirmada como elegible o tiene un cargo excluido')
     try {
-      const proposal = await this.prisma.committeeProposal.create({ data: { roundId, candidateParticipantId, proposedByParticipantId: participantId }, select: { id: true, roundId: true, candidateParticipantId: true } })
-      await this.prisma.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: participantId, action: 'committee.nomination.proposed', metadata: { proposalId: proposal.id, candidateParticipantId } } })
-      return proposal
+      return await this.prisma.$transaction(async (tx) => {
+        // Shared lock, as for supports: closing proposals or annulling (FOR UPDATE) waits, and a proposal
+        // that arrives after either is refused instead of being saved into a finished stage.
+        await this.assertNominationStageOpen(tx, roundId, 'proposals', 'El proceso no está recibiendo propuestas')
+        const proposal = await tx.committeeProposal.create({ data: { roundId, candidateParticipantId, proposedByParticipantId: participantId }, select: { id: true, roundId: true, candidateParticipantId: true } })
+        await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: participantId, action: 'committee.nomination.proposed', metadata: { proposalId: proposal.id, candidateParticipantId } } })
+        return proposal
+      })
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Esta persona ya fue propuesta')
       throw error
@@ -690,17 +697,16 @@ export class VotingService implements OnModuleInit {
   async supportCommitteeProposal(participantId: string, roundId: string, proposalId: string) {
     const participant = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { id: true, assemblyId: true, status: true, assemblyRole: true, committeeEligible: true } })
     if (!participant || participant.status !== 'active' || participant.assemblyRole !== 'delegate' || !participant.committeeEligible) throw new ForbiddenException('Solo un delegado marcado como elegible puede apoyar una propuesta')
-    const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
-    if (!round || round.assemblyId !== participant.assemblyId || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'support') throw new ConflictException('El proceso no está recibiendo apoyos')
+    const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, status: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
+    if (!round || round.assemblyId !== participant.assemblyId || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'support' || round.status !== 'draft') throw new ConflictException('El proceso no está recibiendo apoyos')
     if ((round.committeeConfiguration as Record<string, unknown> | null)?.supportRule !== 'one_per_eligible_delegate') throw new ConflictException('Secretaría o la mesa debe validar una regla de apoyo que el sistema pueda aplicar')
     const proposal = await this.prisma.committeeProposal.findFirst({ where: { id: proposalId, roundId, status: 'proposed' }, select: { id: true } })
     if (!proposal) throw new NotFoundException('Propuesta no disponible')
     try {
       await this.prisma.$transaction(async (tx) => {
-        // Shared lock: delegates support concurrently, but closing supports (FOR UPDATE) waits for them,
-        // so no support is saved after the counts that decide each proposal were taken.
-        const rows = await tx.$queryRaw<Array<{ committee_stage: string | null }>>`SELECT committee_stage FROM rounds WHERE id = ${roundId}::uuid FOR SHARE`
-        if (rows[0]?.committee_stage !== 'support') throw new ConflictException('El proceso no está recibiendo apoyos')
+        // Shared lock: delegates support concurrently, but closing supports or annulling (FOR UPDATE) waits
+        // for them, so no support is saved after the counts that decide each proposal were taken.
+        await this.assertNominationStageOpen(tx, roundId, 'support', 'El proceso no está recibiendo apoyos')
         await tx.committeeProposalSupport.create({ data: { proposalId, supporterParticipantId: participantId } })
         await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: participantId, action: 'committee.nomination.supported', metadata: { proposalId } } })
       })
@@ -759,8 +765,8 @@ export class VotingService implements OnModuleInit {
       // Same row lock as advanceCommitteeStage: a decision either lands before the ballot copies the
       // approved candidates or sees the election stage and is refused, never after the copy.
       await tx.$queryRaw`SELECT id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
-      const round = await tx.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
-      if (!round || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'approval') throw new ConflictException('El proceso no está en aprobación de candidaturas')
+      const round = await tx.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, status: true, category: true, committeeType: true, committeeStage: true, committeeConfiguration: true } })
+      if (!round || round.status !== 'draft' || round.category !== 'committee' || round.committeeType !== 'nomination' || round.committeeStage !== 'approval') throw new ConflictException('El proceso no está en aprobación de candidaturas')
       // Proposals rejected for lacking supports have no decision date and stay out; decided ones can be corrected.
       const proposal = await tx.committeeProposal.findFirst({ where: { id: proposalId, roundId, OR: [{ status: 'supported' }, { decidedAt: { not: null } }] }, select: { id: true } })
       if (!proposal) throw new NotFoundException('Propuesta apoyada no disponible')
@@ -1086,6 +1092,12 @@ export class VotingService implements OnModuleInit {
     })
     this.realtime.roundState(withdrawn.assembly_id, { roundId, status: withdrawn.status as RoundStatus, title: withdrawn.title })
     return { roundId, withdrawn: true }
+  }
+
+  /** An annulled committee keeps its last stage, so the stage alone does not mean the stage is still open. */
+  private async assertNominationStageOpen(tx: Prisma.TransactionClient, roundId: string, stage: 'proposals' | 'support', message: string) {
+    const rows = await tx.$queryRaw<Array<{ status: string; committee_stage: string | null }>>`SELECT status, committee_stage FROM rounds WHERE id = ${roundId}::uuid FOR SHARE`
+    if (rows[0]?.status !== 'draft' || rows[0]?.committee_stage !== stage) throw new ConflictException(message)
   }
 
   private async assertNoOfficialResult(tx: Prisma.TransactionClient, rootRoundId: string, message: string) {

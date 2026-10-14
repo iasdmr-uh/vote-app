@@ -200,7 +200,7 @@ test('database nomination flow keeps votes secret, ranks candidates without elec
       committeeConfiguration: { institutionallyValidated: true, validationReference: 'ACTA-TEST', eligibilityRule: 'delegados confirmados', votingMethod: 'voto secreto' },
       countingRule: { kind: 'count_only' },
       options: { create: candidates.map((candidate, order) => ({ label: `${candidate.firstName} ${candidate.lastName}`, order, candidateParticipantId: candidate.id })) },
-    }, include: { options: true } })
+    }, include: { options: { orderBy: { order: 'asc' } } } })
     await service.openRound(round.id)
     for (let voter = 0; voter < 5; voter += 1) {
       const selections = round.options.slice(0, 4).map((option) => option.id)
