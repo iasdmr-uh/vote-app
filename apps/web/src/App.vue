@@ -368,9 +368,13 @@ function normalizeState(value: Record<string, any>): PublicState {
   }
 }
 
-/** A refresh requested while another request is in flight runs once afterwards instead of being dropped. */
-async function refresh() {
-  if (loading.value || syncing.value) { refreshQueued = true; return }
+/**
+ * A refresh requested while another request is in flight runs once afterwards instead of being dropped.
+ * After the mesa's own action it loads at once: a background load started before the action would bring
+ * the old state back, and stateLoadSeq already discards that older answer.
+ */
+async function refresh(afterAction = false) {
+  if (loading.value || (syncing.value && !afterAction)) { refreshQueued = true; return }
   await loadState()
   lastRefreshAt = Date.now()
   if (refreshQueued && !loading.value && !syncing.value) {
@@ -597,7 +601,7 @@ async function participantCommitteeAction(path: string, body?: unknown) {
     succeeded = true
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
-  if (succeeded) await refresh()
+  if (succeeded) await refresh(true)
 }
 
 /** Optional texts go only when typed; Secretaría (Oct 2026) dropped eligibility and method from the form. */
@@ -618,7 +622,16 @@ async function configureCommittee(targetRound: NonNullable<PublicState['rounds']
   await moderatorAction(`/moderator/rounds/${encodeURIComponent(targetRound.id)}/committee/configuration`, 'PATCH', {
     memberCount: committeeMemberCount.value,
     ...(committeeDecisionNote.value.trim() ? { decisionNote: committeeDecisionNote.value } : {}),
-    committeeConfiguration: { ...(targetRound.committeeConfiguration || {}), ...committeeRules(targetRound.committeeType || '') },
+    // The API keeps saved fields that are left out, so an optional field the mesa emptied goes as null to clear it.
+    committeeConfiguration: {
+      validationReference: null, eligibilityRule: null, votingMethod: null,
+      ...(targetRound.committeeType === 'nomination' ? { candidateCount: null } : {}),
+      ...committeeRules(targetRound.committeeType || ''),
+    },
+  }, (saved: { committeeConfiguration?: Record<string, any>; memberCount?: number | null; decisionNote?: string | null }) => {
+    // Shown at once, so reopening the editor before the next refresh cannot resend the old values.
+    const shown = state.value?.rounds?.find((item) => item.id === targetRound.id)
+    if (shown && saved?.committeeConfiguration) Object.assign(shown, { committeeConfiguration: saved.committeeConfiguration, memberCount: saved.memberCount ?? shown.memberCount, decisionNote: saved.decisionNote ?? shown.decisionNote })
   })
 }
 
@@ -871,7 +884,7 @@ async function confirmModeratorAction() {
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
   if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.'
-  if (succeeded) await refresh()
+  if (succeeded) await refresh(true)
 }
 
 function rotateJoinCode() {
@@ -1012,7 +1025,7 @@ async function retrySecrecyCleanup() {
     succeeded = true
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
-  if (succeeded) await refresh()
+  if (succeeded) await refresh(true)
 }
 
 async function completeAssembly() {
@@ -1100,7 +1113,7 @@ async function createAssembly() {
     created = true
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
-  if (created) await refresh()
+  if (created) await refresh(true)
 }
 
 async function refreshQr() {
@@ -1382,7 +1395,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
         <section class="card join-card validation-card">
           <p class="eyebrow">ACCESO DE MESA</p><h2>No se pudo validar el acceso</h2>
           <p class="lead">La credencial se conserva. Comprueba la conexión e inténtalo de nuevo.</p>
-          <button class="primary" :disabled="syncing" @click="refresh">{{ syncing ? 'Reintentando…' : 'Reintentar validación' }}</button>
+          <button class="primary" :disabled="syncing" @click="refresh()">{{ syncing ? 'Reintentando…' : 'Reintentar validación' }}</button>
         </section>
       </section>
       <section v-else-if="moderatorAuthState !== 'authenticated'" class="card join-card">
@@ -1419,7 +1432,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
             <p class="status-line">¿Aún no vas a borrar? <button class="link-button" @click="showPendingActas">Cerrar el acta sin borrar</button>. Seguirá en la lista de Asambleas finalizadas.</p>
           </section>
           <template v-else>
-          <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh">Actualizar lista</button></div>
+          <section class="card"><div class="section-heading"><div><p class="eyebrow">INGRESO</p><h2>Participantes</h2></div><button class="secondary" @click="refresh()">Actualizar lista</button></div>
             <ul class="participant-list"><li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`"><div><span>{{ person.firstName }} {{ person.lastName }}</span></div><span v-if="person.id && (assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed')" class="person-actions"><button class="link-button" @click="editParticipant(person)">Corregir</button><button class="link-button remove-link" @click="moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button></span><span v-if="person.id" class="person-actions"><button class="link-button" @click="issueResumeCode(person)">Reconectar dispositivo</button></span></li><li v-if="!state?.participants?.length" class="empty">La lista aparecerá aquí cuando se unan.</li></ul>
             <div class="action-row"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><template v-else><span class="status-line">El ingreso está cerrado.</span><button v-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button></template><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button class="link-button" :disabled="loading" @click="rotateJoinCode">Generar nuevo código</button></div>
             <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>Reconexión de {{ resumeQr.name }}</strong><p>Pide a la persona que escanee este QR con su nuevo dispositivo. Es de un solo uso y vence {{ formatDateTime(resumeQr.expiresAt) }}. No lo muestres en el proyector.</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
@@ -1471,12 +1484,12 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
               <p v-else-if="round.committeeType === 'nomination' && ['proposals', 'support'].includes(round.committeeStage || '')" class="status-line">Aún no hay propuestas.</p>
               <p v-if="round.committeeStage === 'support'" :class="['summary-box', supportedProposals(currentRoundRecord).length >= (currentRoundRecord.memberCount ?? 5) ? 'summary-success' : 'summary-warning']">{{ supportedProposals(currentRoundRecord).length }} {{ supportedProposals(currentRoundRecord).length === 1 ? 'propuesta ya tiene' : 'propuestas ya tienen' }} {{ currentRoundRecord.committeeConfiguration?.supportMinimum }} apoyos. Se necesitan al menos {{ currentRoundRecord.memberCount ?? 5 }} para elegir {{ currentRoundRecord.memberCount ?? 5 }} integrantes.</p>
               <p v-if="round.committeeStage === 'approval'" class="summary-box summary-success">{{ (currentRoundRecord.committeeProposals || []).filter((proposal) => proposal.status === 'approved').length }} aprobadas<template v-if="currentRoundRecord.committeeConfiguration?.candidateCount"> de {{ currentRoundRecord.committeeConfiguration.candidateCount }} candidatos fijados</template>. Se necesitan al menos {{ currentRoundRecord.memberCount ?? 5 }}.</p>
-              <button v-if="round.committeeStage === 'configuration_required' && committeeEditingRoundId !== currentRoundRecord.id" class="primary full-width" @click="editCommitteeConfiguration(currentRoundRecord)">Completar configuración</button>
+              <button v-if="round.committeeStage === 'configuration_required' && committeeEditingRoundId !== currentRoundRecord.id" class="primary full-width" :disabled="loading" @click="editCommitteeConfiguration(currentRoundRecord)">Completar configuración</button>
               <button v-else-if="round.committeeStage === 'proposals'" class="primary full-width" :disabled="loading" @click="advanceCommitteeStage(currentRoundRecord, 'support')">Cerrar propuestas y pasar a apoyos</button>
               <button v-else-if="round.committeeStage === 'support'" class="primary full-width" :disabled="loading" @click="advanceCommitteeStage(currentRoundRecord, 'approval')">Cerrar apoyos y pasar a aprobación</button>
               <button v-else-if="round.committeeStage === 'approval'" class="primary full-width" :disabled="loading" @click="advanceCommitteeStage(currentRoundRecord, 'election')">Abrir etapa de elección</button>
               <div class="card-footer-links">
-                <button v-if="['proposals', 'support'].includes(round.committeeStage || '') && committeeEditingRoundId !== currentRoundRecord.id" class="link-button" @click="changeSupportMinimum(currentRoundRecord)">{{ round.committeeType === 'nomination' ? 'Cambiar apoyos mínimos' : 'Cambiar configuración' }}</button>
+                <button v-if="['proposals', 'support'].includes(round.committeeStage || '') && committeeEditingRoundId !== currentRoundRecord.id" class="link-button" :disabled="loading" @click="changeSupportMinimum(currentRoundRecord)">{{ round.committeeType === 'nomination' ? 'Cambiar apoyos mínimos' : 'Cambiar configuración' }}</button>
                 <button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular comisión</button>
               </div>
             </template>
@@ -1510,7 +1523,7 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
               </template>
               <div class="card-footer-links"><button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button><button class="danger" :disabled="loading" @click="completeAssembly">Finalizar Asamblea…</button></div>
             </template>
-            <template v-else-if="round?.status === 'open' || round?.status === 'closed'">
+            <template v-else-if="round?.status === 'open' || (round?.status === 'closed' && !showNextBallotForm)">
               <p class="eyebrow">{{ round.status === 'open' ? 'VOTACIÓN ABIERTA' : 'VOTACIÓN CERRADA' }}</p><h2>{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}<template v-if="currentRoundRecord && voteNumber(currentRoundRecord) > 1"> — {{ voteNumber(currentRoundRecord) }}.ª votación</template></h2>
               <div v-if="round.status === 'open'" class="action-row"><p class="status-line">La votación está abierta. Los resultados permanecerán ocultos hasta que la mesa los publique.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular votación</button><button class="danger" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/close`)">Cerrar votación</button></div></div>
               <template v-else>
@@ -1519,11 +1532,12 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
                   <div class="results-list ranked-results"><div v-for="(result, index) in currentRoundRecord.privateResults" :key="result.optionId" :class="{ 'null-vote-result': result.isNullVote }"><span>{{ rankOf(currentRoundRecord.privateResults, index) }} {{ result.label }}</span><strong>{{ result.count }} <small>· {{ resultPercent(currentRoundRecord.privateResults, result.count) }} %</small></strong><span class="result-bar" aria-hidden="true"><span :style="{ width: `${resultPercent(currentRoundRecord.privateResults, result.count)}%` }"></span></span></div></div>
                 </section>
                 <div class="action-row"><p class="status-line">La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide qué sigue.</p><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/publish`)">Publicar conteo</button></div></div>
+                <div class="card-footer-links"><button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta sin publicar este conteo</button></div>
               </template>
             </template>
             <div v-if="round?.status === 'annulled'" class="annulled-summary"><p class="eyebrow">PAPELETA ANULADA</p><h2>{{ round.title }}</h2><div class="action-row"><p class="status-line">Papeleta anulada<template v-if="round.annulReason">: {{ round.annulReason }}</template>. Sus votos no se contarán.</p><button v-if="round.category !== 'committee' || round.options?.some((option) => !option.isNullVote)" class="secondary" :disabled="loading" @click="repeatAllOptions(state?.rounds?.find((item) => item.id === round?.id))">Repetir con las mismas opciones</button></div></div>
-            <template v-if="!round || round.status === 'annulled' || (round.status === 'published' && showNextBallotForm)">
-              <div class="eyebrow-row"><p class="eyebrow">PASO 3 · PREPARAR PAPELETA</p><button v-if="round?.status === 'published'" class="link-button" @click="showNextBallotForm = false">Volver al conteo</button></div>
+            <template v-if="!round || round.status === 'annulled' || (['published', 'closed'].includes(round.status) && showNextBallotForm)">
+              <div class="eyebrow-row"><p class="eyebrow">PASO 3 · PREPARAR PAPELETA</p><button v-if="round?.status === 'published' || round?.status === 'closed'" class="link-button" @click="showNextBallotForm = false">Volver al conteo</button></div>
               <h2>Nueva papeleta</h2>
               <form class="ballot-form" @submit.prevent="createRound">
                 <div class="field-group"><span class="field-label" id="ballot-kind-label">¿Qué se vota?</span>
@@ -1670,5 +1684,5 @@ onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); if (sc
       <p class="acta-signatures"><span>Moderación</span><span>Secretaría</span></p>
     </section>
   </main>
-  <footer v-if="role !== 'projector'"><span>V1 · Herramienta operativa de la Asamblea</span><button class="link-button" @click="refresh">Sincronizar estado</button></footer>
+  <footer v-if="role !== 'projector'"><span>V1 · Herramienta operativa de la Asamblea</span><button class="link-button" @click="refresh()">Sincronizar estado</button></footer>
 </template>

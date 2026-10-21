@@ -207,6 +207,25 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await moderator.getByRole('dialog').getByRole('button', { name: 'Preparar papeleta' }).click()
   await expect(moderator.getByText('PROPUESTAS ABIERTAS', { exact: true })).toBeVisible()
 
+  // Emptying the optional candidate count must clear it, not resend the saved 6.
+  const saveCommitteeConfiguration = async (candidateCount: string) => {
+    await moderator.getByRole('button', { name: 'Cambiar apoyos mínimos' }).click()
+    await moderator.getByLabel(/Número de candidatos/).fill(candidateCount)
+    await moderator.getByRole('button', { name: 'Guardar configuración' }).click()
+    await moderator.getByRole('dialog').getByRole('button', { name: 'Guardar configuración' }).click()
+    await expect(moderator.getByRole('dialog')).toHaveCount(0)
+  }
+  const savedCandidateCount = async () => (await moderatorState(request, assemblyId)).rounds
+    .find((round: { committeeType?: string }) => round.committeeType === 'nomination')?.committeeConfiguration?.candidateCount
+  await saveCommitteeConfiguration('')
+  await expect.poll(savedCandidateCount).toBeUndefined()
+  // Reopening the editor right after saving shows the cleared field, so a second save cannot resend 6.
+  await moderator.getByRole('button', { name: 'Cambiar apoyos mínimos' }).click()
+  await expect(moderator.getByLabel(/Número de candidatos/)).toHaveValue('')
+  await moderator.getByRole('button', { name: 'Cancelar' }).click()
+  await saveCommitteeConfiguration('6')
+  await expect.poll(savedCandidateCount).toBe(6)
+
   const proposed = ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora', 'Rosa Díaz', 'Carlos Gómez']
   for (const [index, candidate] of proposed.entries()) {
     const { page } = delegates[index]

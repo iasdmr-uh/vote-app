@@ -547,6 +547,11 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(privateCounts).toContainText('Solo visible para la mesa')
   await expect(privateCounts.locator('.results-list > div').first()).toHaveText(/1\. Opción Beta \(prueba\)\s*3\s*·\s*75 %/)
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
+  // As on main, the mesa can move on to the next cargo without publishing this count.
+  await page.getByRole('button', { name: 'Preparar otra papeleta sin publicar este conteo' }).click()
+  await expect(page.getByRole('heading', { name: 'Nueva papeleta' })).toBeVisible()
+  await page.getByRole('button', { name: 'Volver al conteo' }).click()
+  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
 })
 
 test('moderador declara el resultado desde el acta con el diálogo y puede corregirlo o retirarlo', async ({ page }) => {

@@ -677,7 +677,8 @@ export class VotingService implements OnModuleInit {
       if (round.status !== 'draft' || !['configuration_required', 'proposals', 'support'].includes(round.committee_stage ?? '')) throw new ConflictException('La configuración ya quedó congelada al iniciar la votación')
       const memberCount = input.memberCount ?? round.member_count
       const decisionNote = input.decisionNote?.trim() ?? round.decision_note
-      const config = { ...(round.committee_configuration ?? {}), ...(input.committeeConfiguration ?? {}) }
+      // A field sent as null is cleared, not stored: a stored null candidate count would read as 0 and block the election.
+      const config: Record<string, unknown> = Object.fromEntries(Object.entries({ ...(round.committee_configuration ?? {}), ...(input.committeeConfiguration ?? {}) }).filter(([, value]) => value !== null))
       const validated = Boolean(config.institutionallyValidated)
       if (round.committee_type === 'nomination' && memberCount !== null && memberCount !== undefined && (memberCount < 5 || memberCount % 2 === 0)) {
         throw new UnprocessableEntityException('Nombramiento requiere un cupo impar de al menos cinco integrantes')
