@@ -590,12 +590,11 @@ export class VotingService implements OnModuleInit {
       throw new UnprocessableEntityException(`«${NULL_VOTE_LABEL}» se agrega automáticamente a cada papeleta`)
     }
     const rules = input.committeeConfiguration ?? {}
-    const validated = category === 'committee' && Boolean(
-      rules.institutionallyValidated && input.decisionNote?.trim() && rules.validationReference?.trim() && rules.eligibilityRule?.trim() && rules.votingMethod?.trim(),
-    )
+    // Mesa v2: Secretaría's validation is the only required decision; reference, note and rules are optional context for the acta.
+    const validated = category === 'committee' && Boolean(rules.institutionallyValidated)
     const nominationReady = input.committeeType === 'nomination' && Boolean(
       validated && Number.isInteger(Number(rules.supportMinimum)) && Number(rules.supportMinimum) > 0 &&
-      Number.isInteger(Number(rules.candidateCount)) && Number(rules.candidateCount) >= (input.memberCount ?? 5),
+      this.nominationCandidateCountValid(rules.candidateCount, input.memberCount ?? 5),
     )
     let stage: 'configuration_required' | 'proposals' | 'election' | null = category !== 'committee' ? null
       : input.committeeType === 'nomination'
@@ -646,11 +645,30 @@ export class VotingService implements OnModuleInit {
       return created
     })
     const createdRound = await this.prisma.round.findUniqueOrThrow({ where: { id: round.id }, include: { options: { orderBy: { order: 'asc' } } } })
+    await this.announceRound(createdRound.id)
     return { id: createdRound.id, title: createdRound.title, format: createdRound.format, category: createdRound.category, committeeType: createdRound.committeeType, memberCount: createdRound.memberCount, decisionNote: createdRound.decisionNote, committeeStage: createdRound.committeeStage, committeeConfiguration: createdRound.committeeConfiguration, countingRule: createdRound.countingRule, status: createdRound.status, options: createdRound.options }
   }
 
+  /** The candidate count is optional (mesa v2); when absent it defaults to the member count, so it never blocks. */
+  private nominationCandidateCountValid(candidateCount: unknown, memberCount: number) {
+    if (candidateCount === undefined || candidateCount === null) return true
+    const count = Number(candidateCount)
+    return Number.isInteger(count) && count >= memberCount
+  }
+
+  /** Phones and projector refetch on round.state; committee steps change what they show without opening a ballot. */
+  private async announceRound(roundId: string) {
+    // Best effort: the action already committed, and clients still poll if the notice is lost.
+    try {
+      const round = await this.prisma.round.findUnique({ where: { id: roundId }, select: { assemblyId: true, status: true, title: true } })
+      if (round) this.realtime.roundState(round.assemblyId, { roundId, status: round.status, title: round.title })
+    } catch (error) {
+      this.logger.warn(`No se pudo anunciar el cambio de la papeleta ${roundId}: ${(error as Error).message}`)
+    }
+  }
+
   async updateCommitteeConfiguration(roundId: string, input: CommitteeConfigurationUpdateDto) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; committee_type: string | null; committee_stage: string | null; member_count: number | null; decision_note: string | null; committee_configuration: Record<string, unknown> | null }>>`
         SELECT id, assembly_id, status, committee_type, committee_stage, member_count, decision_note, committee_configuration FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
       `
@@ -660,7 +678,7 @@ export class VotingService implements OnModuleInit {
       const memberCount = input.memberCount ?? round.member_count
       const decisionNote = input.decisionNote?.trim() ?? round.decision_note
       const config = { ...(round.committee_configuration ?? {}), ...(input.committeeConfiguration ?? {}) }
-      const validated = Boolean(config.institutionallyValidated && decisionNote && config.validationReference && config.eligibilityRule && config.votingMethod)
+      const validated = Boolean(config.institutionallyValidated)
       if (round.committee_type === 'nomination' && memberCount !== null && memberCount !== undefined && (memberCount < 5 || memberCount % 2 === 0)) {
         throw new UnprocessableEntityException('Nombramiento requiere un cupo impar de al menos cinco integrantes')
       }
@@ -671,8 +689,7 @@ export class VotingService implements OnModuleInit {
       if (validated && memberCount) {
         if (round.committee_type === 'nomination') {
           const supportMinimum = Number(config.supportMinimum)
-          const candidateCount = Number(config.candidateCount)
-          const ready = Boolean(Number.isInteger(supportMinimum) && supportMinimum >= 1 && Number.isInteger(candidateCount) && candidateCount >= memberCount)
+          const ready = Boolean(Number.isInteger(supportMinimum) && supportMinimum >= 1 && this.nominationCandidateCountValid(config.candidateCount, memberCount))
           const participantCount = await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active' } })
           if (ready && supportMinimum <= participantCount) nextStage = round.committee_stage === 'support' ? 'support' : 'proposals'
         } else if (round.committee_type === 'finance' || round.committee_type === 'statutes') {
@@ -682,7 +699,7 @@ export class VotingService implements OnModuleInit {
         } else if (round.committee_type === 'plans' || round.committee_type === 'other') {
           const optionCount = await tx.ballotOption.count({ where: { roundId, isNullVote: false } })
           const activeOptions = await tx.ballotOption.count({ where: { roundId, candidateParticipantId: { not: null }, candidateParticipant: { is: { status: 'active' } } } })
-          if (config.eligibilityRule && config.votingMethod && optionCount > 0 && activeOptions === optionCount) nextStage = 'election'
+          if (optionCount > 0 && activeOptions === optionCount) nextStage = 'election'
         }
       }
       const updated = await tx.round.update({
@@ -702,9 +719,11 @@ export class VotingService implements OnModuleInit {
         ? await tx.participantSession.count({ where: { assemblyId: round.assembly_id, status: 'active' } })
         : null
       const impossibleMinimum = round.committee_type === 'nomination' && Number(config.supportMinimum) > (participantCount ?? 0)
-      const missingCandidateCount = round.committee_type === 'nomination' && !(Number(config.candidateCount) >= (memberCount ?? 0) && Number.isInteger(Number(config.candidateCount)))
-      return { ...updated, ready: nextStage !== 'configuration_required', message: impossibleMinimum ? `El mínimo de apoyos (${Number(config.supportMinimum)}) supera los ${participantCount} participantes activos; corrígelo antes de continuar.` : missingCandidateCount ? 'Registra el número de candidatos fijado por la delegación; no puede ser menor que el número de integrantes.' : nextStage === 'configuration_required' ? 'Falta completar o validar decisiones institucionales.' : 'Configuración validada; puede continuar el flujo.' }
+      const missingCandidateCount = round.committee_type === 'nomination' && !this.nominationCandidateCountValid(config.candidateCount, memberCount ?? 0)
+      return { ...updated, ready: nextStage !== 'configuration_required', message: impossibleMinimum ? `El mínimo de apoyos (${Number(config.supportMinimum)}) supera los ${participantCount} participantes activos; corrígelo antes de continuar.` : missingCandidateCount ? 'El número de candidatos fijado por la delegación no puede ser menor que el número de integrantes.' : nextStage === 'configuration_required' ? 'Falta marcar que Secretaría validó esta comisión.' : 'Configuración validada; puede continuar el flujo.' }
     })
+    await this.announceRound(roundId)
+    return result
   }
 
   async submitCommitteeProposal(participantId: string, roundId: string, candidateParticipantId: string) {
@@ -717,7 +736,7 @@ export class VotingService implements OnModuleInit {
     const candidate = await this.prisma.participantSession.findUnique({ where: { id: candidateParticipantId }, select: { id: true, assemblyId: true, status: true } })
     if (!candidate || candidate.assemblyId !== round.assemblyId || candidate.status !== 'active') throw new UnprocessableEntityException('La candidatura debe pertenecer a un participante activo de esta Asamblea')
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const proposal = await this.prisma.$transaction(async (tx) => {
         // Shared lock, as for supports: closing proposals or annulling (FOR UPDATE) waits, and a proposal
         // that arrives after either is refused instead of being saved into a finished stage.
         await this.assertNominationStageOpen(tx, roundId, 'proposals', 'El proceso no está recibiendo propuestas')
@@ -725,6 +744,8 @@ export class VotingService implements OnModuleInit {
         await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: participantId, action: 'committee.nomination.proposed', metadata: { proposalId: proposal.id, candidateParticipantId } } })
         return proposal
       })
+      await this.announceRound(roundId)
+      return proposal
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Esta persona ya fue propuesta')
       throw error
@@ -750,11 +771,12 @@ export class VotingService implements OnModuleInit {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Ya registraste tu apoyo a esta propuesta')
       throw error
     }
+    await this.announceRound(roundId)
     return { supported: true }
   }
 
   async advanceCommitteeStage(roundId: string, stage: 'support' | 'approval' | 'election') {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; committee_stage: string | null; committee_type: string | null; member_count: number | null; committee_configuration: Record<string, unknown> | null }>>`
         SELECT id, assembly_id, status, committee_stage, committee_type, member_count, committee_configuration FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
       `
@@ -794,10 +816,12 @@ export class VotingService implements OnModuleInit {
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: `committee.stage.${stage}`, metadata: { previousStage: round.committee_stage } } })
       return { roundId, stage }
     })
+    await this.announceRound(roundId)
+    return result
   }
 
   async recordCommitteeApproval(roundId: string, proposalId: string, input: CommitteeApprovalDto) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Same row lock as advanceCommitteeStage: a decision either lands before the ballot copies the
       // approved candidates or sees the election stage and is refused, never after the copy.
       await tx.$queryRaw`SELECT id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
@@ -813,6 +837,8 @@ export class VotingService implements OnModuleInit {
       await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'committee.nomination.approval_recorded', metadata: { proposalId, decision: input.decision, yesVotes, noVotes } } })
       return { proposalId: decided.id, status: decided.status, yesVotes: decided.approvalYes, noVotes: decided.approvalNo }
     })
+    await this.announceRound(roundId)
+    return result
   }
 
   async openRound(roundId: string) {
