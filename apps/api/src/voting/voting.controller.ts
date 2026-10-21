@@ -20,10 +20,6 @@ import {
   CreateAssemblyDto,
   CompleteAssemblyDto,
   CreateRoundDto,
-  CommitteeApprovalDto,
-  CommitteeConfigurationUpdateDto,
-  CommitteeProposalDto,
-  CommitteeStageDto,
   JoinAssemblyDto,
   LobbyPatchDto,
   ParticipantPatchDto,
@@ -75,15 +71,6 @@ export class ParticipantController {
     return this.voting.castVote(sessionId(request), roundId, input.optionIds ?? input.optionId ?? '')
   }
 
-  @Post('rounds/:roundId/committee/proposals')
-  propose(@Req() request: SessionRequest, @Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: CommitteeProposalDto) {
-    return this.voting.submitCommitteeProposal(sessionId(request), roundId, input.candidateParticipantId)
-  }
-
-  @Post('rounds/:roundId/committee/proposals/:proposalId/support')
-  support(@Req() request: SessionRequest, @Param('roundId', ParseUUIDPipe) roundId: string, @Param('proposalId', ParseUUIDPipe) proposalId: string) {
-    return this.voting.supportCommitteeProposal(sessionId(request), roundId, proposalId)
-  }
 }
 
 @Controller('moderator')
@@ -175,21 +162,6 @@ export class ModeratorController {
   @Post('rounds/:roundId/repeat')
   repeatRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: RepeatRoundDto) {
     return this.voting.repeatRound(roundId, input)
-  }
-
-  @Post('rounds/:roundId/committee/stage')
-  committeeStage(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: CommitteeStageDto) {
-    return this.voting.advanceCommitteeStage(roundId, input.stage)
-  }
-
-  @Patch('rounds/:roundId/committee/configuration')
-  committeeConfiguration(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: CommitteeConfigurationUpdateDto) {
-    return this.voting.updateCommitteeConfiguration(roundId, input)
-  }
-
-  @Put('rounds/:roundId/committee/proposals/:proposalId/approval')
-  committeeApproval(@Param('roundId', ParseUUIDPipe) roundId: string, @Param('proposalId', ParseUUIDPipe) proposalId: string, @Body() input: CommitteeApprovalDto) {
-    return this.voting.recordCommitteeApproval(roundId, proposalId, input)
   }
 
   @Put('rounds/:roundId/official-result')

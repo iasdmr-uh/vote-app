@@ -96,7 +96,7 @@ test('delegado vota en comisión con selección múltiple limitada a los cupos',
       await route.fulfill({ json: {
         assembly: { id: 'committee-assembly', name: 'Asamblea prueba', status: 'in_progress' },
         participationStatus: recorded ? 'recorded' : 'pending',
-        currentRound: { id: 'committee-round', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', committeeType: 'finance', memberCount: 2, options: [
+        currentRound: { id: 'committee-round', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 2, electionSeats: 2, options: [
           { id: 'candidate-a', label: 'Ana (prueba)' }, { id: 'candidate-b', label: 'Beto (prueba)' }, { id: 'candidate-c', label: 'Celia (prueba)' },
         ] },
       } })
@@ -112,52 +112,54 @@ test('delegado vota en comisión con selección múltiple limitada a los cupos',
   })
 
   await page.goto('/')
-  await expect(page.getByLabel('Ana (prueba)')).toBeVisible()
+  await expect(page.getByText('Marca hasta 2 candidatos. Puedes marcar menos, pero no más de 2.')).toBeVisible()
   await page.getByLabel('Ana (prueba)').check()
   await page.getByLabel('Beto (prueba)').check()
-  await page.getByLabel('Celia (prueba)').check()
-  await expect(page.getByRole('alert')).toContainText('máximo 2 integrantes')
-  await page.getByLabel('Celia (prueba)').uncheck()
+  await expect(page.getByRole('group', { name: 'Candidatos · 2 de 2 marcados' })).toBeVisible()
+  // Over the limit the box does not stay ticked: the mesa's rule is shown instead.
+  await page.getByLabel('Celia (prueba)').click()
+  await expect(page.getByRole('alert')).toContainText('máximo 2 candidatos')
+  await expect(page.getByLabel('Celia (prueba)')).not.toBeChecked()
   await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
   await expect(page.locator('.review-details')).toContainText('Ana (prueba), Beto (prueba)')
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
   await expect(page.getByText('Tu participación está registrada')).toBeVisible()
 })
 
-test('el voto nulo reemplaza a las candidaturas elegidas y no se combina con ellas', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'null-vote-session'))
+test('en una comisión se puede marcar menos que el máximo y la papeleta no ofrece voto nulo', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'fewer-session'))
+  let voted: unknown
   await page.route(api, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
       await route.fulfill({ json: {
         assembly: { id: 'committee-assembly', name: 'Asamblea prueba', status: 'in_progress' },
-        participationStatus: 'pending',
-        openRound: { roundId: 'repeat-round', title: 'Comisión — nueva votación', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 5, electionSeats: 1, options: [
-          { optionId: 'candidate-a', label: 'Ana (prueba)' }, { optionId: 'candidate-b', label: 'Beto (prueba)' }, { optionId: 'null-option', label: 'Voto nulo', isNullVote: true },
+        participationStatus: voted ? 'recorded' : 'pending',
+        openRound: { roundId: 'finance', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 3, electionSeats: 3, options: [
+          { optionId: 'candidate-a', label: 'Ana (prueba)' }, { optionId: 'candidate-b', label: 'Beto (prueba)' }, { optionId: 'candidate-c', label: 'Celia (prueba)' }, { optionId: 'candidate-d', label: 'Dora (prueba)' },
         ] },
       } })
       return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/repeat-round/vote')) {
-      expect(request.postDataJSON()).toEqual({ optionIds: ['null-option'], confirmation: true })
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/finance/vote')) {
+      voted = request.postDataJSON()
       await route.fulfill({ status: 201, json: { status: 'recorded' } })
       return
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for null vote test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route for fewer-names test' } })
   })
 
   await page.goto('/')
-  await expect(page.getByText('Selecciona hasta 1 integrantes')).toBeVisible()
-  await page.getByLabel('Ana (prueba)').check()
+  await expect(page.getByText('Marca hasta 3 candidatos. Puedes marcar menos, pero no más de 3.')).toBeVisible()
+  await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Revisar y confirmar voto' })).toBeDisabled()
   await page.getByLabel('Beto (prueba)').check()
-  await expect(page.getByRole('alert')).toContainText('máximo 1 integrantes', { useInnerText: true })
-  await page.getByLabel('Voto nulo').check()
-  await expect(page.getByLabel('Ana (prueba)')).not.toBeChecked()
+  await expect(page.getByRole('group', { name: 'Candidatos · 1 de 3 marcados' })).toBeVisible()
   await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
-  await expect(page.locator('.review-details')).toContainText('Voto nulo')
-  await expect(page.locator('.review-details')).not.toContainText('Ana')
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
+  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  expect(voted).toEqual({ optionIds: ['candidate-b'], confirmation: true })
 })
 
 test('moderador anula una papeleta con motivo y prepara una nueva votación con los más votados', async ({ page }) => {
@@ -174,9 +176,9 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress',
         rounds: [
-          { id: 'first', title: 'Presidencia', status: 'published', options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gama' }, { id: 'n', label: 'Voto nulo', isNullVote: true }],
-            results: [{ optionId: 'b', label: 'Beta', count: 4 }, { optionId: 'a', label: 'Alfa', count: 4 }, { optionId: 'c', label: 'Gama', count: 1 }, { optionId: 'n', label: 'Voto nulo', count: 2, isNullVote: true }], officialResult: null },
-          { id: 'second', title: 'Secretaría', status: annulled ? 'annulled' : 'open', annulReason: annulled ? 'Nombre mal escrito' : null, options: [{ id: 'x', label: 'Rosa' }, { id: 'n2', label: 'Voto nulo', isNullVote: true }], officialResult: null },
+          { id: 'first', title: 'Presidencia', status: 'published', options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gama' }],
+            results: [{ optionId: 'b', label: 'Beta', count: 4 }, { optionId: 'a', label: 'Alfa', count: 4 }, { optionId: 'c', label: 'Gama', count: 1 }], officialResult: null },
+          { id: 'second', title: 'Secretaría', status: annulled ? 'annulled' : 'open', annulReason: annulled ? 'Nombre mal escrito' : null, options: [{ id: 'x', label: 'Rosa' }], officialResult: null },
         ],
       } })
       return
@@ -200,7 +202,7 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await expect(ranking).toContainText('1. Beta')
   await expect(ranking).toContainText('1. Alfa')
   await expect(ranking).toContainText('3. Gama')
-  await expect(ranking.locator(':scope > div').last()).toHaveText(/^\s*Voto nulo\s*2\s*\d+ %$/)
+  await expect(ranking).not.toContainText('Voto nulo')
 
   await page.getByRole('button', { name: 'Anular votación' }).click()
   const annulDialog = page.getByRole('dialog')
@@ -214,7 +216,7 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   const repeatDialog = page.getByRole('dialog')
   await expect(repeatDialog).toContainText('Presidencia — 2.ª votación')
   const repeatOptions = repeatDialog.getByRole('group', { name: '¿Quiénes pasan a la nueva votación?' })
-  await expect(repeatOptions.getByLabel('Voto nulo')).toHaveCount(0)
+  await expect(repeatDialog).not.toContainText('Voto nulo')
   // The tied leaders come preselected (S05).
   await expect(repeatOptions.getByLabel('Beta')).toBeChecked()
   await expect(repeatOptions.getByLabel('Alfa')).toBeChecked()
@@ -246,27 +248,7 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
   await expect(page.getByText('RESULTADOS PUBLICADOS')).toHaveCount(0)
 })
 
-test('una comisión anulada en etapa de apoyos muestra el aviso y no el formulario', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'annulled-committee-session'))
-  await page.route(api, async (route) => {
-    const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: {
-        assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
-        participationStatus: 'pending',
-        openRound: { roundId: 'nomination', title: 'Comisión de Nombramiento', status: 'annulled', category: 'committee', committeeType: 'nomination', committeeStage: 'support', options: [] },
-      } })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
-  })
-
-  await page.goto('/')
-  await expect(page.getByText('La mesa anuló esta votación')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Apoyar propuestas' })).toHaveCount(0)
-})
-
-test('la mesa prepara Nombramiento sin marcar roles ni elegibilidad de los participantes', async ({ page }) => {
+test('la mesa prepara una comisión escribiendo los candidatos y cuántos integrantes quedarán', async ({ page }) => {
   let createBody: Record<string, any> | undefined
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
@@ -278,7 +260,7 @@ test('la mesa prepara Nombramiento sin marcar roles ni elegibilidad de los parti
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'lobby_closed', completedAt: null,
-        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético', assemblyRole: null, committeeEligible: false }], participantCount: 1, rounds: [],
+        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1, rounds: [], attendanceRound: null,
       } })
       return
     }
@@ -292,65 +274,69 @@ test('la mesa prepara Nombramiento sin marcar roles ni elegibilidad de los parti
 
   await page.goto('/moderator')
   await expect(page.getByText('Delegado Sintético')).toBeVisible()
-  await expect(page.getByText('Elegibilidad confirmada por Secretaría/mesa')).toHaveCount(0)
-  await expect(page.getByLabel('Rol para reglas de comisión')).toHaveCount(0)
-
   await page.getByRole('radio', { name: 'Una comisión' }).click()
-  await expect(page.getByText('Regla validada para presentar propuestas')).toHaveCount(0)
-  await expect(page.getByRole('radio', { name: '✓ Nombramiento' })).toHaveAttribute('aria-checked', 'true')
-  await expect(page.getByText('Así se arma la comisión.')).toBeVisible()
-  await page.getByRole('radio', { name: '5', exact: true }).click()
-  await page.getByLabel('Mínimo de apoyos requerido').fill('2')
-  await page.getByLabel('Secretaría validó esta comisión').check()
-  await page.getByRole('button', { name: 'Preparar comisión y abrir propuestas' }).click()
+  await expect(page.getByText('Nombramiento')).toHaveCount(0)
+  await expect(page.getByText('Secretaría validó esta comisión')).toHaveCount(0)
+  await page.getByLabel('Nombre de la comisión').fill('Comisión de Finanzas')
+  await page.getByLabel('¿Cuántos integrantes quedarán en la comisión?').fill('2')
+  await page.getByLabel('Agregar candidato').fill('Ana Reyes')
+  await page.getByLabel('Agregar candidato').press('Enter')
+  // Fewer candidates than seats is refused before reaching the server.
+  await page.getByRole('button', { name: 'Preparar papeleta' }).click()
+  await expect(page.getByRole('alert')).toContainText('Agrega al menos 2 candidatos')
+  for (const name of ['Luis Mejía', 'Rosa Paz']) {
+    await page.getByLabel('Agregar candidato').fill(name)
+    await page.getByLabel('Agregar candidato').press('Enter')
+  }
+  await expect(page.getByText('Cada persona podrá marcar de 1 a 2 candidatos.', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Preparar papeleta' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Preparar papeleta' }).click()
   await expect.poll(() => createBody).toBeTruthy()
-  expect(createBody!.title).toBe('Comisión de Nombramiento')
-  expect(createBody!.memberCount).toBe(5)
-  expect(createBody!.committeeConfiguration.institutionallyValidated).toBe(true)
-  expect(createBody!.committeeConfiguration).not.toHaveProperty('proposalRule')
-  expect(createBody!.committeeConfiguration).not.toHaveProperty('supportRule')
-  expect(createBody!.committeeConfiguration.supportMinimum).toBe(2)
+  expect(createBody).toMatchObject({
+    title: 'Comisión de Finanzas', format: 'multiple_choice', category: 'committee', memberCount: 2,
+    options: [{ label: 'Ana Reyes' }, { label: 'Luis Mejía' }, { label: 'Rosa Paz' }],
+  })
+  for (const removed of ['committeeType', 'committeeConfiguration', 'decisionNote']) expect(createBody).not.toHaveProperty(removed)
 })
 
-test('delegado registra una propuesta y apoyo sin mostrar identidades de apoyo', async ({ page }) => {
-  let stage: 'proposals' | 'support' = 'proposals'
-  let supported = false
-  const stateForDelegate = () => ({
-    assembly: { id: 'committee-assembly', name: 'Asamblea prueba', status: 'in_progress' },
-    participationStatus: 'pending',
-    currentRound: { id: 'nomination-round', title: 'Comisión de Nombramiento', status: 'draft', format: 'multiple_choice', category: 'committee', committeeType: 'nomination', committeeStage: stage, options: [] },
-    committeeCandidates: [{ id: 'candidate-1', firstName: 'Ana', lastName: 'Delegada' }],
-    committeeProposals: [{ id: 'proposal-1', candidateName: 'Ana Delegada', supportCount: supported ? 1 : 0, supportedByMe: supported }],
+test('la mesa ve quién ya votó (amarillo/verde) y los puntos se quedan tras cerrar', async ({ page }) => {
+  let status: 'open' | 'closed' = 'open'
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'committee-session'))
   await page.route(api, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: stateForDelegate() }); return
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía', voted: false }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: true }],
+        participantCount: 3, attendanceRound: { roundId: 'r1', status, votedCount: 2 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null,
+          ...(status === 'closed' ? { privateResults: [{ optionId: 'a', label: 'Alfa', count: 2 }, { optionId: 'b', label: 'Beta', count: 0 }] } : {}) }],
+      } })
+      return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/committee/proposals')) {
-      expect(request.postDataJSON()).toEqual({ candidateParticipantId: 'candidate-1' })
-      await route.fulfill({ status: 201, json: { id: 'proposal-1' } }); return
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/r1/close')) {
+      status = 'closed'
+      await route.fulfill({ status: 201, json: { roundId: 'r1', status: 'closed' } })
+      return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/committee/proposals/proposal-1/support')) {
-      supported = true
-      await route.fulfill({ status: 201, json: { status: 'supported' } }); return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for committee proposal test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route for voted dots test' } })
   })
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Registrar propuesta' })).toBeVisible()
-  await page.getByLabel('Candidatura').selectOption('candidate-1')
-  await page.getByRole('button', { name: 'Registrar propuesta' }).click()
-  stage = 'support'
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
-  await expect(page.getByRole('heading', { name: 'Apoyar propuestas' })).toBeVisible()
-  await expect(page.getByText('0 apoyos')).toBeVisible()
-  await page.getByRole('button', { name: 'Apoyar' }).click()
-  await expect(page.getByRole('button', { name: 'Apoyo registrado' })).toBeDisabled()
-  await expect(page.getByText(/Solo se muestra el total, no quién apoyó/)).toBeVisible()
+
+  await page.goto('/moderator')
+  await expect(page.getByText('3 personas · 2 ya votaron · 1 falta')).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Ya votó' })).toHaveCount(2)
+  await expect(page.getByRole('img', { name: 'Falta votar' })).toHaveCount(1)
+  await expect(page.locator('li', { hasText: 'Luis Mejía' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
+  await expect(page.getByText('Solo indica si votó, nunca por quién.')).toBeVisible()
+  await page.getByRole('button', { name: 'Cerrar votación' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
+  await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Ya votó' })).toHaveCount(2)
+  await expect(page.getByText('3 personas · 2 ya votaron · 1 falta · última votación')).toBeVisible()
 })
 
 test('delegado conserva la sesión al recargar y puede salir limpiando el estado local', async ({ page }) => {
@@ -708,10 +694,10 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly') && !deleted) {
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
-        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético', assemblyRole: 'Delegado' }], participantCount: 1,
+        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1,
         rounds: [
-          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }, { id: 'n', label: 'Voto nulo', isNullVote: true }],
-            results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 0 }, { optionId: 'n', label: 'Voto nulo', count: 1, isNullVote: true }],
+          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
+            results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 1 }],
             officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
           { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
           { id: 'r3', title: 'Tesorería', status: 'published', participationCount: 1, options: [{ id: 'f', label: '=HYPERLINK("http://x","y")' }],
@@ -739,7 +725,7 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
   const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
   expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 1, 'Rosa', 2, 'sí'])
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, '', 'Voto nulo', 1, ''])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 2, 'Pedro', 1, ''])
   expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', 1, '', '', '', ''])
   // A name typed as a formula is a text cell: no formula element exists, and re-saving keeps it as text.
   expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', 1, 1, '=HYPERLINK("http://x","y")', 1, ''])
@@ -1014,7 +1000,7 @@ test('moderador recupera la Asamblea activa en una pestaña nueva y puede reabri
     if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea recuperada', status: 'lobby_closed', completedAt: null,
-        participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético', status: 'active', assemblyRole: null, committeeEligible: false }],
+        participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético', status: 'active' }],
         participantCount: 1, rounds: [],
       } })
       return
@@ -1194,8 +1180,8 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', participantCount: 9,
         rounds: [{
           id: 'presidency', title: 'Presidencia', status: 'published',
-          options: [{ id: 'm', label: 'María López' }, { id: 'c', label: 'Carlos Gómez' }, { id: 'r', label: 'Rosa Díaz' }, { id: 'n', label: 'Voto nulo', isNullVote: true }],
-          results: [{ optionId: 'm', label: 'María López', count: 4 }, { optionId: 'c', label: 'Carlos Gómez', count: 4 }, { optionId: 'r', label: 'Rosa Díaz', count: 1 }, { optionId: 'n', label: 'Voto nulo', count: 0, isNullVote: true }],
+          options: [{ id: 'm', label: 'María López' }, { id: 'c', label: 'Carlos Gómez' }, { id: 'r', label: 'Rosa Díaz' }],
+          results: [{ optionId: 'm', label: 'María López', count: 4 }, { optionId: 'c', label: 'Carlos Gómez', count: 4 }, { optionId: 'r', label: 'Rosa Díaz', count: 1 }],
           officialResult: null,
         }],
       } })

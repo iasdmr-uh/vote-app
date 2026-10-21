@@ -9,7 +9,7 @@ import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 
-test('the mesa can annul a ballot, repeat it, and count the null vote apart', {
+test('the mesa can annul a ballot and repeat it', {
   skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
 }, async () => {
   process.env.DATABASE_URL = testDatabaseUrl
@@ -40,7 +40,7 @@ test('the mesa can annul a ballot, repeat it, and count the null vote apart', {
     const round = await service.createRound(assemblyId, {
       title: 'Presidencia', format: 'single_choice', options: [{ label: 'Juan Peres' }, { label: 'María López' }], countingRule: { kind: 'count_only' },
     })
-    assert.deepEqual(round.options.map((option) => [option.label, option.isNullVote]), [['Juan Peres', false], ['María López', false], ['Voto nulo', true]])
+    assert.deepEqual(round.options.map((option) => option.label), ['Juan Peres', 'María López'], 'no null-vote option is added')
     await service.openRound(round.id)
     await service.castVote(voters[0]!, round.id, round.options[0]!.id)
 
@@ -66,12 +66,11 @@ test('the mesa can annul a ballot, repeat it, and count the null vote apart', {
     await service.openRound(repeat.id)
     await service.castVote(voters[0]!, repeat.id, repeat.options[1]!.id)
     await service.castVote(voters[1]!, repeat.id, repeat.options[1]!.id)
-    await service.castVote(voters[2]!, repeat.id, repeat.options.find((option) => option.isNullVote)!.id)
+    await service.castVote(voters[2]!, repeat.id, repeat.options[0]!.id)
     await service.closeRound(repeat.id)
     const results = (await service.publishRound(repeat.id)).results
-    assert.deepEqual(results.map((option) => [option.label, option.count]), [['María López', 2], ['Juan Peres', 0], ['Voto nulo', 1]])
+    assert.deepEqual(results.map((option) => [option.label, option.count]), [['María López', 2], ['Juan Peres', 1]])
 
-    await assert.rejects(service.declareOfficialResult(round.id, { optionIds: [round.options[2]!.id] }), /no se puede declarar/)
     await service.declareOfficialResult(round.id, { optionIds: [round.options[1]!.id], note: 'Electa en la repetición' })
     await service.publishOfficialResult(round.id)
     assert.deepEqual((await service.publicState(created.joinCode)).officialResult?.elected.map((item) => item.label), ['María López'])
