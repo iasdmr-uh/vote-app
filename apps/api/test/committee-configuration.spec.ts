@@ -72,7 +72,7 @@ test('a recorded delegation decision can be corrected, but proposals that lacked
   assert.deepEqual(where?.OR, [{ status: 'supported' }, { decidedAt: { not: null } }], 'decided proposals stay correctable; support-rejected ones have no decision date')
 })
 
-test('nomination proposals stay blocked until the delegation fixes the number of candidates', async () => {
+test('nomination proposals open with only Secretaría validation and a support minimum; the candidate count is optional', async () => {
   const createdRound = { id: 'round', title: 'Comisión', format: 'multiple_choice', category: 'committee', committeeType: 'nomination', memberCount: 5, decisionNote: 'validada', committeeStage: 'configuration_required', committeeConfiguration: {}, countingRule: { kind: 'count_only' }, status: 'draft', options: [] }
   const tx = {
     $queryRaw: async () => [{ id: 'assembly', status: 'lobby_closed' }],
@@ -84,9 +84,13 @@ test('nomination proposals stay blocked until the delegation fixes the number of
   // No proposal or support rule: Secretaría decided the system does not check who may propose or support.
   const rules = { institutionallyValidated: true, validationReference: 'ACTA-1', eligibilityRule: 'delegados elegibles', votingMethod: 'secreta', supportMinimum: 2 }
   const input = { ...base, options: [], category: 'committee' as const, committeeType: 'nomination' as const, memberCount: 5, decisionNote: 'validada' }
-  assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: rules })).committeeStage, 'configuration_required')
+  assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: rules })).committeeStage, 'proposals', 'without a candidate count it defaults to the member count')
   assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: { ...rules, candidateCount: 4 } })).committeeStage, 'configuration_required', 'fewer candidates than seats')
   assert.equal((await voting.createRound('assembly', { ...input, committeeConfiguration: { ...rules, candidateCount: 10 } })).committeeStage, 'proposals')
+  // Mesa v2: reference, decision note, eligibility and method are optional context for the acta.
+  const minimal = { ...base, options: [], category: 'committee' as const, committeeType: 'nomination' as const, memberCount: 5 }
+  assert.equal((await voting.createRound('assembly', { ...minimal, committeeConfiguration: { institutionallyValidated: true, supportMinimum: 2 } })).committeeStage, 'proposals')
+  assert.equal((await voting.createRound('assembly', { ...minimal, committeeConfiguration: { supportMinimum: 2 } })).committeeStage, 'configuration_required', 'Secretaría validation is still required')
 })
 
 test('"Voto nulo" is added by the system and cannot be typed as a regular option', async () => {
@@ -112,6 +116,22 @@ test('nomination configuration remains blocked when support or majority decision
   })
   assert.equal(result.committeeStage, 'configuration_required')
   assert.deepEqual(result.options, [], 'no ballot is created while institutional rules are unresolved')
+})
+
+test('an optional committee field sent as null is cleared instead of keeping the saved value', async () => {
+  let saved: Record<string, unknown> | undefined
+  const tx = {
+    $queryRaw: async () => [{
+      id: 'round', assembly_id: 'assembly', status: 'draft', committee_type: 'nomination', committee_stage: 'proposals', member_count: 5, decision_note: null,
+      committee_configuration: { institutionallyValidated: true, supportMinimum: 2, candidateCount: 6, validationReference: 'ACTA-1' },
+    }],
+    participantSession: { count: async () => 9 },
+    round: { update: async ({ data }: { data: { committeeConfiguration: Record<string, unknown> } }) => { saved = data.committeeConfiguration; return { id: 'round', committeeStage: 'proposals' } } },
+    auditEvent: { create: async () => ({}) },
+  }
+  const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx) } as never, {} as never)
+  await voting.updateCommitteeConfiguration('round', { committeeConfiguration: { institutionallyValidated: true, supportMinimum: 2, candidateCount: null, validationReference: null } as never })
+  assert.deepEqual(saved, { institutionallyValidated: true, supportMinimum: 2 }, 'a stored null candidate count would read as 0 and block the election')
 })
 
 test('cannot begin nomination proposals when the support minimum exceeds the active participants', async () => {

@@ -35,10 +35,13 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
 
   await confirm(moderator, 'Cerrar ingreso')
   await expect(moderator.getByText('El ingreso está cerrado.')).toBeVisible()
-  await moderator.getByLabel('Título o cargo').fill('Votación E2E')
-  await moderator.getByLabel(/Opciones o candidat/).fill('Opción Ámbar\nOpción Índigo')
+  await moderator.getByLabel('Nombre del cargo').fill('Votación E2E')
+  for (const option of ['Opción Ámbar', 'Opción Índigo']) {
+    await moderator.getByLabel('Agregar candidato').fill(option)
+    await moderator.getByLabel('Agregar candidato').press('Enter')
+  }
   await confirm(moderator, 'Preparar papeleta')
-  await expect(moderator.getByText('Papeleta preparada. Revisa las opciones antes de abrir.')).toBeVisible()
+  await expect(moderator.getByText('PAPELETA PREPARADA', { exact: true })).toBeVisible()
   await confirm(moderator, 'Abrir votación')
   await expect(moderator.getByRole('button', { name: 'Cerrar votación' })).toBeVisible()
 
@@ -69,7 +72,7 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   expect((await afterDuplicate.json()).rounds[0].participationCount).toBe(1)
 
   await confirm(moderator, 'Cerrar votación')
-  await expect(moderator.getByText('La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide en el acta.')).toBeVisible()
+  await expect(moderator.getByText('La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide qué sigue.')).toBeVisible()
   const hiddenResults = await request.get(`${api}/assemblies/${joinCode}/public-state`)
   expect(hiddenResults.ok()).toBeTruthy()
   expect(await hiddenResults.json()).not.toHaveProperty('results')

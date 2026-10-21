@@ -7,6 +7,8 @@ if (!databaseUrl) throw new Error('Use npm run test:e2e:integration to provide a
 export default defineConfig({
   testDir: './tests/e2e/integration',
   fullyParallel: false,
+  // Specs share one database and the API allows a single active Asamblea, so they run one after another.
+  workers: 1,
   forbidOnly: true,
   retries: 0,
   reporter: [

@@ -198,7 +198,8 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await page.goto('/moderator')
   const ranking = page.locator('.official-round').first().locator('.results-list')
   await expect(ranking).toContainText('1. Beta')
-  await expect(ranking).toContainText('2. Alfa')
+  await expect(ranking).toContainText('1. Alfa')
+  await expect(ranking).toContainText('3. Gama')
   await expect(ranking.locator(':scope > div').last()).toHaveText(/^\s*Voto nulo\s*2\s*\d+ %$/)
 
   await page.getByRole('button', { name: 'Anular votación' }).click()
@@ -209,12 +210,16 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await annulDialog.getByRole('button', { name: 'Anular papeleta' }).click()
   await expect(page.getByText('Papeleta anulada: Nombre mal escrito.')).toBeVisible()
 
-  const repeatForm = page.locator('.official-round').first().getByRole('group', { name: 'Nueva votación con las opciones seleccionadas' })
-  await expect(repeatForm.getByLabel('Voto nulo')).toHaveCount(0)
-  await repeatForm.getByLabel('Beta').check()
-  await repeatForm.getByLabel('Alfa').check()
-  await page.locator('.official-round').first().getByRole('button', { name: 'Preparar nueva votación' }).click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Preparar nueva votación' }).click()
+  await page.locator('.official-round').first().getByRole('button', { name: 'Repetir votación…' }).click()
+  const repeatDialog = page.getByRole('dialog')
+  await expect(repeatDialog).toContainText('Presidencia — 2.ª votación')
+  const repeatOptions = repeatDialog.getByRole('group', { name: '¿Quiénes pasan a la nueva votación?' })
+  await expect(repeatOptions.getByLabel('Voto nulo')).toHaveCount(0)
+  // The tied leaders come preselected (S05).
+  await expect(repeatOptions.getByLabel('Beta')).toBeChecked()
+  await expect(repeatOptions.getByLabel('Alfa')).toBeChecked()
+  await expect(repeatOptions.getByLabel('Gama')).not.toBeChecked()
+  await repeatDialog.getByRole('button', { name: 'Preparar 2.ª votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
   expect(repeated).toEqual({ optionIds: ['b', 'a'] })
 })
@@ -290,14 +295,19 @@ test('la mesa prepara Nombramiento sin marcar roles ni elegibilidad de los parti
   await expect(page.getByText('Elegibilidad confirmada por Secretaría/mesa')).toHaveCount(0)
   await expect(page.getByLabel('Rol para reglas de comisión')).toHaveCount(0)
 
-  await page.getByLabel('Tipo de proceso').selectOption('committee')
+  await page.getByRole('radio', { name: 'Una comisión' }).click()
   await expect(page.getByText('Regla validada para presentar propuestas')).toHaveCount(0)
-  await expect(page.getByText('Cualquier participante puede proponer, apoyar una vez cada propuesta y ser propuesto')).toBeVisible()
-  await page.getByLabel('Nombre de la comisión o proceso').fill('Comisión de Nombramiento')
+  await expect(page.getByRole('radio', { name: '✓ Nombramiento' })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByText('Así se arma la comisión.')).toBeVisible()
+  await page.getByRole('radio', { name: '5', exact: true }).click()
   await page.getByLabel('Mínimo de apoyos requerido').fill('2')
-  await page.getByRole('button', { name: 'Guardar configuración de comisión' }).click()
+  await page.getByLabel('Secretaría validó esta comisión').check()
+  await page.getByRole('button', { name: 'Preparar comisión y abrir propuestas' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Preparar papeleta' }).click()
   await expect.poll(() => createBody).toBeTruthy()
+  expect(createBody!.title).toBe('Comisión de Nombramiento')
+  expect(createBody!.memberCount).toBe(5)
+  expect(createBody!.committeeConfiguration.institutionallyValidated).toBe(true)
   expect(createBody!.committeeConfiguration).not.toHaveProperty('proposalRule')
   expect(createBody!.committeeConfiguration).not.toHaveProperty('supportRule')
   expect(createBody!.committeeConfiguration.supportMinimum).toBe(2)
@@ -535,11 +545,16 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(page.getByText('La papeleta está cerrada.')).toBeVisible()
   const privateCounts = page.getByRole('region', { name: 'Conteo para revisión de la mesa' })
   await expect(privateCounts).toContainText('Solo visible para la mesa')
-  await expect(privateCounts.locator('.results-list > div').first()).toHaveText(/1\. Opción Beta \(prueba\)\s*3\s*75 %/)
+  await expect(privateCounts.locator('.results-list > div').first()).toHaveText(/1\. Opción Beta \(prueba\)\s*3\s*·\s*75 %/)
+  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
+  // As on main, the mesa can move on to the next cargo without publishing this count.
+  await page.getByRole('button', { name: 'Preparar otra papeleta sin publicar este conteo' }).click()
+  await expect(page.getByRole('heading', { name: 'Nueva papeleta' })).toBeVisible()
+  await page.getByRole('button', { name: 'Volver al conteo' }).click()
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
 })
 
-test('moderador declara el resultado oficial por separado y lo publica explícitamente', async ({ page }) => {
+test('moderador declara el resultado desde el acta con el diálogo y puede corregirlo o retirarlo', async ({ page }) => {
   let officialResult: Record<string, unknown> | null = null
   let publishCount = 0
   let withdrawCount = 0
@@ -589,21 +604,22 @@ test('moderador declara el resultado oficial por separado y lo publica explícit
   await page.goto('/moderator')
   await expect(page.getByRole('heading', { name: 'Declaraciones oficiales de la mesa' })).toBeVisible()
   await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
-  await page.getByRole('group', { name: 'Persona(s) declarada(s) electa(s)' }).getByLabel('Candidato Beta').check()
-  await page.getByLabel('Observación o motivo (opcional)').fill('Decisión de la Asamblea')
-  await page.getByRole('button', { name: 'Registrar resultado oficial' }).click()
-  await expect(page.getByRole('dialog')).toContainText('¿Guardar los cambios?')
-  await page.getByRole('dialog').getByRole('button', { name: 'Guardar cambios' }).click()
-  await expect(page.getByText('Declaración interna')).toBeVisible()
-  await expect(page.getByText('Decisión de la Asamblea')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Publicar declaración' })).toBeVisible()
-  expect(publishCount).toBe(0)
-
-  await page.getByRole('button', { name: 'Publicar declaración' }).click()
-  await expect(page.getByRole('dialog')).toContainText('¿Publicar la declaración oficial?')
-  await page.getByRole('dialog').getByRole('button', { name: 'Publicar declaración' }).click()
+  // The acta stays short: declaring happens in the dialog, not in a form per round.
+  await expect(page.getByRole('group', { name: '¿Quién queda electo?' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Declarar resultado…' }).click()
+  await page.getByRole('dialog').getByRole('group', { name: '¿Quién queda electo?' }).getByLabel('Candidato Beta').check()
+  await page.getByRole('dialog').getByLabel('Observación (opcional)').fill('Decisión de la Asamblea')
+  await page.getByRole('dialog').getByRole('button', { name: 'Declarar resultado oficial' }).click()
+  // The count is already public, so the declaration goes to the projector at once, as the dialog promises.
+  await expect(page.getByText('Declaración publicada')).toBeVisible()
   await expect(page.getByText('Visible al público')).toBeVisible()
+  await expect(page.getByText('Observación: Decisión de la Asamblea')).toBeVisible()
   expect(publishCount).toBe(1)
+
+  await page.getByRole('button', { name: 'Corregir declaración…' }).click()
+  await expect(page.getByRole('dialog').getByLabel('Candidato Beta')).toBeChecked()
+  await expect(page.getByRole('dialog').getByLabel('Observación (opcional)')).toHaveValue('Decisión de la Asamblea')
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
 
   await page.getByRole('button', { name: 'Retirar declaración' }).click()
   await expect(page.getByRole('dialog')).toContainText('¿Retirar la declaración oficial?')
@@ -1160,4 +1176,68 @@ test('moderador ve la limpieza pendiente aunque se actualice el estado y puede r
   await expect(page.getByText('Limpieza completada. Ya se pueden publicar resultados.')).toBeVisible()
   await expect(panel).toHaveCount(0)
   expect(cleanupRequests).toBe(1)
+})
+
+test('el conteo publicado separa repetir la votación de declarar el resultado (M07b)', async ({ page }) => {
+  let officialBody: unknown = null
+  let published = false
+  let repeated: unknown = null
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', participantCount: 9,
+        rounds: [{
+          id: 'presidency', title: 'Presidencia', status: 'published',
+          options: [{ id: 'm', label: 'María López' }, { id: 'c', label: 'Carlos Gómez' }, { id: 'r', label: 'Rosa Díaz' }, { id: 'n', label: 'Voto nulo', isNullVote: true }],
+          results: [{ optionId: 'm', label: 'María López', count: 4 }, { optionId: 'c', label: 'Carlos Gómez', count: 4 }, { optionId: 'r', label: 'Rosa Díaz', count: 1 }, { optionId: 'n', label: 'Voto nulo', count: 0, isNullVote: true }],
+          officialResult: null,
+        }],
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/presidency/repeat')) {
+      repeated = request.postDataJSON()
+      await route.fulfill({ status: 201, json: { id: 'presidency-2' } })
+      return
+    }
+    if (request.method() === 'PUT' && url.pathname.endsWith('/moderator/rounds/presidency/official-result')) {
+      officialBody = request.postDataJSON()
+      await route.fulfill({ status: 200, json: {} })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/presidency/official-result/publish')) {
+      published = true
+      await route.fulfill({ status: 200, json: {} })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for M07b test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
+  await expect(page.getByText('Total: 9 votos · 9 participantes')).toBeVisible()
+  await expect(page.getByText('Empate en el primer lugar: María López y Carlos Gómez, 4 votos cada uno.')).toBeVisible()
+
+  await page.locator('.decision-card').getByRole('button', { name: 'Repetir votación…' }).click()
+  const repeatDialog = page.getByRole('dialog')
+  await expect(repeatDialog.getByLabel('María López')).toBeChecked()
+  await expect(repeatDialog.getByLabel('Carlos Gómez')).toBeChecked()
+  await expect(repeatDialog.getByLabel('Rosa Díaz')).not.toBeChecked()
+  await repeatDialog.getByRole('button', { name: 'Cancelar' }).click()
+  expect(repeated).toBeNull()
+
+  await page.getByRole('button', { name: 'Declarar resultado oficial…' }).click()
+  const declareDialog = page.getByRole('dialog')
+  await expect(declareDialog.getByRole('button', { name: 'Declarar resultado oficial' })).toBeDisabled()
+  await declareDialog.getByLabel('María López').check()
+  await declareDialog.getByLabel('Observación (opcional)').fill('Desempate por la Asamblea')
+  await declareDialog.getByRole('button', { name: 'Declarar resultado oficial' }).click()
+  await expect.poll(() => published).toBe(true)
+  expect(officialBody).toEqual({ optionIds: ['m'], note: 'Desempate por la Asamblea' })
 })
