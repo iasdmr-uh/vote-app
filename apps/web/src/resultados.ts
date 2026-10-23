@@ -48,15 +48,6 @@ export function formatNames(names: string[]) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0] || ''
 }
 
-export function resultPercent(results: Counted[], count: number, voters?: number | null) {
-  const total = voters ?? results.reduce((sum, result) => sum + result.count, 0)
-  return total ? Math.round((count / total) * 100) : 0
-}
-
-export function committeeVoters(target: { category?: string; participationCount?: number } | undefined, voters = target?.participationCount) {
-  return target?.category === 'committee' ? voters ?? null : null
-}
-
 export function countsOf(target: RoundRecord) {
   return target.results?.length ? target.results : target.privateResults || []
 }

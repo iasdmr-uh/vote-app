@@ -1,26 +1,22 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
-import { actaSheetRows, decisionTie } from './resultados'
+import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
 import type { RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
-// The mesa's own state stays at module level, like the rest of the app, so a draft or an open dialog survives leaving the panel and coming back.
-
 const {
   loading, error, notice, state, code, moderatorToken, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies,
-  liveAssembly, assemblyStatus, lobbyStatus, round, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
+  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, participantLeft, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
 const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
-/** Required reason typed in the confirmation dialog; sent as `reason` in the request body. */
 const moderationReason = ref('')
 const moderatorCredential = ref('')
 const assemblyName = ref('Asamblea de Delegados')
 const roundTitle = ref('')
 const roundCategory = ref<'office' | 'committee'>('office')
-/** How many people stay on the committee: each delegate marks from one up to this many names. */
 const committeeMemberCount = ref<number | null>(null)
 const repeatSelections = ref<Record<string, string[]>>({})
 const repeatSeats = ref<Record<string, number | null>>({})
@@ -28,10 +24,8 @@ const showNextBallotForm = ref(false)
 const resumeQr = ref<{ name: string; image: string; url: string; expiresAt: string } | null>(null)
 const officialSelections = ref<Record<string, string[]>>({})
 const officialNotes = ref<Record<string, string>>({})
-/** Candidate names typed for the ballot, one row each, for an office or a committee. */
 const ballotCandidates = ref<string[]>([])
 const newBallotCandidate = ref('')
-/** Round whose "Repetir votación" (S05) or "Declarar resultado" dialog is open. */
 const repeatDialogRoundId = ref('')
 const declareDialogRoundId = ref('')
 watch(() => state.value?.rounds, (rounds) => {
@@ -40,16 +34,13 @@ watch(() => state.value?.rounds, (rounds) => {
       officialSelections.value[item.id] = item.officialResult?.elected.map((person) => person.optionId) || []
       officialNotes.value[item.id] = item.officialResult?.note || ''
     }
-    // Checkbox v-model needs an array; with undefined Vue binds a single boolean instead.
     if (!Array.isArray(repeatSelections.value[item.id])) repeatSelections.value[item.id] = []
   }
 }, { immediate: true })
 
-// Derived from server state so the warning survives refreshes, reloads and other moderator tabs.
 const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
 const assemblyStatusLabels: Record<string, string> = { preparing: 'En preparación', lobby_open: 'Ingreso abierto', lobby_closed: 'Ingreso cerrado', in_progress: 'En curso', completed: 'Finalizada' }
 const roundStatusLabels: Record<string, string> = { draft: 'preparada', open: 'abierta', closed: 'cerrada', published: 'publicada', annulled: 'anulada' }
-/** Rounds that repeat this one; the official result is declared on the original once any of them was counted. */
 function roundChain(target: RoundRecord) {
   return (state.value?.rounds || []).filter((item) => item.id === target.id || item.committeeRootRoundId === target.id)
 }
@@ -57,39 +48,46 @@ function isDecidable(target: RoundRecord) {
   const chain = roundChain(target)
   return !target.committeeRootRoundId && !chain.some((item) => item.status === 'open') && chain.some((item) => item.status === 'closed' || item.status === 'published')
 }
-/** The mesa's dots: who already voted in the latest opened ballot (kept after closing until the next one opens). */
 const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
   const total = state.value?.participants?.length ?? 0
   return { ...record, pending: Math.max(0, total - record.votedCount) }
 })
-const moderatorWorkflow = ['Revisar ingreso', 'Cerrar ingreso', 'Preparar papeleta', 'Abrir votación', 'Cerrar votación', 'Publicar conteo', 'Declarar resultado']
-/** The moderator's record of the current ballot, which carries its private counts. */
+const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
-/** A repetition's declaration lives on the original ballot. */
 const currentRoundDeclared = computed(() => {
   const record = currentRoundRecord.value
   const rootId = record?.committeeRootRoundId ?? record?.id
   return Boolean(state.value?.rounds?.find((item) => item.id === rootId)?.officialResult)
 })
-/** Steps reached by the current ballot. Completing the Asamblea does not mark unpublished counts or undeclared results as done. */
 const moderatorWorkflowStep = computed(() => {
-  if (round.value?.status === 'open') return 4
-  if (round.value?.status === 'closed') return 5
-  if (round.value?.status === 'published') return currentRoundDeclared.value ? 7 : 6
-  if (round.value?.status === 'draft') return 3
-  return lobbyStatus.value === 'lobby_open' ? 0 : 2
+  if (round.value?.status === 'open') return 2
+  if (round.value?.status === 'closed') return 3
+  if (round.value?.status === 'published') return currentRoundDeclared.value ? 5 : 4
+  if (round.value?.status === 'draft') return 1
+  return lobbyStatus.value === 'lobby_open' ? 0 : 1
 })
-const moderatorSessionSummary = computed(() => {
-  if (!assemblyId.value) return 'El estado de la sesión y las votaciones proviene del servidor.'
-  const status = round.value?.status === 'published' ? (currentRoundDeclared.value ? 'Resultado declarado' : 'Conteo publicado · falta declarar el resultado')
-    : round.value?.status === 'annulled' ? 'Papeleta anulada'
-    : round.value?.status === 'closed' ? 'Votación cerrada · conteo sin publicar'
-      : round.value?.status === 'open' ? 'Votación abierta'
-        : lobbyStatus.value === 'lobby_open' ? 'Ingreso abierto' : 'Ingreso cerrado'
-  return `Sesión: ${state.value?.assembly?.name || 'Asamblea'} · ${status}`
-})
+watch(assemblyId, () => { participantLeft.value = '' })
+
+function eligibleOf(target: RoundRecord) {
+  const own = (target as RoundRecord & { eligibleCount?: number }).eligibleCount
+  if (own !== undefined) return own
+  if (target.id === round.value?.id && eligibleVotes.value) return eligibleVotes.value
+  return state.value?.participants?.length ?? 0
+}
+
+function rankedRows(unsorted: Array<{ optionId?: string; label: string; count: number }>, base: number) {
+  const results = [...unsorted].sort((a, b) => b.count - a.count)
+  return results.map((result, index) => ({
+    key: result.optionId || result.label,
+    label: result.label,
+    count: result.count,
+    rank: index + 1,
+    tied: isTied(results, index),
+    percent: percentOf(result.count, base),
+  }))
+}
 
 function annulRound(target: { id: string; title: string }) {
   moderationReason.value = ''
@@ -116,18 +114,15 @@ function repeatAllOptions(target: RoundRecord | undefined) {
   if (target) repeatRound(target, target.options.map((option) => option.id))
 }
 
-/** Runs an action whose own dialog already asked the mesa to confirm. */
 async function runModeratorAction(path: string, method: string, body: unknown, onSuccess?: (result: any) => void | Promise<void>) {
   moderationConfirmation.value = { title: '', consequence: '', label: '', path, method, body, ...(onSuccess ? { onSuccess } : {}) }
   await confirmModeratorAction()
 }
 
-/** The counted ballot of a chain: the latest repetition with counts, otherwise the original. */
 function latestCounted(target: RoundRecord) {
   const counted = roundChain(target).filter((item) => item.status === 'closed' || item.status === 'published')
   return counted[counted.length - 1] || target
 }
-/** "2.ª votación" for the first repetition, and so on. */
 function voteNumber(target: { id: string; committeeRootRoundId?: string | null }) {
   const rootId = target.committeeRootRoundId || target.id
   const chain = (state.value?.rounds || []).filter((item) => item.id === rootId || item.committeeRootRoundId === rootId)
@@ -137,11 +132,9 @@ function rootRoundOf(target: { id: string; committeeRootRoundId?: string | null 
   return state.value?.rounds?.find((item) => item.id === (target.committeeRootRoundId || target.id))
 }
 
-/** Number the next repetition of this ballot's election will get. */
 function nextVoteNumber(target: RoundRecord) {
   return roundChain(rootRoundOf(target) || target).length + 1
 }
-/** M13: why the prepared ballot repeats an earlier one. */
 const repeatContext = computed(() => {
   const record = currentRoundRecord.value
   const root = record && rootRoundOf(record)
@@ -159,11 +152,9 @@ const repeatContext = computed(() => {
 const repeatDialogRound = computed(() => state.value?.rounds?.find((item) => item.id === repeatDialogRoundId.value))
 const declareDialogRound = computed(() => state.value?.rounds?.find((item) => item.id === declareDialogRoundId.value))
 
-/** S05: the tied leaders come preselected; the mesa can change the list. */
 function openRepeatDialog(target: RoundRecord) {
   const tie = decisionTie(target)
   repeatSelections.value[target.id] = tie ? tie.tied.map((result) => result.optionId) : []
-  // A committee repeats only the seats still open among the tied people.
   repeatSeats.value[target.id] = tie && target.category === 'committee' ? tie.openSeats : null
   repeatDialogRoundId.value = target.id
 }
@@ -180,7 +171,6 @@ async function confirmRepeatDialog() {
 }
 
 function openDeclareDialog(target: RoundRecord) {
-  // A correction starts from what was declared, so edits abandoned with «Cancelar» do not linger.
   if (target.officialResult) {
     officialSelections.value[target.id] = target.officialResult.elected.map((person) => person.optionId)
     officialNotes.value[target.id] = target.officialResult.note || ''
@@ -193,7 +183,6 @@ async function confirmDeclareDialog() {
   if (!target || !(officialSelections.value[target.id] || []).length) return
   declareDialogRoundId.value = ''
   const publish = roundChain(target).some((item) => item.status === 'published')
-  // M07b promises the projector shows it, so a declaration made after the count was published goes public at once.
   await runModeratorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/official-result`, 'PUT', {
     optionIds: officialSelections.value[target.id], note: officialNotes.value[target.id] || '',
   }, publish ? () => request(`/moderator/rounds/${encodeURIComponent(target.id)}/official-result/publish`, { method: 'POST' }, moderatorToken.value) : undefined)
@@ -210,7 +199,6 @@ function removeBallotCandidate(index: number) {
   ballotCandidates.value.splice(index, 1)
 }
 
-/** Office and committee share the title and the typed candidates; only a committee asks for its size. */
 function chooseRoundCategory(category: 'office' | 'committee') {
   roundCategory.value = category
 }
@@ -227,7 +215,7 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown, on
       : path.endsWith('/open')
         ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación' }
         : path.endsWith('/close')
-          ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos. Los resultados seguirán ocultos hasta que la mesa decida publicarlos.', label: 'Cerrar votación' }
+          ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
           : path.endsWith('/repeat')
             ? { title: '¿Preparar una nueva votación?', consequence: 'Se crea una papeleta con las opciones seleccionadas. Ábrela cuando la Asamblea lo decida.', label: 'Preparar nueva votación' }
           : method === 'DELETE' && path.endsWith('/official-result')
@@ -308,7 +296,6 @@ function openLiveAssembly() {
   void refresh()
 }
 
-/** Leaves the current assembly (live or completed) without changing it and shows the pending actas. */
 function showPendingActas() {
   setBrowsingActas(true)
   assemblyId.value = ''
@@ -319,7 +306,6 @@ function showPendingActas() {
   void refresh()
 }
 
-/** Completed assemblies other than the one on screen, still waiting for the acta and deletion. */
 const otherPendingActas = computed(() => completedAssemblies.value.filter((item) => item.id !== assemblyId.value))
 
 async function retrySecrecyCleanup() {
@@ -485,8 +471,8 @@ export function useMesa() {
     repeatSelections, repeatSeats, showNextBallotForm, resumeQr, officialSelections, officialNotes, ballotCandidates, newBallotCandidate,
     repeatDialogRoundId, declareDialogRoundId,
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord, currentRoundDeclared,
-    moderatorWorkflowStep, moderatorSessionSummary, repeatContext, repeatDialogRound, declareDialogRound, otherPendingActas,
-    roundChain, isDecidable, latestCounted, voteNumber, rootRoundOf, nextVoteNumber,
+    moderatorWorkflowStep, repeatContext, repeatDialogRound, declareDialogRound, otherPendingActas,
+    roundChain, isDecidable, latestCounted, voteNumber, rootRoundOf, nextVoteNumber, eligibleOf, rankedRows,
     annulRound, repeatAllOptions, openRepeatDialog, confirmRepeatDialog, openDeclareDialog, confirmDeclareDialog, addBallotCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,

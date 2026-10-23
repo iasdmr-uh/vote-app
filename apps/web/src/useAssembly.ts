@@ -3,13 +3,10 @@ import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
 import type { PublicState } from './types'
 
-// One app per page: the shared state lives at module level so every view reads and writes the same refs.
-
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 const origin = window.location.origin
 const route = ref(window.location.pathname)
 const loading = ref(false)
-/** A background state load; unlike `loading` it never disables the buttons, so a click during a realtime refresh is not lost. */
 const syncing = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -33,15 +30,11 @@ const qrImage = ref('')
 const realtimeActive = ref(false)
 const realtimeConnected = ref(false)
 const projectorFullscreen = ref(false)
-/** The acta exists in the page only while printing, so it never duplicates the panel on screen. */
 const printingActa = ref(false)
-/** Without this, closing the moderator tab would leave the live assembly with no way to control it. */
-/** Completed assemblies whose data was not erased yet; the mesa can reopen them for the acta and deletion. */
 const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
-/** The live assembly, kept apart so the mesa can browse pending actas without losing its way back. */
 const liveAssembly = ref<{ id: string; name: string } | null>(null)
-/** Set while the mesa looks at pending actas, so recovery does not jump back to the live assembly. */
 const browsingActas = ref(sessionStorage.getItem('browsingActas') === 'true')
+const participantLeft = ref('')
 let refreshTimer: number | undefined
 let realtimeSocket: Socket | null = null
 let lastRefreshAt = 0
@@ -62,7 +55,6 @@ const completionTime = computed(() => assemblyCompletedAt.value
   ? new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(assemblyCompletedAt.value))
   : '')
 const ballotMaxChoices = computed(() => round.value?.electionSeats ?? round.value?.memberCount ?? null)
-/** Panel and projector run on the server laptop; only the server knows the address phones can reach. */
 const projectorJoinUrl = computed(() => {
   if (state.value?.joinUrl) return state.value.joinUrl
   const url = new URL(state.value?.publicAppUrl || origin)
@@ -182,11 +174,6 @@ function normalizeState(value: Record<string, any>): PublicState {
   }
 }
 
-/**
- * A refresh requested while another request is in flight runs once afterwards instead of being dropped.
- * After the mesa's own action it loads at once: a background load started before the action would bring
- * the old state back, and stateLoadSeq already discards that older answer.
- */
 async function refresh(afterAction = false) {
   if (loading.value || (syncing.value && !afterAction)) { refreshQueued = true; return }
   await loadState()
@@ -197,7 +184,6 @@ async function refresh(afterAction = false) {
   }
 }
 
-/** Jitter spreads phones reacting to the same broadcast instead of hitting the API in the same instant. */
 function scheduleRefresh() {
   if (scheduledRefresh !== undefined) return
   scheduledRefresh = window.setTimeout(() => {
@@ -206,7 +192,6 @@ function scheduleRefresh() {
   }, 100 + Math.random() * 400)
 }
 
-/** Overlapping loads (a realtime refresh and the one after an action) can resolve out of order; only the newest applies. */
 let stateLoadSeq = 0
 async function loadState() {
   const seq = ++stateLoadSeq
@@ -223,7 +208,6 @@ async function loadState() {
         sessionAssemblyId.value = participantAssemblyId
         localStorage.setItem('participantAssemblyId', participantAssemblyId)
       }
-      // Checked once per page load: the QR code in the URL may have been rotated since, which must not break a valid session.
       if (incomingJoinCode && participantAssemblyId && !incomingJoinChecked) {
         incomingJoinChecked = true
         const target = await request<Record<string, any>>(`/assemblies/${encodeURIComponent(incomingJoinCode)}/public-state`)
@@ -236,7 +220,6 @@ async function loadState() {
           if (target) code.value = incomingJoinCode
         }
       }
-      // While the QR of another Asamblea waits for an answer, later refreshes must not bring the old one back on screen.
       state.value = pendingJoinCode.value ? null : loadedState
     } catch (e) {
       if (sessionToken.value !== requestToken) return
@@ -340,7 +323,6 @@ function setBrowsingActas(value: boolean) {
 function selectAssembly(id: string) {
   assemblyId.value = id
   sessionStorage.setItem('assemblyId', id)
-  // The join code lives only on this device; bring it back when returning to the assembly it belongs to.
   code.value = localStorage.getItem('assemblyJoinCodeAssemblyId') === id ? localStorage.getItem('assemblyJoinCode') || '' : ''
   qrImage.value = ''
 }
@@ -358,7 +340,6 @@ async function recoverActiveAssembly() {
   try {
     assembly = await loadAssemblyLists()
   } catch {
-    // Non-fatal: the server still refuses to create a second live assembly.
     return
   }
   if (!assembly || browsingActas.value) return
@@ -397,12 +378,16 @@ function syncRealtime() {
   for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
     realtimeSocket.on(event, scheduleRefresh)
   }
+  realtimeSocket.on('participant.left', (payload: { firstName?: string; lastName?: string } | undefined) => {
+    const name = `${payload?.firstName || ''} ${payload?.lastName || ''}`.trim()
+    if (name) participantLeft.value = name
+    scheduleRefresh()
+  })
   realtimeSocket.on('connect', () => { realtimeConnected.value = true; void refresh() })
   realtimeSocket.on('disconnect', () => { realtimeConnected.value = false })
   realtimeSocket.on('connect_error', () => { realtimeConnected.value = false })
 }
 
-/** Called from App's onMounted: page listeners, first load, realtime and the fallback poll. */
 function startAssembly() {
   window.addEventListener('afterprint', () => { printingActa.value = false })
   document.addEventListener('fullscreenchange', syncProjectorFullscreen)
@@ -419,7 +404,6 @@ function startAssembly() {
   else void refresh()
   void refreshQr()
   syncRealtime()
-  // Live updates drive the UI; polling is a fallback, frequent only while the socket is down.
   refreshTimer = window.setInterval(() => {
     if (loading.value || (role.value === 'moderator' && moderatorAuthState.value === 'validation_error')) return
     const interval = realtimeConnected.value ? POLL_WHILE_CONNECTED_MS : POLL_WHILE_DISCONNECTED_MS
@@ -427,7 +411,6 @@ function startAssembly() {
   }, POLL_WHILE_DISCONNECTED_MS)
 }
 
-/** Called from App's onUnmounted. */
 function stopAssembly() {
   if (refreshTimer) window.clearInterval(refreshTimer)
   if (scheduledRefresh !== undefined) window.clearTimeout(scheduledRefresh)
@@ -439,7 +422,7 @@ export function useAssembly() {
   return {
     origin, route, loading, syncing, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode,
     moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected,
-    projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas,
+    projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas, participantLeft,
     role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, completionTime, ballotMaxChoices, projectorJoinUrl,
     go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
     setBrowsingActas, selectAssembly, loadAssemblyLists, recoverActiveAssembly, rememberJoinCode, refreshQr, formatDateTime,

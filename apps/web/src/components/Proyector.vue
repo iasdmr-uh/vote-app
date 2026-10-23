@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { rankOf, resultPercent } from '../resultados'
+import { isTied as tiedAt, percentOf } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
 const LOBBY_SLOTS = 21
@@ -46,8 +46,7 @@ const electedLabels = computed(() => new Set((state.value?.officialResult?.elect
 const officeElected = computed(() => !isCommittee.value ? state.value?.officialResult?.elected || [] : [])
 
 function isTied(index: number) {
-  const count = results.value[index]?.count ?? 0
-  return count > 0 && (results.value[index - 1]?.count === count || results.value[index + 1]?.count === count)
+  return tiedAt(results.value, index)
 }
 
 const columns = computed(() => results.value.length > 8 ? 2 : 1)
@@ -125,11 +124,11 @@ async function toggleProjectorFullscreen() {
       <div v-if="officeElected.length" class="pj-elected"><p>{{ officeElected.length === 1 ? 'Electo/a' : 'Electos' }}</p><h2>{{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
       <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
         <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
-          <span class="pj-rank">{{ Number.parseInt(rankOf(results, index)) || index + 1 }}</span>
+          <span class="pj-rank">{{ index + 1 }}</span>
           <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="isTied(index)" class="pj-tie">Empate</em><em v-if="isCommittee && electedLabels.has(result.label)" class="pj-elected-tag">Electo/a</em></span>
           <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
-          <span class="pj-percent">{{ resultPercent(results, result.count, eligible) }} %</span>
-          <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, resultPercent(results, result.count, eligible))}%` }"></span></span>
+          <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
+          <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
         </li>
       </ol>
     </template>
