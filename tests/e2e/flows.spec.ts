@@ -200,7 +200,7 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await page.goto('/moderator')
   const ranking = page.locator('.official-round').first().locator('.results-list')
   await expect(ranking).toContainText('1. Beta')
-  await expect(ranking).toContainText('1. Alfa')
+  await expect(ranking).toContainText('2. Alfa')
   await expect(ranking).toContainText('3. Gama')
   await expect(ranking).not.toContainText('Voto nulo')
 
@@ -696,7 +696,7 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
         participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1,
         rounds: [
-          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
+          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, eligibleCount: 4, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
             results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 1 }],
             officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
           { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
@@ -724,11 +724,11 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await page.getByRole('button', { name: 'Descargar hoja de cálculo' }).click()
   expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
   const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 1, 'Rosa', 2, 'sí'])
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 2, 'Pedro', 1, ''])
-  expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', 1, '', '', '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron', 1, 'Rosa', 2, 50, '', 'sí'])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron', 2, 'Pedro', 1, 25, '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', '1 votó', '', '', '', '', '', ''])
   // A name typed as a formula is a text cell: no formula element exists, and re-saving keeps it as text.
-  expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', 1, 1, '=HYPERLINK("http://x","y")', 1, ''])
+  expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', '1 votó', 1, '=HYPERLINK("http://x","y")', 1, '', '', ''])
   expect(sheet).not.toContain('<f>')
 
   const acta = page.locator('.acta-print')
