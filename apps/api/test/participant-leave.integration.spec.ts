@@ -90,10 +90,33 @@ test('leaving ends the session once, and the percentage base keeps those who vot
     assert.equal(phone.recordedCount, 2)
     assert.equal(phone.eligibleCount, 2)
 
-    // A repetition belongs to the same chain, so whoever voted in the original keeps counting.
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).eligibleCount, 2, 'frozen when closed')
+
+    // Someone joining after the lobby reopens does not change the base of a ballot that already closed.
+    await service.changeLobby(assemblyId, 'lobby_open')
+    await service.joinAssembly(joinCode, 'Rosa', 'Delegada')
+    await service.changeLobby(assemblyId, 'lobby_closed')
+    publicState = await service.publicState(joinCode)
+    assert.equal(publicState.participantCount, 2)
+    assert.equal(publicState.eligibleCount, 2, 'the published ballot keeps its frozen base')
+    const afterArrival = await service.moderatorAssembly(assemblyId)
+    assert.equal(afterArrival.rounds[0]!.eligibleCount, 2)
+    assert.equal((await service.participantState(people.Marta!.id)).eligibleCount, 2)
+
+    // A repetition belongs to the same chain, so whoever voted in the original keeps counting, and its
+    // base stays live until it closes: Marta and Rosa in the room plus Ana.
     const repeated = await service.repeatRound(round.id, { optionIds: round.options.map((option) => option.id) })
     const afterRepeat = await service.moderatorAssembly(assemblyId)
-    assert.equal(afterRepeat.rounds.find((item) => item.id === repeated.id)?.eligibleCount, 2)
+    assert.equal(afterRepeat.rounds.find((item) => item.id === repeated.id)?.eligibleCount, 3)
+    await service.openRound(repeated.id)
+    await service.leaveAssembly(people.Marta!.id)
+    assert.equal((await service.publicState(joinCode)).eligibleCount, 3, 'live while open: Marta left, but she voted in the original')
+    await service.closeRound(repeated.id)
+    const rosa = await prisma.participantSession.findFirstOrThrow({ where: { assemblyId, firstName: 'Rosa' } })
+    await service.leaveAssembly(rosa.id)
+    const final = await service.moderatorAssembly(assemblyId)
+    assert.equal(final.rounds.find((item) => item.id === repeated.id)?.eligibleCount, 3, 'frozen at close: Rosa leaving afterwards changes nothing')
+    assert.equal(final.rounds[0]!.eligibleCount, 2)
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })

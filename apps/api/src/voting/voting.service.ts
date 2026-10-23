@@ -676,6 +676,7 @@ export class VotingService implements OnModuleInit {
       if (current.status !== 'open') throw new ConflictException('Solo se puede cerrar una papeleta abierta')
       const updated = await tx.round.update({ where: { id: roundId }, data: { status: 'closed', closedAt: new Date() }, select: { id: true, assemblyId: true, status: true } })
       await tx.auditEvent.create({ data: { assemblyId: current.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.closed' } })
+      await this.freezeEligibleCount(tx, current.assembly_id, roundId)
       // Closing never elects anyone: the mesa reviews the ranking and declares the result, or repeats the vote.
       await this.unlinkRoundVotes(tx, roundId)
       return { ...updated, changed: true }
@@ -843,6 +844,7 @@ export class VotingService implements OnModuleInit {
         data: { status: 'annulled', annulledAt: new Date(), annulReason: reason.trim(), votesUnlinkedAt: null },
       })
       await tx.anonymousVote.deleteMany({ where: { roundId } })
+      if (round.status === 'open') await this.freezeEligibleCount(tx, round.assembly_id, roundId)
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.annulled', metadata: { previousStatus: round.status, reason: reason.trim() } } })
       return { assemblyId: round.assembly_id, title: round.title, previousStatus: round.status, changed: true }
     })
@@ -1049,14 +1051,26 @@ export class VotingService implements OnModuleInit {
    * must not shrink the base; someone expelled before voting never enters it.
    */
   private async eligibleCounts(assemblyId: string) {
-    const [active, rounds, inactiveVoters] = await Promise.all([
-      this.prisma.participantSession.count({ where: { assemblyId, status: 'active' } }),
-      this.prisma.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true } }),
-      this.prisma.participantSession.findMany({
-        where: { assemblyId, status: { not: 'active' }, participations: { some: {} } },
-        select: { participations: { select: { roundId: true } } },
+    const [live, frozen] = await Promise.all([
+      this.liveEligibleCounts(this.prisma, assemblyId),
+      this.prisma.round.findMany({
+        where: { assemblyId, status: { in: [...SETTLED_ROUND_STATUSES] }, eligibleCount: { not: null } },
+        select: { id: true, eligibleCount: true },
       }),
     ])
+    for (const round of frozen) live.set(round.id, round.eligibleCount!)
+    return live
+  }
+
+  /** Counted from who is in the room now; a settled ballot uses the value frozen when it closed instead. */
+  private async liveEligibleCounts(client: Prisma.TransactionClient, assemblyId: string) {
+    // Sequential: an interactive transaction runs on one connection.
+    const active = await client.participantSession.count({ where: { assemblyId, status: 'active' } })
+    const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true } })
+    const inactiveVoters = await client.participantSession.findMany({
+      where: { assemblyId, status: { not: 'active' }, participations: { some: {} } },
+      select: { participations: { select: { roundId: true } } },
+    })
     const chainOf = new Map(rounds.map((round) => [round.id, round.committeeRootRoundId ?? round.id]))
     const votedChains = inactiveVoters.map((person) => new Set(person.participations.map((item) => chainOf.get(item.roundId))))
     return new Map(rounds.map((round) => {
@@ -1067,6 +1081,11 @@ export class VotingService implements OnModuleInit {
 
   private async eligibleCount(assemblyId: string, roundId: string) {
     return (await this.eligibleCounts(assemblyId)).get(roundId) ?? 0
+  }
+
+  private async freezeEligibleCount(tx: Prisma.TransactionClient, assemblyId: string, roundId: string) {
+    const eligibleCount = (await this.liveEligibleCounts(tx, assemblyId)).get(roundId) ?? 0
+    await tx.round.update({ where: { id: roundId }, data: { eligibleCount } })
   }
 
   private async announceParticipationCount(assemblyId: string, roundId: string) {
