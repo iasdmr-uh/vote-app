@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -13,7 +14,7 @@ import {
 } from '@nestjs/common'
 import type { Request } from 'express'
 import { PARTICIPANT_ID } from '../auth/auth.service.js'
-import { ModeratorGuard, ParticipantGuard } from '../auth/auth.guards.js'
+import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
 import {
   AnnulRoundDto,
@@ -70,7 +71,18 @@ export class ParticipantController {
   vote(@Req() request: SessionRequest, @Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: VoteDto) {
     return this.voting.castVote(sessionId(request), roundId, input.optionIds ?? input.optionId ?? '')
   }
+}
 
+@Controller('participant')
+@UseGuards(ParticipantSessionGuard)
+export class ParticipantLeaveController {
+  constructor(private readonly voting: VotingService) {}
+
+  @Post('leave')
+  @HttpCode(200)
+  leave(@Req() request: SessionRequest) {
+    return this.voting.leaveAssembly(sessionId(request))
+  }
 }
 
 @Controller('moderator')

@@ -102,6 +102,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   participantJoined(assemblyId: string, payload: Parameters<RealtimePublisher['participantJoined']>[1]): void { this.publisher().participantJoined(assemblyId, payload) }
   participantUpdated(assemblyId: string, payload: Parameters<RealtimePublisher['participantUpdated']>[1]): void { this.publisher().participantUpdated(assemblyId, payload) }
   participantRemoved(assemblyId: string, participantId: string): void { this.publisher().participantRemoved(assemblyId, participantId) }
+  participantLeft(assemblyId: string, payload: Parameters<RealtimePublisher['participantLeft']>[1]): void { this.publisher().participantLeft(assemblyId, payload) }
   participantSessionReplaced(participantId: string): void { this.publisher().participantSessionReplaced(participantId) }
   publicSessionsRevoked(assemblyId: string): void { this.publisher().publicSessionsRevoked(assemblyId) }
   assemblyDeleted(assemblyId: string): void { this.publisher().assemblyDeleted(assemblyId) }
@@ -173,6 +174,16 @@ export class RealtimePublisher {
     this.server.in(`participant:${participantId}`).disconnectSockets(true)
   }
 
+  /** The delegate ended their own session; other devices still holding the token must stop receiving events. */
+  participantLeft(assemblyId: string, payload: RealtimeServerToClientEvents['participant.left'] extends (arg: infer P) => void ? P : never): void {
+    this.server.to(moderatorRoom(assemblyId)).emit('participant.left', {
+      participantId: payload.participantId,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+    })
+    this.server.in(`participant:${payload.participantId}`).disconnectSockets(true)
+  }
+
   /** The previous device's token no longer authenticates, so its live sockets must not keep receiving events. */
   participantSessionReplaced(participantId: string): void {
     this.server.in(`participant:${participantId}`).disconnectSockets(true)
@@ -205,6 +216,9 @@ export class RealtimePublisher {
       openRound,
       participationStatus: payload.participationStatus,
       ...(results ? { results } : {}),
+      ...(results && payload.recordedCount !== undefined && payload.eligibleCount !== undefined
+        ? { recordedCount: payload.recordedCount, eligibleCount: payload.eligibleCount }
+        : {}),
     })
   }
 

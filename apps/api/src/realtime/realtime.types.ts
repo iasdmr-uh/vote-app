@@ -55,6 +55,8 @@ export interface ParticipantStateEvent {
   openRound: (RoundStateEvent & { options: Array<{ optionId: string; label: string }> }) | null
   participationStatus: 'pending' | 'recorded'
   results?: PublishedResultOption[]
+  recordedCount?: number
+  eligibleCount?: number
 }
 
 export interface PublishedResultOption {
@@ -74,6 +76,7 @@ export interface RealtimeServerToClientEvents {
   'participant.joined': (payload: ParticipantSummaryEvent) => void
   'participant.updated': (payload: ParticipantSummaryEvent) => void
   'participant.removed': (payload: { participantId: string }) => void
+  'participant.left': (payload: ParticipantSummaryEvent) => void
   'participant.state': (payload: ParticipantStateEvent) => void
   'round.state': (payload: RoundStateEvent) => void
   'round.opened': (payload: RoundStateEvent & { options: Array<{ optionId: string; label: string }> }) => void

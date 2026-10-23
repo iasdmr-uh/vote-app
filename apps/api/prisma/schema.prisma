@@ -23,6 +23,7 @@ enum AssemblyStatus {
 enum ParticipantStatus {
   active
   removed
+  left
 }
 
 enum RoundStatus {
@@ -103,6 +104,8 @@ model Round {
   votesUnlinkedAt DateTime?      @map("votes_unlinked_at")
   annulledAt     DateTime?       @map("annulled_at")
   annulReason    String?         @map("annul_reason")
+  /** Percentage base frozen when the ballot stops taking votes, so later arrivals cannot change it. */
+  eligibleCount  Int?            @map("eligible_count")
   createdAt      DateTime        @default(now()) @map("created_at")
   assembly       Assembly        @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   options        BallotOption[]
