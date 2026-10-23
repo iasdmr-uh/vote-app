@@ -121,11 +121,11 @@ async function toggleProjectorFullscreen() {
         </div>
         <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron</small></p>
       </header>
-      <div v-if="officeElected.length" class="pj-elected"><p>{{ officeElected.length === 1 ? 'Electo/a' : 'Electos' }}</p><h2>{{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
+      <div v-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
       <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
         <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
           <span class="pj-rank">{{ index + 1 }}</span>
-          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="isTied(index)" class="pj-tie">Empate</em><em v-if="isCommittee && electedLabels.has(result.label)" class="pj-elected-tag">Electo/a</em></span>
+          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="isTied(index)" class="pj-tie">Empate</em><em v-if="isCommittee && electedLabels.has(result.label)" class="pj-elected-tag" aria-label="Electo">✓</em></span>
           <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
           <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
           <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
@@ -202,7 +202,7 @@ async function toggleProjectorFullscreen() {
 .pj-turnout span { color: var(--muted); font-size: calc(var(--u) * 40); font-weight: 600; }
 .pj-turnout small { grid-column: 1 / -1; justify-self: end; color: var(--muted); font-size: calc(var(--u) * 28); }
 .pj-elected { margin-top: calc(var(--u) * 28); padding: calc(var(--u) * 28) calc(var(--u) * 48); border-radius: calc(var(--u) * 22); background: var(--blue-dark); color: #fff; }
-.pj-elected p { color: var(--cream); font-size: calc(var(--u) * 24); font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.pj-check { color: var(--cream); }
 .pj-elected h2 { color: #fff; font-size: calc(var(--u) * 76); font-weight: 800; line-height: 1.15; }
 .pj-results {
   display: grid;
