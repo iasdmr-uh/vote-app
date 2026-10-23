@@ -7,7 +7,7 @@ import { useAssembly } from './useAssembly'
 
 const {
   route, loading, syncing, error, notice, code, sessionToken, moderatorToken, moderatorAuthState, realtimeActive, realtimeConnected,
-  role, projectorJoinUrl, go, openProjectorWindow, refresh, refreshQr, syncRealtime, startAssembly, stopAssembly,
+  role, projectorJoinUrl, go, openProjectorWindow, refreshQr, syncRealtime, startAssembly, stopAssembly,
 } = useAssembly()
 
 onMounted(startAssembly)
@@ -34,5 +34,4 @@ onUnmounted(stopAssembly)
     <Mesa v-else-if="role === 'moderator'" />
     <Proyector v-else />
   </main>
-  <footer v-if="role !== 'projector'"><span>V1 · Herramienta operativa de la Asamblea</span><button class="link-button" @click="refresh()">Sincronizar estado</button></footer>
 </template>
