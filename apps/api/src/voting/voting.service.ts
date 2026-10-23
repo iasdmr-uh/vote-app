@@ -22,6 +22,7 @@ const RESUME_CODE_TTL_MS = 10 * 60_000
 const VACUUM_LOCK_TIMEOUT_MS = 5_000
 /** Rounds whose votes are at rest and must be unlinked from their participation receipts. */
 const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
+const PARTICIPANT_ACTOR = 'participant_session'
 const SECRECY_CLEANUP_PENDING = 'No se completó la limpieza que protege el secreto del voto. La operación no se realizó; usa «Reintentar limpieza» en unos segundos.'
 
 @Injectable()
@@ -179,6 +180,36 @@ export class VotingService implements OnModuleInit {
     }
   }
 
+  /**
+   * The delegate's own "Salir": the session stops authenticating and leaves the room count, while the
+   * ballots they already voted in keep them in their percentage base. Repeating it changes nothing.
+   */
+  async leaveAssembly(participantId: string) {
+    const left = await this.prisma.$transaction(async (tx) => {
+      const identity = await tx.participantSession.findUnique({ where: { id: participantId }, select: { assemblyId: true } })
+      if (!identity) throw new NotFoundException('Sesión no encontrada')
+      await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${identity.assemblyId}::uuid FOR UPDATE`
+      const current = await tx.participantSession.findUniqueOrThrow({
+        where: { id: participantId }, select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true },
+      })
+      if (current.status !== 'active') return { ...current, changed: false }
+      await tx.participantSession.update({ where: { id: participantId }, data: { status: 'left', resumeCodeHash: null, resumeExpiresAt: null } })
+      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: PARTICIPANT_ACTOR, action: 'participant.left', metadata: { participantId } } })
+      return { ...current, changed: true }
+    })
+    if (left.changed) {
+      this.realtime.participantLeft(left.assemblyId, { participantId: left.id, firstName: left.firstName, lastName: left.lastName })
+      const [count, assembly, openRound] = await Promise.all([
+        this.prisma.participantSession.count({ where: { assemblyId: left.assemblyId, status: 'active' } }),
+        this.prisma.assembly.findUniqueOrThrow({ where: { id: left.assemblyId }, select: { status: true } }),
+        this.prisma.round.findFirst({ where: { assemblyId: left.assemblyId, status: 'open' }, select: { id: true } }),
+      ])
+      this.realtime.lobbyState(left.assemblyId, { status: assembly.status === 'lobby_open' ? 'open' : 'closed', participantCount: count })
+      if (openRound) await this.announceParticipationCount(left.assemblyId, openRound.id)
+    }
+    return { left: true as const }
+  }
+
   async participantState(participantId: string) {
     const participant = await this.prisma.participantSession.findUnique({
       where: { id: participantId },
@@ -203,6 +234,9 @@ export class VotingService implements OnModuleInit {
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
     const results = round?.status === 'published' ? await this.publishedResults(round.id) : undefined
     const officialResult = officialRoundId ? await this.publishedOfficialResult(officialRoundId) : null
+    const [recordedCount, eligibleCounts] = results && round
+      ? await Promise.all([this.prisma.participation.count({ where: { roundId: round.id } }), this.eligibleCounts(participant.assemblyId)])
+      : [undefined, undefined]
     return {
       assembly: { id: participant.assembly.id, name: participant.assembly.name, status: participant.assembly.status, completedAt: participant.assembly.completedAt?.toISOString() ?? null },
       assemblyStatus: participant.assembly.status,
@@ -211,6 +245,7 @@ export class VotingService implements OnModuleInit {
       openRound,
       participationStatus: participation ? 'recorded' as const : 'pending' as const,
       ...(results ? { results } : {}),
+      ...(recordedCount !== undefined && eligibleCounts && round ? { recordedCount, eligibleCount: eligibleCounts.get(round.id) ?? 0 } : {}),
       ...(officialResult ? { officialResult } : {}),
     }
   }
@@ -253,13 +288,9 @@ export class VotingService implements OnModuleInit {
       }
       throw error
     }
-    const [state, recorded, eligible] = await Promise.all([
-      this.participantState(participantId),
-      this.prisma.participation.count({ where: { roundId } }),
-      this.prisma.participantSession.count({ where: { assemblyId: participant.assemblyId, status: 'active' } }),
-    ])
+    const state = await this.participantState(participantId)
     this.realtime.participantState(participantId, state)
-    this.realtime.participationCount(participant.assemblyId, { roundId, recorded, eligible })
+    await this.announceParticipationCount(participant.assemblyId, roundId)
     return { accepted: true, participationStatus: 'recorded' as const }
   }
 
@@ -272,7 +303,7 @@ export class VotingService implements OnModuleInit {
     })
     if (!assembly) throw new NotFoundException('Asamblea no encontrada')
     const round = assembly.rounds[0]
-    const [participantCount, participants, recordedCount] = await Promise.all([
+    const [participantCount, participants, recordedCount, eligibleCounts] = await Promise.all([
       this.prisma.participantSession.count({ where: { assemblyId: assembly.id, status: 'active' } }),
       assembly.status === 'lobby_open'
         ? this.prisma.participantSession.findMany({
@@ -285,6 +316,7 @@ export class VotingService implements OnModuleInit {
       round && ['open', 'closed', 'published'].includes(round.status)
         ? this.prisma.participation.count({ where: { roundId: round.id } })
         : Promise.resolve(undefined),
+      this.eligibleCounts(assembly.id),
     ])
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
     const result = round?.status === 'published' ? await this.publishedResults(round.id) : undefined
@@ -295,7 +327,7 @@ export class VotingService implements OnModuleInit {
       joinUrl: this.appUrl({ join: assemblyCode }),
       participantCount,
       ...(participants ? { participants } : {}),
-      ...(recordedCount !== undefined ? { recordedCount, eligibleCount: participantCount } : {}),
+      ...(recordedCount !== undefined ? { recordedCount, eligibleCount: eligibleCounts.get(round!.id) ?? participantCount } : {}),
       round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats } : null,
       ...(result ? { results: result } : {}),
       ...(officialResult ? { officialResult } : {}),
@@ -319,6 +351,10 @@ export class VotingService implements OnModuleInit {
     const voted = new Set(attendanceRound
       ? (await this.prisma.participation.findMany({ where: { roundId: attendanceRound.id }, select: { participantSessionId: true } })).map((item) => item.participantSessionId)
       : [])
+    const [eligibleCounts, leftParticipants] = await Promise.all([
+      this.eligibleCounts(assemblyId),
+      this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left' }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
+    ])
     const rounds = await Promise.all(assembly.rounds.map(async (round) => ({
       id: round.id,
       title: round.title,
@@ -333,6 +369,7 @@ export class VotingService implements OnModuleInit {
       annulledAt: round.annulledAt?.toISOString() ?? null,
       annulReason: round.annulReason,
       participationCount: round._count.participations,
+      eligibleCount: eligibleCounts.get(round.id) ?? assembly.participants.length,
       secrecyCleanupPending: (SETTLED_ROUND_STATUSES as readonly string[]).includes(round.status) && !round.votesUnlinkedAt,
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
       // Only the mesa sees a closed ballot's counts, so it can review them before deciding to publish.
@@ -346,7 +383,9 @@ export class VotingService implements OnModuleInit {
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants.map((person) => ({ ...person, ...(attendanceRound ? { voted: voted.has(person.id) } : {}) })),
       participantCount: assembly.participants.length,
-      attendanceRound: attendanceRound ? { roundId: attendanceRound.id, status: attendanceRound.status, votedCount: voted.size } : null,
+      // Kept for the acta: they were registered, and those who voted still count in that ballot's base.
+      leftParticipants,
+      attendanceRound: attendanceRound ? { roundId: attendanceRound.id, status: attendanceRound.status, votedCount: voted.size, eligibleCount: eligibleCounts.get(attendanceRound.id) ?? assembly.participants.length } : null,
       // The join code is only stored hashed, so the panel builds the QR from this base and the code it kept.
       publicAppUrl: process.env.PUBLIC_APP_URL,
       rounds,
@@ -651,7 +690,7 @@ export class VotingService implements OnModuleInit {
     }
     const [recorded, eligible, title] = await Promise.all([
       this.prisma.participation.count({ where: { roundId } }),
-      this.prisma.participantSession.count({ where: { assemblyId: round.assemblyId, status: 'active' } }),
+      this.eligibleCount(round.assemblyId, roundId),
       this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { title: true } }),
     ])
     const payload = { roundId, status: round.status as RoundStatus, title: title.title }
@@ -1002,6 +1041,40 @@ export class VotingService implements OnModuleInit {
     } finally {
       await client.end()
     }
+  }
+
+  /**
+   * The percentage base of every round: the people in the room plus those no longer active who voted in
+   * that ballot or in another vote of its chain (the original and its repetitions). Leaving after voting
+   * must not shrink the base; someone expelled before voting never enters it.
+   */
+  private async eligibleCounts(assemblyId: string) {
+    const [active, rounds, inactiveVoters] = await Promise.all([
+      this.prisma.participantSession.count({ where: { assemblyId, status: 'active' } }),
+      this.prisma.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true } }),
+      this.prisma.participantSession.findMany({
+        where: { assemblyId, status: { not: 'active' }, participations: { some: {} } },
+        select: { participations: { select: { roundId: true } } },
+      }),
+    ])
+    const chainOf = new Map(rounds.map((round) => [round.id, round.committeeRootRoundId ?? round.id]))
+    const votedChains = inactiveVoters.map((person) => new Set(person.participations.map((item) => chainOf.get(item.roundId))))
+    return new Map(rounds.map((round) => {
+      const chain = chainOf.get(round.id)
+      return [round.id, active + votedChains.filter((chains) => chains.has(chain)).length]
+    }))
+  }
+
+  private async eligibleCount(assemblyId: string, roundId: string) {
+    return (await this.eligibleCounts(assemblyId)).get(roundId) ?? 0
+  }
+
+  private async announceParticipationCount(assemblyId: string, roundId: string) {
+    const [recorded, eligible] = await Promise.all([
+      this.prisma.participation.count({ where: { roundId } }),
+      this.eligibleCount(assemblyId, roundId),
+    ])
+    this.realtime.participationCount(assemblyId, { roundId, recorded, eligible })
   }
 
   private async publishedResults(roundId: string) {

@@ -54,13 +54,20 @@ export class AuthService {
   }
 
   async participantForToken(token: string | undefined): Promise<string> {
+    const participant = await this.participantSessionForToken(token)
+    if (participant.status !== 'active') throw new UnauthorizedException()
+    return participant.id
+  }
+
+  /** Also resolves sessions that already ended, so ending one again can answer the same way. */
+  async participantSessionForToken(token: string | undefined) {
     if (!token) throw new UnauthorizedException()
     const participant = await this.prisma.participantSession.findUnique({
       where: { tokenHash: hashCredential(token) },
       select: { id: true, status: true },
     })
-    if (!participant || participant.status !== 'active') throw new UnauthorizedException()
-    return participant.id
+    if (!participant) throw new UnauthorizedException()
+    return participant
   }
 }
 

@@ -23,6 +23,7 @@ enum AssemblyStatus {
 enum ParticipantStatus {
   active
   removed
+  left
 }
 
 enum RoundStatus {

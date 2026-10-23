@@ -33,6 +33,18 @@ export class ParticipantGuard implements CanActivate {
   }
 }
 
+/** For leaving: a token whose session already ended still identifies it, so the request stays idempotent. */
+@Injectable()
+export class ParticipantSessionGuard implements CanActivate {
+  constructor(private readonly auth: AuthService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>()
+    request[PARTICIPANT_ID] = (await this.auth.participantSessionForToken(bearerToken(request.headers.authorization))).id
+    return true
+  }
+}
+
 /**
  * Delegates on venue Wi-Fi share one public IP, so a per-IP limit alone would throttle the whole room.
  * Each bearer token gets its own bucket, and a higher per-IP ceiling stops random tokens from bypassing it.

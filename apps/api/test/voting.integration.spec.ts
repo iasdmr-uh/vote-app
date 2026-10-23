@@ -207,7 +207,7 @@ test('database committee flow: delegates mark 1..N typed names, the mesa sees wh
 
     const whileOpen = await service.moderatorAssembly(activeAssemblyId)
     assert.deepEqual(whileOpen.participants.map((person) => person.voted), [true, true, true, true, false, false])
-    assert.deepEqual(whileOpen.attendanceRound, { roundId: round.id, status: 'open', votedCount: 4 })
+    assert.deepEqual(whileOpen.attendanceRound, { roundId: round.id, status: 'open', votedCount: 4, eligibleCount: 6 })
     assert.equal(JSON.stringify(whileOpen.participants).includes(ana!.id), false, 'the list says who voted, never for whom')
 
     await service.closeRound(round.id)
