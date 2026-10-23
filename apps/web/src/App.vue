@@ -6,7 +6,7 @@ import Telefono from './components/Telefono.vue'
 import { useAssembly } from './useAssembly'
 
 const {
-  route, loading, syncing, error, notice, code, sessionToken, moderatorToken, moderatorAuthState, realtimeActive, realtimeConnected,
+  route, loading, syncing, error, notice, state, code, sessionToken, moderatorToken, moderatorAuthState, realtimeActive, realtimeConnected,
   role, projectorJoinUrl, go, openProjectorWindow, refreshQr, syncRealtime, startAssembly, stopAssembly,
 } = useAssembly()
 
@@ -18,7 +18,7 @@ onUnmounted(stopAssembly)
 
 <template>
   <header v-if="role !== 'projector'" class="topbar" :class="{ 'topbar-session': role === 'participant' && !!sessionToken }">
-    <a class="brand" href="/" @click.prevent="go('/')"><span class="brand-mark">A</span><span>ASDMR <small>Unión Hondureña</small></span></a>
+    <a class="brand" href="/" @click.prevent="go('/')"><span class="brand-mark">A</span><span v-if="role === 'moderator' && state?.assembly?.name">{{ state.assembly.name }}</span><span v-else>ASDMR <small>Unión Hondureña</small></span></a>
     <nav v-if="role === 'moderator'" aria-label="Vistas de mesa">
       <a href="/" @click.prevent="go('/')">Delegado</a>
       <a :href="`/projector${code ? `?code=${encodeURIComponent(code)}` : ''}`" @click.prevent="openProjectorWindow">Abrir proyector</a>
