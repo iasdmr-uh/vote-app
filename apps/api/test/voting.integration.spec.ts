@@ -164,7 +164,7 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
   }
 })
 
-test('database nomination flow keeps votes secret, ranks candidates without electing anyone, and lets the mesa repeat the vote and declare the composition', {
+test('database committee flow: delegates mark 1..N typed names, the mesa sees who voted, ranks without electing anyone, repeats and declares', {
   skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
 }, async () => {
   process.env.DATABASE_URL = testDatabaseUrl
@@ -178,80 +178,68 @@ test('database nomination flow keeps votes secret, ranks candidates without elec
   let assemblyId: string | undefined
   try {
     const organization = await prisma.organization.create({ data: { id: organizationId, name: `committee-test-${organizationId}`, type: 'union' } })
-    const assembly = await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Nomination integration', status: 'in_progress', joinCodeHash: hashCredential(joinCode) } })
+    const assembly = await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Committee integration', status: 'lobby_closed', joinCodeHash: hashCredential(joinCode) } })
     const activeAssemblyId = assembly.id
     assemblyId = activeAssemblyId
-    const candidates = await Promise.all(Array.from({ length: 6 }, (_, index) => prisma.participantSession.create({ data: {
-      assemblyId: activeAssemblyId, firstName: `Candidate${index}`, lastName: 'Delegate', tokenHash: hashCredential(newOpaqueCredential()),
-    } })))
-    // Nobody is marked with a role or eligibility: Secretaría decided the system does not check it.
-    const president = await prisma.participantSession.create({ data: { assemblyId: activeAssemblyId, firstName: 'President', lastName: 'Officer', tokenHash: hashCredential(newOpaqueCredential()), assemblyRole: 'president' } })
-    const outsider = await prisma.participantSession.create({ data: { assemblyId: (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Other', status: 'completed', joinCodeHash: hashCredential(newOpaqueCredential()) } })).id, firstName: 'Other', lastName: 'Assembly', tokenHash: hashCredential(newOpaqueCredential()) } })
-    const proposalRound = await prisma.round.create({ data: {
-      assemblyId: activeAssemblyId, title: 'Propuestas', format: 'multiple_choice', category: 'committee', committeeType: 'nomination',
-      memberCount: 5, committeeStage: 'proposals', status: 'draft', countingRule: { kind: 'count_only' },
-      committeeConfiguration: { supportMinimum: 1 },
-    } })
-    assert.equal((await service.participantState(candidates[0]!.id)).committeeCandidates?.length, 7, 'every active participant can be proposed')
-    await assert.rejects(service.submitCommitteeProposal(candidates[0]!.id, proposalRound.id, outsider.id), UnprocessableEntityException)
-    await service.submitCommitteeProposal(president.id, proposalRound.id, candidates[3]!.id)
-    await service.submitCommitteeProposal(candidates[4]!.id, proposalRound.id, president.id)
-    const proposal = await service.submitCommitteeProposal(candidates[0]!.id, proposalRound.id, candidates[1]!.id)
-    await prisma.round.update({ where: { id: proposalRound.id }, data: { committeeStage: 'support' } })
-    await service.supportCommitteeProposal(president.id, proposalRound.id, proposal.id)
-    await service.supportCommitteeProposal(candidates[2]!.id, proposalRound.id, proposal.id)
-    await assert.rejects(service.supportCommitteeProposal(candidates[2]!.id, proposalRound.id, proposal.id), ConflictException)
-    const supportState = await service.participantState(candidates[2]!.id)
-    assert.equal(supportState.committeeProposals?.find((item) => item.id === proposal.id)?.supportedByMe, true)
-    assert.equal(JSON.stringify(supportState).includes('supporterParticipantId'), false)
-    const round = await prisma.round.create({ data: {
-      assemblyId: activeAssemblyId, title: 'Comisión de Nombramiento', format: 'multiple_choice', category: 'committee', committeeType: 'nomination',
-      memberCount: 5, electionSeats: 5, committeeStage: 'election', status: 'draft',
-      decisionNote: 'Configuración validada por Secretaría',
-      committeeConfiguration: { institutionallyValidated: true, validationReference: 'ACTA-TEST', eligibilityRule: 'delegados confirmados', votingMethod: 'voto secreto' },
-      countingRule: { kind: 'count_only' },
-      options: { create: candidates.map((candidate, order) => ({ label: `${candidate.firstName} ${candidate.lastName}`, order, candidateParticipantId: candidate.id })) },
-    }, include: { options: { orderBy: { order: 'asc' } } } })
+    // One by one, so the mesa's list (ordered by arrival) matches this array.
+    const delegates = []
+    for (let index = 0; index < 6; index += 1) delegates.push(await prisma.participantSession.create({ data: {
+      assemblyId: activeAssemblyId, firstName: `Delegate${index}`, lastName: 'Person', tokenHash: hashCredential(newOpaqueCredential()), joinedAt: new Date(Date.now() + index),
+    } }))
+    // Candidates are typed names, as for an office; they need not be in the room.
+    const round = await service.createRound(activeAssemblyId, {
+      title: 'Comisión de Finanzas', format: 'multiple_choice', category: 'committee', memberCount: 3, countingRule: { kind: 'count_only' },
+      options: ['Ana Reyes', 'Luis Mejía', 'Rosa Paz', 'José Díaz', 'Carlos Ruiz'].map((label) => ({ label })),
+    })
+    assert.deepEqual(round.options.map((option) => option.label), ['Ana Reyes', 'Luis Mejía', 'Rosa Paz', 'José Díaz', 'Carlos Ruiz'])
+    assert.equal((await service.moderatorAssembly(activeAssemblyId)).attendanceRound, null, 'a prepared ballot shows no dots yet')
     await service.openRound(round.id)
-    for (let voter = 0; voter < 5; voter += 1) {
-      const selections = round.options.slice(0, 4).map((option) => option.id)
-      if (voter < 2) selections.push(round.options[4]!.id)
-      else if (voter < 4) selections.push(round.options[5]!.id)
-      await service.castVote(candidates[voter]!.id, round.id, selections)
-    }
-    assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 24)
+    const phone = await service.participantState(delegates[0]!.id)
+    assert.equal(phone.openRound?.electionSeats, 3, 'the phone knows how many names it may mark')
+    await assert.rejects(service.castVote(delegates[0]!.id, round.id, round.options.slice(0, 4).map((option) => option.id)), /como máximo 3 nombres/)
+    const [ana, luis, rosa, jose] = round.options
+    await service.castVote(delegates[0]!.id, round.id, [ana!.id, luis!.id, rosa!.id])
+    await service.castVote(delegates[1]!.id, round.id, [ana!.id, luis!.id])
+    await service.castVote(delegates[2]!.id, round.id, [ana!.id])
+    await service.castVote(delegates[3]!.id, round.id, [jose!.id, rosa!.id])
+    assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 8)
     assert.equal('participantSessionId' in ((await prisma.anonymousVote.findFirst({ where: { roundId: round.id } })) ?? {}), false)
+
+    const whileOpen = await service.moderatorAssembly(activeAssemblyId)
+    assert.deepEqual(whileOpen.participants.map((person) => person.voted), [true, true, true, true, false, false])
+    assert.deepEqual(whileOpen.attendanceRound, { roundId: round.id, status: 'open', votedCount: 4 })
+    assert.equal(JSON.stringify(whileOpen.participants).includes(ana!.id), false, 'the list says who voted, never for whom')
+
     await service.closeRound(round.id)
-    assert.equal(await prisma.round.count({ where: { committeeRootRoundId: round.id } }), 0, 'a tie does not create a vote on its own')
-    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).committeeStage, 'composition_ready')
+    assert.deepEqual((await service.moderatorAssembly(activeAssemblyId)).participants.map((person) => person.voted), [true, true, true, true, false, false], 'dots stay after closing')
     assert.equal('results' in await service.publicState(joinCode), false)
     const ranked = (await service.publishRound(round.id)).results
-    assert.deepEqual(ranked.map((option) => option.count), [5, 5, 5, 5, 2, 2], 'results are ranked by votes')
+    assert.deepEqual(ranked.map((option) => [option.label, option.count]), [['Ana Reyes', 3], ['Luis Mejía', 2], ['Rosa Paz', 2], ['José Díaz', 1], ['Carlos Ruiz', 0]], 'every candidate, most voted first')
+    assert.deepEqual((await service.publicState(joinCode)).results?.map((option) => option.label), ranked.map((option) => option.label), 'the projector shows the same ranking')
     assert.equal('officialResult' in await service.publicState(joinCode), false, 'closing and publishing elect no one')
 
-    // The mesa decides to repeat the vote between the two candidates tied for the last seat.
-    const repeat = await service.repeatRound(round.id, { optionIds: [round.options[4]!.id, round.options[5]!.id], seats: 1 })
+    // Luis and Rosa tie for the last seat; the mesa repeats the vote between them for one seat.
+    const repeat = await service.repeatRound(round.id, { optionIds: [luis!.id, rosa!.id], seats: 1 })
     assert.equal(repeat.committeeRootRoundId, round.id)
-    assert.deepEqual(repeat.options.map((option) => option.label), ['Candidate4 Delegate', 'Candidate5 Delegate', 'Voto nulo'])
-    const nullOption = repeat.options.find((option) => option.isNullVote)!
+    assert.deepEqual(repeat.options.map((option) => option.label), ['Luis Mejía', 'Rosa Paz'], 'nothing is added to the repeated ballot')
     await service.openRound(repeat.id)
-    await assert.rejects(service.castVote(candidates[0]!.id, repeat.id, [repeat.options[0]!.id, repeat.options[1]!.id]), /como máximo 1/)
-    await assert.rejects(service.castVote(candidates[0]!.id, repeat.id, [nullOption.id, repeat.options[0]!.id]), /no se puede combinar/)
-    await service.castVote(candidates[0]!.id, repeat.id, [repeat.options[0]!.id])
-    await service.castVote(candidates[1]!.id, repeat.id, [nullOption.id])
-    await service.castVote(president.id, repeat.id, [repeat.options[0]!.id])
-    await assert.rejects(service.declareOfficialResult(round.id, { optionIds: round.options.slice(0, 5).map((option) => option.id) }), /Cierra la votación abierta/)
+    assert.deepEqual((await service.moderatorAssembly(activeAssemblyId)).participants.map((person) => person.voted), [false, false, false, false, false, false], 'opening the next ballot resets the dots')
+    await assert.rejects(service.castVote(delegates[0]!.id, repeat.id, [repeat.options[0]!.id, repeat.options[1]!.id]), /como máximo 1 nombre/)
+    await service.castVote(delegates[0]!.id, repeat.id, [repeat.options[0]!.id])
+    await service.castVote(delegates[1]!.id, repeat.id, [repeat.options[0]!.id])
+    await service.castVote(delegates[2]!.id, repeat.id, [repeat.options[1]!.id])
+    await assert.rejects(service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id, rosa!.id] }), /Cierra la votación abierta/)
     await service.closeRound(repeat.id)
     const repeatResults = (await service.publishRound(repeat.id)).results
-    assert.deepEqual(repeatResults.map((option) => [option.label, option.count]), [['Candidate4 Delegate', 2], ['Candidate5 Delegate', 0], ['Voto nulo', 1]])
+    assert.deepEqual(repeatResults.map((option) => [option.label, option.count]), [['Luis Mejía', 2], ['Rosa Paz', 1]])
     await assert.rejects(service.declareOfficialResult(repeat.id, { optionIds: [repeat.options[0]!.id] }), /papeleta original/)
+    await assert.rejects(service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id] }), /exactamente 3 integrantes/)
 
-    const declared = await service.declareOfficialResult(round.id, { optionIds: round.options.slice(0, 5).map((option) => option.id), note: 'Composición aprobada por la mesa' })
+    const declared = await service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id, jose!.id], note: 'Composición aprobada por la mesa' })
     assert.equal(declared.publishedAt, null)
     assert.equal('officialResult' in await service.publicState(joinCode), false)
     await service.publishOfficialResult(round.id)
-    assert.equal((await service.publicState(joinCode)).officialResult?.elected.length, 5, 'the declaration on the original ballot is shown with the repeated vote')
-    assert.equal(await prisma.committeeWinner.count({ where: { rootRoundId: round.id } }), 0)
+    assert.equal((await service.publicState(joinCode)).officialResult?.elected.length, 3, 'the declaration on the original ballot is shown with the repeated vote')
     assert.equal(await prisma.auditEvent.count({ where: { roundId: repeat.id, action: 'round.repeated' } }), 1)
   } finally {
     if (assemblyId) {

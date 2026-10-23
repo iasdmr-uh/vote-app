@@ -194,10 +194,10 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - ~~Confirmar con Secretaría y la mesa las reglas exactas para cada cargo, mayorías, abstenciones, desempates, anulaciones y repetición de rondas.~~ Respondido por Secretaría (octubre 2026):
   - No se valida en el sistema quién vota (votan delegados y ex oficio).
   - No se automatiza la mayoría: se muestran todos los candidatos ordenados por votos y la mesa, con la Asamblea, decide quién continúa (puede repetir la votación entre los más votados) y quién queda. Cerrar una papeleta no elige a nadie. Los empates se resuelven igual.
-  - Existe el voto en blanco y se llama «Voto nulo».
+  - ~~Existe el voto en blanco y se llama «Voto nulo».~~ Eliminado el 21 de octubre de 2026: la papeleta solo muestra candidatos y no se puede enviar vacía.
   - La mesa puede anular una papeleta.
-  - En la Comisión de Nombramiento se registran el número de integrantes y el número de candidatos.
-  - Tampoco se valida quién puede proponer, apoyar o ser propuesto en la Comisión de Nombramiento: cualquier participante puede hacerlo y la delegación decide cada candidatura en la aprobación.
+  - Comisiones (21 de octubre de 2026): la mesa escribe los candidatos y cuántos integrantes quedarán (N). Cada persona marca de 1 a N; puede haber más candidatos que integrantes. Al publicar, el proyector muestra a todos ordenados de mayor a menor. Se eliminó el flujo de propuestas, apoyos y aprobación de la Comisión de Nombramiento.
+  - La mesa ve quién ya votó (punto amarillo: falta; verde: ya votó), nunca por quién; se mantiene tras cerrar hasta abrir la siguiente papeleta. El tiempo para votar se maneja de forma presencial.
   - Las llegadas tarde las decide la Asamblea; la mesa reabre el ingreso.
   - Una persona técnica modera; una laptop funciona como servidor en una red Wi-Fi propia (Starlink).
   - En esa red los teléfonos usan HTTP sin cifrar: riesgo aceptado (octubre 2026), con las medidas de `docs/lan-assembly.md`.

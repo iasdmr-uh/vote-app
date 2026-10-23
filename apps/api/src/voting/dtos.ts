@@ -3,7 +3,6 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   ArrayMinSize,
-  IsBoolean,
   Equals,
   IsArray,
   IsIn,
@@ -13,6 +12,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -56,52 +56,11 @@ export class ParticipantPatchDto {
 
   @IsOptional() @Equals('removed')
   status?: 'removed'
-
-  @IsOptional() @IsIn(['president', 'vice_president', 'secretary', 'treasurer', 'delegate'])
-  assemblyRole?: 'president' | 'vice_president' | 'secretary' | 'treasurer' | 'delegate' | null
-
-  @IsOptional() @IsBoolean()
-  committeeEligible?: boolean
 }
 
 export class BallotOptionDto {
   @IsString() @Matches(/\S/) @MinLength(1) @MaxLength(160)
   label!: string
-
-  @IsOptional() @IsUUID()
-  candidateParticipantId?: string
-}
-
-export class CommitteeConfigurationDto {
-  @IsOptional() @IsBoolean()
-  institutionallyValidated?: boolean
-
-  @IsOptional() @IsString() @MaxLength(200)
-  validationReference?: string
-
-  @IsOptional() @IsString() @MaxLength(1000)
-  eligibilityRule?: string
-
-  @IsOptional() @IsString() @MaxLength(1000)
-  votingMethod?: string
-
-  /** No longer enforced (Secretaría, Oct 2026: no eligibility checks); accepted so stored configurations still validate. */
-  @IsOptional() @IsString() @MaxLength(1000)
-  @IsIn(['eligible_delegate_only'])
-  proposalRule?: 'eligible_delegate_only'
-
-  @IsOptional() @IsIn(['one_per_eligible_delegate'])
-  supportRule?: 'one_per_eligible_delegate'
-
-  @IsOptional() @IsInt() @Min(1)
-  supportMinimum?: number
-
-  /** Number of candidates the delegation fixed for the Nomination Committee (05-12 03). */
-  @IsOptional() @IsInt() @Min(1)
-  candidateCount?: number
-
-  @IsOptional() @IsIn(['eligible_delegates', 'valid_votes'])
-  approvalDenominator?: 'eligible_delegates' | 'valid_votes'
 }
 
 export class CreateRoundDto {
@@ -114,17 +73,9 @@ export class CreateRoundDto {
   @IsOptional() @IsIn(['office', 'committee'])
   category?: 'office' | 'committee'
 
-  @IsOptional() @IsIn(['nomination', 'finance', 'statutes', 'plans', 'other'])
-  committeeType?: 'nomination' | 'finance' | 'statutes' | 'plans' | 'other'
-
-  @IsOptional() @IsInt() @Min(1)
+  /** Committee only: how many people stay on it; each delegate marks from one up to this many names. */
+  @IsOptional() @IsInt() @Min(1) @Max(40)
   memberCount?: number
-
-  @IsOptional() @IsString() @MaxLength(1000)
-  decisionNote?: string
-
-  @IsOptional() @ValidateNested() @Type(() => CommitteeConfigurationDto)
-  committeeConfiguration?: CommitteeConfigurationDto
 
   @IsOptional() @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => BallotOptionDto)
   options?: BallotOptionDto[]
@@ -142,39 +93,6 @@ export class VoteDto {
 
   @Equals(true)
   confirmation!: true
-}
-
-export class CommitteeProposalDto {
-  @IsUUID()
-  candidateParticipantId!: string
-}
-
-/** The moderator records the delegation's decision; the system does not compute the majority. */
-export class CommitteeApprovalDto {
-  @IsIn(['approved', 'rejected'])
-  decision!: 'approved' | 'rejected'
-
-  @IsOptional() @IsInt() @Min(0)
-  yesVotes?: number
-
-  @IsOptional() @IsInt() @Min(0)
-  noVotes?: number
-}
-
-export class CommitteeStageDto {
-  @IsIn(['support', 'approval', 'election'])
-  stage!: 'support' | 'approval' | 'election'
-}
-
-export class CommitteeConfigurationUpdateDto {
-  @IsOptional() @IsInt() @Min(1)
-  memberCount?: number
-
-  @IsOptional() @IsString() @MaxLength(1000)
-  decisionNote?: string
-
-  @IsOptional() @ValidateNested() @Type(() => CommitteeConfigurationDto)
-  committeeConfiguration?: CommitteeConfigurationDto
 }
 
 export class OfficialResultDto {

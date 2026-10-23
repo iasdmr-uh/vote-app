@@ -46,12 +46,12 @@ test('after the acta, the mesa erases every record of a completed assembly', {
     await service.publishRound(round.id)
     await service.declareOfficialResult(round.id, { optionIds: [round.options[0]!.id] })
 
-    // Committee rows reference participant sessions with ON DELETE RESTRICT; deletion must order around them.
-    const committee = await prisma.round.create({ data: { assemblyId, title: 'Comisión', category: 'committee', committeeType: 'nomination', countingRule: { kind: 'count_only' } } })
-    const proposal = await prisma.committeeProposal.create({ data: { roundId: committee.id, candidateParticipantId: sessions[1]!, proposedByParticipantId: sessions[0]! } })
-    await prisma.committeeProposalSupport.create({ data: { proposalId: proposal.id, supporterParticipantId: sessions[2]! } })
-    await prisma.ballotOption.create({ data: { roundId: committee.id, label: 'Luis', order: 1, candidateParticipantId: sessions[1]! } })
-    await prisma.committeeWinner.create({ data: { rootRoundId: committee.id, candidateParticipantId: sessions[1]!, sourceRoundId: committee.id, order: 1 } })
+    const committee = await service.createRound(assemblyId, {
+      title: 'Comisión de Finanzas', format: 'multiple_choice', category: 'committee', memberCount: 1, options: [{ label: 'Luis' }, { label: 'Marta' }], countingRule: { kind: 'count_only' },
+    })
+    await service.openRound(committee.id)
+    await service.castVote(sessions[1]!, committee.id, [committee.options[1]!.id])
+    await service.closeRound(committee.id)
 
     await assert.rejects(service.deleteAssemblyData(assemblyId, true), /Finaliza la Asamblea/)
     assert.equal(await prisma.participantSession.count({ where: { assemblyId } }), 3, 'nothing is erased before the assembly is completed')
@@ -66,7 +66,7 @@ test('after the acta, the mesa erases every record of a completed assembly', {
     assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 0)
     assert.equal(await prisma.participation.count({ where: { roundId: round.id } }), 0)
     assert.equal(await prisma.officialResult.count({ where: { roundId: round.id } }), 0)
-    assert.equal(await prisma.committeeProposal.count({ where: { roundId: committee.id } }), 0)
+    assert.equal(await prisma.ballotOption.count({ where: { roundId: committee.id } }), 0)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId } }), 0)
     await assert.rejects(service.publicState(joinCode), /no encontrada/)
     await assert.rejects(service.deleteAssemblyData(assemblyId, true), /no encontrada/)
