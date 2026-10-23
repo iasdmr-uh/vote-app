@@ -1,7 +1,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
-import { xlsxBlob, type Cell } from './xlsx'
-import { decisionTie } from './resultados'
+import { xlsxBlob } from './xlsx'
+import { actaSheetRows, decisionTie } from './resultados'
 import type { RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -353,19 +353,8 @@ async function printActa() {
   window.print()
 }
 
-/** The acta stays with Secretaría after the data is erased, so it carries every count and declaration. */
 function downloadActaSpreadsheet() {
-  // Typed cells, not CSV: names come from participants, and a text cell stays text when re-saved in Excel.
-  const rows: Cell[][] = [['Papeleta', 'Estado', 'Votantes', 'Lugar', 'Opción', 'Votos', 'Declarada electa']]
-  for (const item of state.value?.rounds || []) {
-    const status = roundStatusLabels[item.status] || item.status
-    const elected = new Set((item.officialResult?.elected || []).map((person) => person.optionId))
-    if (item.results?.length) {
-      item.results.forEach((result, index) => rows.push([item.title, status, item.participationCount ?? '', index + 1, result.label, result.count, elected.has(result.optionId) ? 'sí' : '']))
-    } else {
-      rows.push([item.title, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, item.participationCount ?? '', '', '', '', (item.officialResult?.elected || []).map((person) => person.label).join('; ')])
-    }
-  }
+  const rows = actaSheetRows(state.value?.rounds || [], roundStatusLabels)
   const link = document.createElement('a')
   link.href = URL.createObjectURL(xlsxBlob('Acta', rows))
   link.download = `acta-${(state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}.xlsx`
