@@ -76,11 +76,11 @@ function closePersonMenu(event: Event) {
     </section>
   </section>
   <section v-else-if="moderatorAuthState !== 'authenticated'" class="card join-card">
-    <h1>Mesa</h1>
+    <h1>Moderación</h1>
     <form @submit.prevent="signInModerator"><label>Credencial de moderación<input v-model="moderatorCredential" type="password" autocomplete="current-password" required /></label><button class="primary">Continuar</button></form>
   </section>
   <template v-else-if="moderatorAuthState === 'authenticated'">
-    <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><p class="eyebrow">ASAMBLEAS FINALIZADAS</p><h2>Actas pendientes</h2><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta</button></li></ul></section>
+    <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><h2>Asambleas finalizadas con datos guardados</h2><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta y borrado</button></li></ul></section>
     <section v-if="!assemblyId && liveAssembly" class="card"><p class="eyebrow">ASAMBLEA ACTIVA</p><h2>{{ liveAssembly.name }}</h2><button class="primary" @click="openLiveAssembly">Volver a la Asamblea activa</button></section>
     <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea</button></form></section>
     <template v-else>
@@ -161,7 +161,7 @@ function closePersonMenu(event: Event) {
                 <label v-if="roundCategory === 'office'">Nombre del cargo<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Presidencia" /></label>
                 <template v-else>
                   <label>Nombre de la comisión<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Comisión de Finanzas" /></label>
-                  <label>Integrantes de la comisión<input v-model.number="committeeMemberCount" class="member-count-input" type="number" min="1" max="40" required /></label>
+                  <label>¿Cuántos integrantes quedarán en la comisión?<input v-model.number="committeeMemberCount" class="member-count-input" type="number" min="1" max="40" required /></label>
                 </template>
                 <div class="field-group"><span class="field-label">Candidatos</span>
                   <ul v-if="ballotCandidates.length" class="candidate-rows"><li v-for="(name, index) in ballotCandidates" :key="name"><span>{{ name }}</span><button type="button" class="link-button remove-link" :aria-label="`Quitar ${name}`" @click="removeBallotCandidate(index)">Quitar</button></li></ul>
@@ -194,13 +194,13 @@ function closePersonMenu(event: Event) {
             </li>
             <li v-if="!state?.participants?.length" class="empty">Sin participantes</li>
           </ul>
-          <div class="action-row lobby-actions"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><button v-else-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><button class="link-button" :disabled="loading" @click="rotateJoinCode">Nuevo código</button></div>
+          <div class="action-row lobby-actions"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><button v-else-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button class="link-button" :disabled="loading" @click="rotateJoinCode">Nuevo código</button></div>
           <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>Reconexión de {{ resumeQr.name }}</strong><p>Un solo uso · vence {{ formatDateTime(resumeQr.expiresAt) }}</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
           <div v-if="qrImage && lobbyStatus === 'lobby_open'" class="qr-panel"><img :src="qrImage" alt="Código QR para unirse a la Asamblea" /><div><a :href="`/?code=${encodeURIComponent(code)}`">{{ origin }}/?code={{ code }}</a></div></div>
         </aside>
       </div>
       <section v-if="state?.rounds?.length" id="acta-de-resultados" class="card official-history">
-        <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones de la mesa</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
+        <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones oficiales de la mesa</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
         <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
           <div class="section-heading"><div><h3>{{ historyRound.title }}</h3><p class="status-line">{{ historyRound.category === 'committee' ? `Comisión · ${historyRound.memberCount} ${historyRound.memberCount === 1 ? 'integrante' : 'integrantes'}` : 'Cargo' }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}<template v-if="historyRound.results?.length"> · {{ historyRound.participationCount ?? 0 }} de {{ eligibleOf(historyRound) }} votaron</template></p></div></div>
           <p v-if="historyRound.status === 'annulled'" class="status-line">Anulada<template v-if="historyRound.annulReason">: {{ historyRound.annulReason }}</template></p>
@@ -214,6 +214,7 @@ function closePersonMenu(event: Event) {
             <p v-if="historyRound.officialResult.note">Observación: {{ historyRound.officialResult.note }}</p>
             <small>{{ formatDateTime(historyRound.officialResult.declaredAt) }} · {{ formatActor(historyRound.officialResult.declaredBy) }}</small>
           </div>
+          <p v-else-if="!historyRound.committeeRootRoundId" class="status-line">La mesa aún no ha registrado una declaración oficial.</p>
           <p v-if="historyRound.committeeRootRoundId" class="status-line">Repetición de «{{ state.rounds.find((item) => item.id === historyRound.committeeRootRoundId)?.title }}»</p>
           <div v-if="isDecidable(historyRound)" class="action-row">
             <button class="secondary" :disabled="loading" @click="openDeclareDialog(historyRound)">{{ historyRound.officialResult ? 'Corregir declaración…' : 'Declarar resultado…' }}</button>

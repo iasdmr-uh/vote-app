@@ -143,8 +143,8 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
   <section v-else class="card participant-card phone-screen">
     <button class="link-button participant-leave" :disabled="leaving" @click="leaveParticipantSession">Salir</button>
     <div v-if="pendingJoinCode" class="notice error" role="alert">
-      Este QR es de otra Asamblea.
-      <button class="secondary" :disabled="leaving" @click="switchToIncomingAssembly">Cambiar a la Asamblea del QR</button>
+      Este QR corresponde a otra Asamblea.
+      <button class="secondary" :disabled="leaving" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
     </div>
     <template v-if="ballotShown && round && reviewingVote">
       <section class="vote-review" aria-labelledby="vote-review-title">
