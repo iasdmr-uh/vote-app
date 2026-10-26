@@ -156,6 +156,7 @@ function normalizeState(value: Record<string, any>): PublicState {
     annulReason: rawRound.annulReason,
     ...(options ? { options } : {}),
     ...(rawRound.participationCount !== undefined ? { participationCount: rawRound.participationCount } : {}),
+    ...(rawRound.eligibleCount !== undefined ? { eligibleCount: rawRound.eligibleCount } : {}),
   } : undefined
   const assembly = value.assembly || (value.assemblyStatus
     ? { status: value.assemblyStatus }
@@ -170,7 +171,7 @@ function normalizeState(value: Record<string, any>): PublicState {
     participantCount: value.participantCount,
     recordedCount: value.recordedCount ?? rawRound?.participationCount,
     participationStatus: value.participationStatus,
-    eligibleCount: value.eligibleCount ?? value.participantCount ?? value.participants?.length,
+    eligibleCount: value.eligibleCount ?? rawRound?.eligibleCount ?? value.participantCount ?? value.participants?.length,
   }
 }
 

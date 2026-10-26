@@ -228,7 +228,7 @@ function closePersonMenu(event: Event) {
   <section v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" class="acta-print">
     <h1>Acta de resultados</h1>
     <p><strong>{{ state.assembly?.name }}</strong><template v-if="completionTime"> · finalizada {{ completionTime }}</template> · impresa {{ formatDateTime(new Date().toISOString()) }}</p>
-    <p>Participantes registrados: {{ state.participants?.length ?? 0 }}. Los votos son secretos: el sistema no guarda quién votó por quién.</p>
+    <p>Participantes registrados: {{ (state.participants?.length ?? 0) + (state.leftParticipants?.length ?? 0) }}. Los votos son secretos: el sistema no guarda quién votó por quién.</p>
     <article v-for="item in state.rounds" :key="`acta-${item.id}`">
       <h2>{{ item.title }}</h2>
       <p>{{ item.category === 'committee' ? 'Comisión' : 'Cargo' }} · papeleta {{ roundStatusLabels[item.status] || item.status }}<template v-if="item.participationCount !== undefined"> · {{ votedText(turnoutOf(item).recorded, turnoutOf(item).eligible) }}</template><template v-if="item.committeeRootRoundId"> · repetición de «{{ state.rounds.find((root) => root.id === item.committeeRootRoundId)?.title }}»</template></p>
@@ -238,6 +238,6 @@ function closePersonMenu(event: Event) {
       <p v-if="item.officialResult"><strong>Declarado electo por la mesa:</strong> {{ item.officialResult.elected.map((person) => person.label).join(', ') }} ({{ formatDateTime(item.officialResult.declaredAt) }})<template v-if="item.officialResult.note">. Observación: {{ item.officialResult.note }}</template></p>
     </article>
     <h2>Participantes</h2>
-    <ol><li v-for="person in state.participants || []" :key="`acta-person-${person.id}`">{{ person.firstName }} {{ person.lastName }}</li></ol>
+    <ol><li v-for="person in state.participants || []" :key="`acta-person-${person.id}`">{{ person.firstName }} {{ person.lastName }}</li><li v-for="person in state.leftParticipants || []" :key="`acta-left-${person.id}`">{{ person.firstName }} {{ person.lastName }} (salió)</li></ol>
     <p class="acta-signatures"><span>Moderación</span><span>Secretaría</span></p>
   </section></template>

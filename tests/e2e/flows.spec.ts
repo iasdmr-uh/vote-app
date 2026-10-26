@@ -370,6 +370,10 @@ test('delegado conserva la sesión al recargar y puede salir limpiando el estado
       await route.fulfill({ json: { assembly: { id: 'assembly-a', name: 'Asamblea A' } } })
       return
     }
+    if (route.request().method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ json: { left: true } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for participant session test' } })
   })
 
@@ -440,6 +444,10 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/CODE-B/join')) {
       await route.fulfill({ json: { participantSessionToken: 'new-session-token', ...participantState(), assembly: { id: 'assembly-b', name: 'Asamblea B', status: 'in_progress' } } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ json: { left: true } })
       return
     }
     await route.fulfill({ status: 404, json: { message: 'No mock route for QR switch test' } })
@@ -1372,4 +1380,144 @@ test('el proyector nunca muestra un estado crudo como «lobby_open»', async ({ 
     await expect(page.locator('.pj h1'), scenario.name).toBeVisible()
     await expect(page.locator('.pj'), scenario.name).not.toContainText(rawStates)
   }
+})
+
+test('la mesa cuenta a quien votó y salió en la base, y solo marca como pendientes a los presentes sin votar', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: false }],
+        leftParticipants: [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }],
+        participantCount: 2, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 2, eligibleCount: 3 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 2, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for left voter test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.locator('.vote-progress')).toContainText('de 3 ya votaron')
+  const summary = page.locator('.attendance-summary')
+  await expect(summary).toContainText('2 votaron')
+  await expect(summary).toContainText('1 falta')
+  await expect(page.locator('li', { hasText: 'Rosa Paz' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
+})
+
+test('el acta incluye a quienes salieron en la lista y en el total de registrados', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+    window.print = () => {}
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }], leftParticipants: [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }], participantCount: 1,
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'published', participationCount: 2, eligibleCount: 2, options: [{ id: 'a', label: 'Alfa' }], results: [{ optionId: 'a', label: 'Alfa', count: 2 }], officialResult: null }],
+      } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null } }); return }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for acta left test' } })
+  })
+
+  await page.goto('/moderator')
+  await page.getByRole('button', { name: 'Imprimir o guardar PDF' }).click()
+  const acta = page.locator('.acta-print')
+  await expect(acta).toContainText('Participantes registrados: 2.')
+  await expect(acta.locator('ol li')).toHaveText(['Ana Reyes', 'Pedro Vargas (salió)'])
+})
+
+test('al reabrir el ingreso después de publicar, el proyector vuelve a mostrar el QR', async ({ page }) => {
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      await route.fulfill({ json: {
+        assembly: { name: 'Asamblea de prueba', status: 'lobby_open', lobbyStatus: 'lobby_open' }, joinUrl: 'http://192.168.1.50/?join=DEMO-ROOM',
+        participantCount: 2, participants: [{ firstName: 'Ana', lastName: 'Reyes' }, { firstName: 'Rosa', lastName: 'Paz' }], eligibleCount: 2, recordedCount: 2,
+        round: { id: 'r1', title: 'Presidencia', status: 'published', category: 'office' }, results: [{ label: 'Alfa', count: 2 }],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for reopened lobby test' } })
+  })
+
+  await page.goto('/projector?code=DEMO-ROOM')
+  await expect(page.getByText('192.168.1.50')).toBeVisible()
+  await expect(page.getByText('Rosa Paz')).toBeVisible()
+  await expect(page.getByText('Alfa')).toHaveCount(0)
+})
+
+test('si el servidor no confirma la salida, el teléfono avisa y conserva la sesión para reintentar', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'leaving-session-token')
+    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
+  })
+  let leaveStatus = 503
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ status: leaveStatus, json: leaveStatus === 503 ? { message: 'Servicio no disponible' } : { left: true } })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: participantState() })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for failed leave test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await page.getByRole('button', { name: 'Salir', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('No se pudo salir')
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('leaving-session-token')
+
+  leaveStatus = 200
+  await page.getByRole('button', { name: 'Salir', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
+})
+
+test('si no se confirma la salida de la Asamblea anterior, el QR de otra Asamblea no cambia la sesión', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'old-session-token')
+    localStorage.setItem('participantAssemblyId', 'assembly-a')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: { ...participantState(), assembly: { id: 'assembly-a', name: 'Asamblea A', status: 'in_progress' } } })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.endsWith('/assemblies/CODE-B/public-state')) {
+      await route.fulfill({ json: { assembly: { id: 'assembly-b', name: 'Asamblea B' } } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ status: 503, json: { message: 'Servicio no disponible' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for failed switch test' } })
+  })
+
+  await page.goto('/?join=CODE-B')
+  await page.getByRole('button', { name: 'Cerrar sesión y cambiar a la Asamblea del QR' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'No se pudo salir' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('old-session-token')
+  await expect(page.getByRole('button', { name: 'Entrar a la sala' })).toHaveCount(0)
 })

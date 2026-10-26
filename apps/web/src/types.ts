@@ -4,7 +4,8 @@ export type PublicState = {
   status?: string
   lobbyStatus?: string
   participants?: Array<{ id?: string; firstName: string; lastName: string; voted?: boolean }>
-  attendanceRound?: { roundId: string; status: string; votedCount: number } | null
+  attendanceRound?: { roundId: string; status: string; votedCount: number; eligibleCount?: number } | null
+  leftParticipants?: Array<{ id: string; firstName: string; lastName: string }>
   participantCount?: number
   recordedCount?: number
   eligibleCount?: number

@@ -51,8 +51,8 @@ function isDecidable(target: RoundRecord) {
 const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
-  const total = state.value?.participants?.length ?? 0
-  return { ...record, pending: Math.max(0, total - record.votedCount) }
+  const pending = (state.value?.participants || []).filter((person) => !person.voted).length
+  return { ...record, pending }
 })
 const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))

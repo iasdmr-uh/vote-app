@@ -5,7 +5,7 @@ import { ApiRequestError, useAssembly } from '../useAssembly'
 
 const {
   loading, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode, selectedOptions,
-  reviewingVote, voteSubmitting, assemblyStatus, round, ballotMaxChoices, request, handleParticipantUnauthorized,
+  reviewingVote, voteSubmitting, assemblyStatus, round, ballotMaxChoices, request, handleParticipantUnauthorized, isUnauthorized,
   clearParticipantSession, normalizeState, refresh,
 } = useAssembly()
 
@@ -61,12 +61,17 @@ async function leaveRoom() {
   leaving.value = true
   try {
     if (token) await request('/participant/leave', { method: 'POST' }, token)
-  } catch {
+  } catch (e) {
+    if (!isUnauthorized(e)) {
+      error.value = 'No se pudo salir. Intenta de nuevo.'
+      return false
+    }
   } finally { leaving.value = false }
   clearParticipantSession()
   pendingJoinCode.value = ''
   error.value = ''
   notice.value = ''
+  return true
 }
 
 async function leaveParticipantSession() {
@@ -77,8 +82,7 @@ async function leaveParticipantSession() {
 async function switchToIncomingAssembly() {
   const incoming = pendingJoinCode.value
   if (!incoming || leaving.value) return
-  await leaveRoom()
-  code.value = incoming
+  if (await leaveRoom()) code.value = incoming
 }
 
 function reviewVote() {
