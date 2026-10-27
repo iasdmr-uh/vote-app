@@ -253,3 +253,23 @@ test('participant snapshot includes aggregates only after publication', () => {
     },
   }])
 })
+
+test('leaving tells only the mesa who left and closes the delegate sockets', () => {
+  const emissions: Array<{ rooms: unknown; event: string; payload: unknown }> = []
+  const disconnectedRooms: string[] = []
+  const server = {
+    to(rooms: unknown) { return { emit(event: string, payload: unknown) { emissions.push({ rooms, event, payload }) } } },
+    in(room: string) { return { disconnectSockets() { disconnectedRooms.push(room) } } },
+  }
+  const gateway = new RealtimeGateway({ async authenticate() { throw new Error() } })
+  Object.assign(gateway, { server })
+
+  gateway.participantLeft('assembly-7', { participantId: 'p-1', firstName: 'Ana', lastName: 'Paz', participantSessionToken: 'should-never-leak' } as never)
+
+  assert.deepEqual(emissions, [{
+    rooms: 'assembly:assembly-7:moderators',
+    event: 'participant.left',
+    payload: { participantId: 'p-1', firstName: 'Ana', lastName: 'Paz' },
+  }])
+  assert.deepEqual(disconnectedRooms, ['participant:p-1'])
+})

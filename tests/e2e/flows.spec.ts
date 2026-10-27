@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 /** Reads the downloaded acta sheet back as typed values: inline strings stay strings, <v> cells are numbers. */
 function sheetRows(xml: string) {
@@ -9,6 +9,13 @@ function sheetRows(xml: string) {
 }
 
 const api = '**/api/v1/**'
+
+/** Without a socket the app polls every 7 s; advancing the fake clock past that refreshes the state in place. */
+async function refreshByPolling(page: Page) {
+  const request = page.waitForRequest((req) => req.url().includes('/api/v1/'))
+  await page.clock.runFor(8_000)
+  await request
+}
 
 function participantState(participationStatus: 'pending' | 'recorded' = 'pending') {
   return {
@@ -59,30 +66,31 @@ test('delegado ingresa con datos sintéticos y confirma su participación', asyn
   await page.getByLabel('Código de sala').fill('DEMO-ROOM')
   await page.getByLabel('Nombre').fill('Delegado')
   await page.getByLabel('Apellido').fill('Sintético')
-  await page.getByRole('button', { name: 'Unirme a la sala' }).click()
-  await expect(page.getByText('Tu teléfono queda en espera.')).toBeVisible()
+  await page.getByRole('button', { name: 'Entrar a la sala' }).click()
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
 
   await page.getByLabel('Opción Alfa (prueba)').check()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
-  await expect(page.getByRole('heading', { name: 'Confirma tu selección' })).toBeFocused()
+  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
+  await expect(page.getByRole('heading', { name: 'Confirma tu voto' })).toBeFocused()
   await expect(page.locator('.review-details').getByText('Elección de prueba', { exact: true })).toBeVisible()
   await expect(page.locator('.review-details').getByText('Opción Alfa (prueba)', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Volver a la papeleta' }).click()
+  await page.getByRole('button', { name: 'Volver', exact: true }).click()
   await expect(page.getByLabel('Opción Alfa (prueba)')).toBeChecked()
   expect(voteCount).toBe(0)
 
   await page.getByLabel('Opción Beta (prueba)').check()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
+  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
   await expect(page.locator('.review-details').getByText('Opción Beta (prueba)', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
   await voteStarted
-  await expect(page.getByRole('button', { name: 'Enviando voto…' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Enviando…' })).toBeDisabled()
   expect(voteCount).toBe(1)
   releaseVote?.()
 
-  await expect(page.getByText('Tu participación fue registrada. Gracias.')).toBeVisible()
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
-  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toHaveCount(0)
   expect(voteCount).toBe(1)
 })
 
@@ -112,18 +120,18 @@ test('delegado vota en comisión con selección múltiple limitada a los cupos',
   })
 
   await page.goto('/')
-  await expect(page.getByText('Marca hasta 2 candidatos. Puedes marcar menos, pero no más de 2.')).toBeVisible()
+  await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await page.getByLabel('Ana (prueba)').check()
   await page.getByLabel('Beto (prueba)').check()
-  await expect(page.getByRole('group', { name: 'Candidatos · 2 de 2 marcados' })).toBeVisible()
+  await expect(page.getByRole('group', { name: '2 de 2' })).toBeVisible()
   // Over the limit the box does not stay ticked: the mesa's rule is shown instead.
   await page.getByLabel('Celia (prueba)').click()
-  await expect(page.getByRole('alert')).toContainText('máximo 2 candidatos')
+  await expect(page.getByRole('alert')).toContainText('Máximo 2 candidatos')
   await expect(page.getByLabel('Celia (prueba)')).not.toBeChecked()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
+  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
   await expect(page.locator('.review-details')).toContainText('Ana (prueba), Beto (prueba)')
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
-  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
 })
 
 test('en una comisión se puede marcar menos que el máximo y la papeleta no ofrece voto nulo', async ({ page }) => {
@@ -151,14 +159,14 @@ test('en una comisión se puede marcar menos que el máximo y la papeleta no ofr
   })
 
   await page.goto('/')
-  await expect(page.getByText('Marca hasta 3 candidatos. Puedes marcar menos, pero no más de 3.')).toBeVisible()
+  await expect(page.getByRole('group', { name: '0 de 3' })).toBeVisible()
   await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Revisar y confirmar voto' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toBeDisabled()
   await page.getByLabel('Beto (prueba)').check()
-  await expect(page.getByRole('group', { name: 'Candidatos · 1 de 3 marcados' })).toBeVisible()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
+  await expect(page.getByRole('group', { name: '1 de 3' })).toBeVisible()
+  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
-  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
   expect(voted).toEqual({ optionIds: ['candidate-b'], confirmation: true })
 })
 
@@ -176,7 +184,7 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress',
         rounds: [
-          { id: 'first', title: 'Presidencia', status: 'published', options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gama' }],
+          { id: 'first', title: 'Presidencia', status: 'published', participationCount: 9, eligibleCount: 10, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gama' }],
             results: [{ optionId: 'b', label: 'Beta', count: 4 }, { optionId: 'a', label: 'Alfa', count: 4 }, { optionId: 'c', label: 'Gama', count: 1 }], officialResult: null },
           { id: 'second', title: 'Secretaría', status: annulled ? 'annulled' : 'open', annulReason: annulled ? 'Nombre mal escrito' : null, options: [{ id: 'x', label: 'Rosa' }], officialResult: null },
         ],
@@ -198,11 +206,13 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   })
 
   await page.goto('/moderator')
-  const ranking = page.locator('.official-round').first().locator('.results-list')
-  await expect(ranking).toContainText('1. Beta')
-  await expect(ranking).toContainText('1. Alfa')
-  await expect(ranking).toContainText('3. Gama')
-  await expect(ranking).not.toContainText('Voto nulo')
+  const ranking = page.locator('.official-round').first().locator('.ranked-rows > li')
+  await expect(ranking).toHaveCount(3)
+  await expect(ranking.nth(0)).toHaveText(/^1\s*Beta\s*Empate\s*4 votos\s*40 %/)
+  await expect(ranking.nth(1)).toHaveText(/^2\s*Alfa\s*Empate\s*4 votos\s*40 %/)
+  await expect(ranking.nth(2)).toHaveText(/^3\s*Gama\s*1 voto\s*10 %/)
+  await expect(page.locator('.official-round').first()).toContainText('9 de 10 votaron')
+  await expect(page.locator('.official-round').first()).not.toContainText('Voto nulo')
 
   await page.getByRole('button', { name: 'Anular votación' }).click()
   const annulDialog = page.getByRole('dialog')
@@ -210,7 +220,8 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await expect(annulDialog.getByRole('button', { name: 'Anular papeleta' })).toBeDisabled()
   await annulDialog.getByLabel('Motivo (obligatorio, queda en el registro)').fill('Nombre mal escrito')
   await annulDialog.getByRole('button', { name: 'Anular papeleta' }).click()
-  await expect(page.getByText('Papeleta anulada: Nombre mal escrito.')).toBeVisible()
+  await expect(page.locator('.annulled-summary')).toContainText('PAPELETA ANULADA')
+  await expect(page.locator('.annulled-summary')).toContainText('Nombre mal escrito')
 
   await page.locator('.official-round').first().getByRole('button', { name: 'Repetir votación…' }).click()
   const repeatDialog = page.getByRole('dialog')
@@ -243,9 +254,11 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
   })
 
   await page.goto('/')
-  await expect(page.getByText('RESULTADO OFICIAL DE LA MESA')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'María López' })).toBeVisible()
-  await expect(page.getByText('RESULTADOS PUBLICADOS')).toHaveCount(0)
+  const official = page.locator('.official-card')
+  await expect(official.getByText('RESULTADO OFICIAL', { exact: true })).toBeVisible()
+  await expect(official).toContainText('María López')
+  await expect(official).toContainText('Electa por la Asamblea')
+  await expect(page.locator('.ranked-rows')).toHaveCount(0)
 })
 
 test('la mesa prepara una comisión escribiendo los candidatos y cuántos integrantes quedarán', async ({ page }) => {
@@ -288,7 +301,7 @@ test('la mesa prepara una comisión escribiendo los candidatos y cuántos integr
     await page.getByLabel('Agregar candidato').fill(name)
     await page.getByLabel('Agregar candidato').press('Enter')
   }
-  await expect(page.getByText('Cada persona podrá marcar de 1 a 2 candidatos.', { exact: false })).toBeVisible()
+  await expect(page.locator('.candidate-rows > li')).toHaveText([/Ana Reyes/, /Luis Mejía/, /Rosa Paz/])
   await page.getByRole('button', { name: 'Preparar papeleta' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Preparar papeleta' }).click()
   await expect.poll(() => createBody).toBeTruthy()
@@ -327,16 +340,19 @@ test('la mesa ve quién ya votó (amarillo/verde) y los puntos se quedan tras ce
   })
 
   await page.goto('/moderator')
-  await expect(page.getByText('3 personas · 2 ya votaron · 1 falta')).toBeVisible()
+  const summary = page.locator('.attendance-summary')
+  await expect(summary).toContainText('2 votaron')
+  await expect(summary).toContainText('1 falta')
   await expect(page.getByRole('img', { name: 'Ya votó' })).toHaveCount(2)
   await expect(page.getByRole('img', { name: 'Falta votar' })).toHaveCount(1)
   await expect(page.locator('li', { hasText: 'Luis Mejía' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
-  await expect(page.getByText('Solo indica si votó, nunca por quién.')).toBeVisible()
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
   await expect(page.getByRole('img', { name: 'Ya votó' })).toHaveCount(2)
-  await expect(page.getByText('3 personas · 2 ya votaron · 1 falta · última votación')).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Falta votar' })).toHaveCount(1)
+  await expect(summary).toContainText('2 votaron')
+  await expect(summary).toContainText('1 falta')
 })
 
 test('delegado conserva la sesión al recargar y puede salir limpiando el estado local', async ({ page }) => {
@@ -354,14 +370,18 @@ test('delegado conserva la sesión al recargar y puede salir limpiando el estado
       await route.fulfill({ json: { assembly: { id: 'assembly-a', name: 'Asamblea A' } } })
       return
     }
+    if (route.request().method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ json: { left: true } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for participant session test' } })
   })
 
   await page.goto('/?join=CODE-A')
-  await expect(page.getByText('Asamblea A')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await page.reload()
-  await expect(page.getByText('Asamblea A')).toBeVisible()
-  await page.getByRole('button', { name: 'Salir / cambiar de participante' }).click()
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await page.getByRole('button', { name: 'Salir', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
   await expect(page.getByLabel('Código de sala')).toHaveValue('CODE-A')
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
@@ -426,12 +446,16 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
       await route.fulfill({ json: { participantSessionToken: 'new-session-token', ...participantState(), assembly: { id: 'assembly-b', name: 'Asamblea B', status: 'in_progress' } } })
       return
     }
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ json: { left: true } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for QR switch test' } })
   })
 
   await page.goto('/?join=CODE-B')
   await expect(page.getByRole('alert')).toContainText('Este QR corresponde a otra Asamblea')
-  await expect(page.getByText('Asamblea A')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar sesión y cambiar a la Asamblea del QR' }).click()
   await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
   await expect(page.getByLabel('Código de sala')).toHaveValue('CODE-B')
@@ -439,9 +463,9 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
 
   await page.getByLabel('Nombre').fill('Nuevo')
   await page.getByLabel('Apellido').fill('Delegado')
-  await page.getByRole('button', { name: 'Unirme a la sala' }).click()
-  await expect(page.getByText('Te uniste a la sala. Tu teléfono queda en espera.')).toBeVisible()
-  await expect(page.getByText('Asamblea B')).toBeVisible()
+  await page.getByRole('button', { name: 'Entrar a la sala' }).click()
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('new-session-token')
 })
 
@@ -474,20 +498,20 @@ test('un error de red conserva la selección y permite revisar y reintentar', as
   await page.getByLabel('Código de sala').fill('DEMO-ROOM')
   await page.getByLabel('Nombre').fill('Delegado')
   await page.getByLabel('Apellido').fill('Sintético')
-  await page.getByRole('button', { name: 'Unirme a la sala' }).click()
+  await page.getByRole('button', { name: 'Entrar a la sala' }).click()
   await page.getByLabel('Opción Beta (prueba)').check()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
+  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
 
   await expect(page.getByRole('alert')).toContainText('Conexión temporalmente no disponible')
   await expect(page.locator('.review-details').getByText('Opción Beta (prueba)', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Volver a la papeleta' }).click()
+  await page.getByRole('button', { name: 'Volver', exact: true }).click()
   await expect(page.getByLabel('Opción Beta (prueba)')).toBeChecked()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
+  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
   await expect(page.locator('.review-details').getByText('Elección de prueba', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
 
-  await expect(page.getByText('Tu participación fue registrada. Gracias.')).toBeVisible()
+  await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
   expect(voteCount).toBe(2)
 })
 
@@ -504,8 +528,9 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
       await route.fulfill({ json: {
         assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
         participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético' }],
-        participantCount: 1,
-        eligibleCount: 1,
+        participantCount: 4,
+        eligibleCount: 4,
+        recordedCount: 4,
         currentRound: { id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }] },
         rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }],
           ...(closed ? { privateResults: [{ optionId: 'b', label: 'Opción Beta (prueba)', count: 3 }, { optionId: 'a', label: 'Opción Alfa (prueba)', count: 1 }] } : {}) }],
@@ -521,21 +546,22 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   })
 
   await page.goto('/moderator')
-  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
+  await expect(page.locator('.brand')).toContainText('Asamblea de prueba')
   await expect(page.getByText('Delegado Sintético')).toBeVisible()
+  await expect(page.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
-  await expect(page.getByRole('dialog')).toContainText('Los resultados seguirán ocultos')
+  await expect(page.getByRole('dialog')).toContainText('Dejará de aceptar votos.')
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
-  await expect(page.getByText('La papeleta está cerrada.')).toBeVisible()
-  const privateCounts = page.getByRole('region', { name: 'Conteo para revisión de la mesa' })
-  await expect(privateCounts).toContainText('Solo visible para la mesa')
-  await expect(privateCounts.locator('.results-list > div').first()).toHaveText(/1\. Opción Beta \(prueba\)\s*3\s*·\s*75 %/)
+  const privateCounts = page.locator('.ballot-card')
+  await expect(privateCounts.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
+  await expect(privateCounts.getByText('Solo la mesa', { exact: true })).toBeVisible()
+  await expect(privateCounts).toContainText(/4 de 4\s*votaron/)
+  await expect(privateCounts.locator('.ranked-rows > li').first()).toHaveText(/^1\s*Opción Beta \(prueba\)\s*3 votos\s*75 %/)
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
   // As on main, the mesa can move on to the next cargo without publishing this count.
-  await page.getByRole('button', { name: 'Preparar otra papeleta sin publicar este conteo' }).click()
-  await expect(page.getByRole('heading', { name: 'Nueva papeleta' })).toBeVisible()
+  await page.getByRole('button', { name: 'Preparar otra papeleta' }).click()
+  await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Volver al conteo' }).click()
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
 })
@@ -555,7 +581,7 @@ test('moderador declara el resultado desde el acta con el diálogo y puede corre
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress',
         rounds: [{
-          id: 'synthetic-round', title: 'Elección de prueba', status: 'published',
+          id: 'synthetic-round', title: 'Elección de prueba', status: 'published', participationCount: 3, eligibleCount: 4,
           options: [{ id: 'a', label: 'Candidata Alfa' }, { id: 'b', label: 'Candidato Beta' }],
           results: [{ optionId: 'a', label: 'Candidata Alfa', count: 2 }, { optionId: 'b', label: 'Candidato Beta', count: 1 }],
           officialResult,
@@ -588,26 +614,30 @@ test('moderador declara el resultado desde el acta con el diálogo y puede corre
   })
 
   await page.goto('/moderator')
-  await expect(page.getByRole('heading', { name: 'Declaraciones oficiales de la mesa' })).toBeVisible()
-  await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
+  const acta = page.locator('#acta-de-resultados')
+  await expect(acta.getByRole('heading', { name: 'Declaraciones oficiales de la mesa' })).toBeVisible()
+  await expect(acta.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
+  await expect(acta.locator('.ranked-rows > li').first()).toHaveText(/^1\s*Candidata Alfa\s*2 votos\s*50 %/)
   // The acta stays short: declaring happens in the dialog, not in a form per round.
   await expect(page.getByRole('group', { name: '¿Quién queda electo?' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Declarar resultado…' }).click()
+  await acta.getByRole('button', { name: 'Declarar resultado…' }).click()
   await page.getByRole('dialog').getByRole('group', { name: '¿Quién queda electo?' }).getByLabel('Candidato Beta').check()
   await page.getByRole('dialog').getByLabel('Observación (opcional)').fill('Decisión de la Asamblea')
   await page.getByRole('dialog').getByRole('button', { name: 'Declarar resultado oficial' }).click()
   // The count is already public, so the declaration goes to the projector at once, as the dialog promises.
-  await expect(page.getByText('Declaración publicada')).toBeVisible()
-  await expect(page.getByText('Visible al público')).toBeVisible()
-  await expect(page.getByText('Observación: Decisión de la Asamblea')).toBeVisible()
+  await expect(acta.getByText('Declaración publicada')).toBeVisible()
+  await expect(acta.locator('.declared-result')).toContainText('Candidato Beta')
+  await expect(acta.getByText('Observación: Decisión de la Asamblea')).toBeVisible()
+  await expect(page.locator('.ballot-card')).toContainText('Declarado: Candidato Beta')
+  await expect(page.getByRole('button', { name: 'Declarar resultado…' })).toHaveCount(0)
   expect(publishCount).toBe(1)
 
-  await page.getByRole('button', { name: 'Corregir declaración…' }).click()
+  await acta.getByRole('button', { name: 'Corregir declaración…' }).click()
   await expect(page.getByRole('dialog').getByLabel('Candidato Beta')).toBeChecked()
   await expect(page.getByRole('dialog').getByLabel('Observación (opcional)')).toHaveValue('Decisión de la Asamblea')
   await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
 
-  await page.getByRole('button', { name: 'Retirar declaración' }).click()
+  await acta.getByRole('button', { name: 'Retirar declaración' }).click()
   await expect(page.getByRole('dialog')).toContainText('¿Retirar la declaración oficial?')
   await page.getByRole('dialog').getByRole('button', { name: 'Retirar declaración' }).click()
   await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
@@ -653,29 +683,29 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
   })
 
   await page.goto('/moderator')
-  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
-  await expect(page.getByText('Cierra la papeleta abierta antes de finalizar la Asamblea.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toBeDisabled()
+  await expect(page.locator('.brand')).toContainText('Asamblea de prueba')
+  await expect(page.getByRole('button', { name: 'Finalizar Asamblea…' })).toBeDisabled()
 
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
-  await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Finalizar Asamblea…' })).toBeEnabled()
 
-  await page.getByRole('button', { name: 'Finalizar Asamblea' }).click()
+  await page.getByRole('button', { name: 'Finalizar Asamblea…' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Finalizar Asamblea' }).click()
   await expect(page.getByText('La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.')).toBeVisible()
-  await expect(page.getByText('Asamblea finalizada', { exact: true })).toBeVisible()
-  await expect(page.getByText(/Se registró/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Finalizar Asamblea' })).toHaveCount(0)
+  const completedStatus = page.getByRole('status').filter({ hasText: 'Asamblea finalizada' })
+  await expect(completedStatus.getByText('Asamblea finalizada', { exact: true })).toBeVisible()
+  await expect(completedStatus).toContainText('2026')
+  await expect(page.getByRole('button', { name: /Finalizar Asamblea/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Preparar papeleta' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toHaveCount(0)
   // Completing with a closed, unpublished and undeclared ballot leaves those steps pending.
-  const steps = page.getByRole('list', { name: 'Pasos de la moderación' }).getByRole('listitem')
-  await expect(steps.filter({ hasText: 'Cerrar votación' })).toHaveClass(/\bcomplete\b/)
-  await expect(steps.filter({ hasText: 'Publicar conteo' })).not.toHaveClass(/\bcomplete\b/)
-  await expect(steps.filter({ hasText: 'Declarar resultado' })).not.toHaveClass(/\bcomplete\b/)
+  const steps = page.getByRole('list', { name: 'Pasos de la mesa' }).getByRole('listitem')
+  await expect(steps).toHaveText([/Ingreso/, /Papeleta/, /Votación/, /Conteo/, /Resultado/])
+  await expect(steps.filter({ hasText: 'Votación' })).toHaveClass(/\bcomplete\b/)
+  await expect(steps.filter({ hasText: 'Conteo' })).not.toHaveClass(/\bcomplete\b/)
+  await expect(steps.filter({ hasText: 'Resultado' })).not.toHaveClass(/\bcomplete\b/)
   await expect(page.locator('.workflow-steps [aria-current="step"]')).toHaveCount(0)
 })
 
@@ -696,7 +726,7 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
         participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1,
         rounds: [
-          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
+          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, eligibleCount: 4, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
             results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 1 }],
             officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
           { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
@@ -724,11 +754,11 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await page.getByRole('button', { name: 'Descargar hoja de cálculo' }).click()
   expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
   const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 1, 'Rosa', 2, 'sí'])
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', 3, 2, 'Pedro', 1, ''])
-  expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', 1, '', '', '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron', 1, 'Rosa', 2, 50, '', 'sí'])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron', 2, 'Pedro', 1, 25, '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', '1 votó', '', '', '', '', '', ''])
   // A name typed as a formula is a text cell: no formula element exists, and re-saving keeps it as text.
-  expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', 1, 1, '=HYPERLINK("http://x","y")', 1, ''])
+  expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', '1 votó', 1, '=HYPERLINK("http://x","y")', 1, '', '', ''])
   expect(sheet).not.toContain('<f>')
 
   const acta = page.locator('.acta-print')
@@ -809,7 +839,7 @@ test('la mesa cierra un acta recuperada sin borrarla y vuelve a la lista', async
 
   await page.goto('/moderator')
   await page.getByRole('listitem').filter({ hasText: 'Primera Asamblea' }).getByRole('button', { name: 'Abrir acta y borrado' }).click()
-  await expect(page.getByText('Sesión: Primera Asamblea')).toBeVisible()
+  await expect(page.locator('.brand').getByText('Primera Asamblea', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
 
@@ -817,7 +847,7 @@ test('la mesa cierra un acta recuperada sin borrarla y vuelve a la lista', async
   await expect(page.getByRole('heading', { name: 'Asambleas finalizadas con datos guardados' })).toBeVisible()
   expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBeNull()
   await page.getByRole('listitem').filter({ hasText: 'Segunda Asamblea' }).getByRole('button', { name: 'Abrir acta y borrado' }).click()
-  await expect(page.getByText('Sesión: Segunda Asamblea')).toBeVisible()
+  await expect(page.locator('.brand').getByText('Segunda Asamblea', { exact: true })).toBeVisible()
   expect(deleteCalls).toBe(0)
 })
 
@@ -849,10 +879,10 @@ test('con otra Asamblea activa, la mesa abre un acta pendiente, la cierra sin bo
   })
 
   await page.goto('/moderator')
-  await expect(page.getByText('Sesión: Asamblea en curso')).toBeVisible()
+  await expect(page.locator('.brand').getByText('Asamblea en curso', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Ver actas pendientes' }).click()
   await page.getByRole('button', { name: 'Abrir acta y borrado' }).click()
-  await expect(page.getByText('Sesión: Asamblea anterior')).toBeVisible()
+  await expect(page.locator('.brand').getByText('Asamblea anterior', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Cerrar el acta sin borrar' }).click()
   await expect(page.getByRole('heading', { name: 'Asambleas finalizadas con datos guardados' })).toBeVisible()
@@ -861,7 +891,7 @@ test('con otra Asamblea activa, la mesa abre un acta pendiente, la cierra sin bo
   await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Volver a la Asamblea activa' }).click()
-  await expect(page.getByText('Sesión: Asamblea en curso')).toBeVisible()
+  await expect(page.locator('.brand').getByText('Asamblea en curso', { exact: true })).toBeVisible()
   await expect(page.getByText('Código: LIVE-CODE')).toBeVisible()
   expect(deleteCalls).toBe(0)
 })
@@ -879,7 +909,8 @@ test('el proyector muestra la dirección de la red que da el servidor, no la de 
 
   await page.goto('/projector?code=DEMO-ROOM')
   await expect(page.locator('img.projector-qr')).toBeVisible()
-  await expect(page.getByText('Sin QR: abre 192.168.1.50 en el navegador e ingresa el código.')).toBeVisible()
+  await expect(page.getByText('192.168.1.50', { exact: true })).toBeVisible()
+  await expect(page.locator('.pj')).not.toContainText('127.0.0.1')
 })
 
 test('delegado y proyector ven que la Asamblea concluyó y conservan resultados publicados', async ({ page }) => {
@@ -915,11 +946,13 @@ test('delegado y proyector ven que la Asamblea concluyó y conservan resultados 
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
-  await expect(page.getByText('La sesión concluyó')).toBeVisible()
-  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  await expect(page.locator('.phone-results')).toContainText('Opción declarada')
+  await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toHaveCount(0)
+  await expect(page.getByText('Espera la siguiente papeleta')).toHaveCount(0)
 
   await page.goto('/projector?code=DEMO-ROOM')
-  await expect(page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
+  await expect(page.getByText('Asamblea finalizada', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Elección publicada' })).toBeVisible()
   await expect(page.getByText('Opción declarada')).toBeVisible()
 })
 
@@ -949,8 +982,8 @@ test('abrir /moderator sin credencial solo muestra el formulario de acceso', asy
   await page.goto('/moderator')
   await expect(page.getByRole('heading', { name: 'Moderación' })).toBeVisible()
   await expect(page.getByLabel('Credencial de moderación')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Crear Asamblea y generar código' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toHaveCount(0)
   expect(moderatorRequests).toBe(0)
 })
 
@@ -974,8 +1007,8 @@ test('moderador valida la credencial antes de mostrar el panel cuando aún no ha
   await page.goto('/moderator')
   await page.getByLabel('Credencial de moderación').fill('synthetic-moderator-token')
   await page.getByRole('button', { name: 'Continuar' }).click()
-  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toBeVisible()
+  await expect(page.getByLabel('Credencial de moderación')).toHaveCount(0)
   expect(authorization).toBe('Bearer synthetic-moderator-token')
 })
 
@@ -1014,6 +1047,8 @@ test('moderador recupera la Asamblea activa en una pestaña nueva y puede reabri
   await expect(page.getByText('Se recuperó la Asamblea activa: Asamblea recuperada.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toHaveCount(0)
   await expect(page.getByText('El código de ingreso no está disponible en este dispositivo.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reconectar dispositivo' })).toBeHidden()
+  await page.getByLabel('Acciones para Delegado Sintético').click()
   await expect(page.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
   await page.getByRole('button', { name: 'Reabrir ingreso' }).click()
   await expect(page.getByRole('heading', { name: '¿Reabrir el ingreso?' })).toBeVisible()
@@ -1044,7 +1079,7 @@ test('error temporal al validar conserva la credencial guardada y permite reinte
   await expect(page.getByRole('heading', { name: 'No se pudo validar el acceso' })).toBeVisible()
   expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBe('saved-moderator-token')
   await page.getByRole('button', { name: 'Reintentar validación' }).click()
-  await expect(page.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Crear Asamblea' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(validationAttempts).toBe(2)
   expect(await page.evaluate(() => sessionStorage.getItem('moderatorToken'))).toBe('saved-moderator-token')
@@ -1057,6 +1092,8 @@ test('proyector presenta estado y progreso sintético sin nombres ni opciones', 
       await route.fulfill({ json: {
         assembly: { name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
         participantCount: 42,
+        eligibleCount: 42,
+        recordedCount: 17,
         currentRound: { id: 'synthetic-round', title: 'Elección de prueba', status: 'open' },
       } })
       return
@@ -1067,7 +1104,9 @@ test('proyector presenta estado y progreso sintético sin nombres ni opciones', 
   await page.goto('/projector?code=DEMO-ROOM')
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await expect(page.getByText('Votación abierta')).toBeVisible()
-  await expect(page.getByText('de 42 votos recibidos')).toBeVisible()
+  await expect(page.locator('.pj-progress strong')).toHaveText('17')
+  await expect(page.getByText('de 42 ya votaron')).toBeVisible()
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '42')
   await expect(page.getByText('Delegado Sintético')).toHaveCount(0)
   await expect(page.getByText('Opción Alfa (prueba)')).toHaveCount(0)
 })
@@ -1092,7 +1131,7 @@ test('delegado reconecta su sesión en un dispositivo nuevo con el QR de la mesa
 
   await page.goto('/?resume=synthetic-resume-code-0123456789')
   await expect(page.getByText('Tu sesión se reconectó en este dispositivo.')).toBeVisible()
-  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
+  await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
   expect(resumeBody).toEqual({ resumeCode: 'synthetic-resume-code-0123456789' })
   await expect(page).toHaveURL(/\/$/)
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('synthetic-resumed-token')
@@ -1118,10 +1157,11 @@ test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ pa
     await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
   })
 
+  await page.clock.install()
   await page.goto('/?join=ROTATED-CODE')
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
+  await refreshByPolling(page)
+  await refreshByPolling(page)
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(publicStateCalls).toBe(1)
@@ -1153,10 +1193,11 @@ test('moderador ve la limpieza pendiente aunque se actualice el estado y puede r
     await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
   })
 
+  await page.clock.install()
   await page.goto('/moderator')
   const panel = page.getByRole('alert').filter({ hasText: 'Limpieza del secreto del voto pendiente' })
   await expect(panel).toBeVisible()
-  await page.getByRole('button', { name: 'Sincronizar estado' }).click()
+  await refreshByPolling(page)
   await expect(panel).toBeVisible()
   await panel.getByRole('button', { name: 'Reintentar limpieza' }).click()
   await expect(page.getByText('Limpieza completada. Ya se pueden publicar resultados.')).toBeVisible()
@@ -1179,7 +1220,7 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', participantCount: 9,
         rounds: [{
-          id: 'presidency', title: 'Presidencia', status: 'published',
+          id: 'presidency', title: 'Presidencia', status: 'published', participationCount: 9, eligibleCount: 9,
           options: [{ id: 'm', label: 'María López' }, { id: 'c', label: 'Carlos Gómez' }, { id: 'r', label: 'Rosa Díaz' }],
           results: [{ optionId: 'm', label: 'María López', count: 4 }, { optionId: 'c', label: 'Carlos Gómez', count: 4 }, { optionId: 'r', label: 'Rosa Díaz', count: 1 }],
           officialResult: null,
@@ -1207,10 +1248,12 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
 
   await page.goto('/moderator')
   await expect(page.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
-  await expect(page.getByText('Total: 9 votos · 9 participantes')).toBeVisible()
-  await expect(page.getByText('Empate en el primer lugar: María López y Carlos Gómez, 4 votos cada uno.')).toBeVisible()
+  const ballot = page.locator('.ballot-card')
+  await expect(ballot).toContainText(/9 de 9\s*votaron/)
+  const rows = ballot.locator('.ranked-rows > li')
+  await expect(rows).toHaveText([/^1\s*María López\s*Empate\s*4 votos\s*44 %/, /^2\s*Carlos Gómez\s*Empate\s*4 votos\s*44 %/, /^3\s*Rosa Díaz\s*1 voto\s*11 %/])
 
-  await page.locator('.decision-card').getByRole('button', { name: 'Repetir votación…' }).click()
+  await ballot.getByRole('button', { name: 'Repetir votación…' }).click()
   const repeatDialog = page.getByRole('dialog')
   await expect(repeatDialog.getByLabel('María López')).toBeChecked()
   await expect(repeatDialog.getByLabel('Carlos Gómez')).toBeChecked()
@@ -1218,7 +1261,7 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
   await repeatDialog.getByRole('button', { name: 'Cancelar' }).click()
   expect(repeated).toBeNull()
 
-  await page.getByRole('button', { name: 'Declarar resultado oficial…' }).click()
+  await ballot.getByRole('button', { name: 'Declarar resultado…' }).click()
   const declareDialog = page.getByRole('dialog')
   await expect(declareDialog.getByRole('button', { name: 'Declarar resultado oficial' })).toBeDisabled()
   await declareDialog.getByLabel('María López').check()
@@ -1226,4 +1269,258 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
   await declareDialog.getByRole('button', { name: 'Declarar resultado oficial' }).click()
   await expect.poll(() => published).toBe(true)
   expect(officialBody).toEqual({ optionIds: ['m'], note: 'Desempate por la Asamblea' })
+})
+
+test('Salir avisa a la mesa con POST /participant/leave y limpia la sesión del teléfono', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'leaving-session-token')
+    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
+  })
+  const leaveCalls: Array<{ method: string; authorization?: string }> = []
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/participant/leave')) {
+      leaveCalls.push({ method: request.method(), authorization: request.headers().authorization })
+      await route.fulfill({ status: 201, json: { status: 'left' } })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: participantState() })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for leave test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await page.getByRole('button', { name: 'Salir', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
+  expect(leaveCalls).toEqual([{ method: 'POST', authorization: 'Bearer leaving-session-token' }])
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('la mesa muestra «<Nombre> salió de la sala» al recibir participant.left', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  let leftAlready = false
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }, ...(leftAlready ? [] : [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }])]
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'lobby_open', completedAt: null,
+        participants: people, participantCount: people.length, rounds: [],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for participant.left test' } })
+  })
+  let connectAuth: Record<string, string> | undefined
+  let markConnected: (() => void) | undefined
+  const connected = new Promise<void>((resolve) => { markConnected = resolve })
+  let server: { send: (message: string) => void } | undefined
+  await page.routeWebSocket(/\/socket\.io\//, (ws) => {
+    server = ws
+    ws.send(`0${JSON.stringify({ sid: 'synthetic-engine', upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1000000 })}`)
+    ws.onMessage((message) => {
+      const packet = String(message)
+      if (!packet.startsWith('40/events,')) return
+      connectAuth = JSON.parse(packet.slice('40/events,'.length))
+      ws.send('40/events,{"sid":"synthetic-socket"}')
+      markConnected?.()
+    })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByText('Pedro Vargas')).toBeVisible()
+  await connected
+  expect(connectAuth).toMatchObject({ audience: 'moderator', assemblyId: 'synthetic-assembly' })
+  await expect(page.getByText(/salió de la sala/)).toHaveCount(0)
+  leftAlready = true
+  server!.send('42/events,["participant.left",{"participantId":"p2","firstName":"Pedro","lastName":"Vargas"}]')
+  await expect(page.getByRole('status').filter({ hasText: 'Pedro Vargas salió de la sala' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list')).not.toContainText('Pedro Vargas')
+  await expect(page.locator('.mesa-person-list')).toContainText('Ana Reyes')
+})
+
+test('el proyector nunca muestra un estado crudo como «lobby_open»', async ({ page }) => {
+  const rawStates = /lobby_open|lobby_closed|in_progress|\b(preparing|draft|open|closed|published|annulled|completed|removed|left)\b/
+  const scenarios: Array<{ name: string; state: Record<string, unknown> }> = [
+    { name: 'preparando', state: { assembly: { name: 'Asamblea de prueba', status: 'preparing', lobbyStatus: 'lobby_closed' }, participantCount: 0 } },
+    { name: 'ingreso abierto', state: { assembly: { name: 'Asamblea de prueba', status: 'lobby_open', lobbyStatus: 'lobby_open' }, joinUrl: 'http://192.168.1.50/?join=DEMO-ROOM', participantCount: 1, participants: [{ firstName: 'Ana', lastName: 'Reyes' }] } },
+    { name: 'ingreso cerrado', state: { assembly: { name: 'Asamblea de prueba', status: 'lobby_closed', lobbyStatus: 'lobby_closed' }, participantCount: 1 } },
+    ...(['draft', 'open', 'closed', 'annulled'] as const).map((status) => ({ name: `papeleta ${status}`, state: {
+      assembly: { name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' }, participantCount: 3, eligibleCount: 3, recordedCount: 1,
+      currentRound: { id: 'r1', title: 'Presidencia', status, annulReason: status === 'annulled' ? 'Nombre mal escrito' : null },
+    } })),
+    { name: 'conteo publicado', state: {
+      assembly: { name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' }, participantCount: 3, eligibleCount: 3, recordedCount: 3,
+      currentRound: { id: 'r1', title: 'Presidencia', status: 'published' }, results: [{ optionId: 'a', label: 'Alfa', count: 2 }, { optionId: 'b', label: 'Beta', count: 1 }],
+    } },
+    { name: 'asamblea finalizada', state: { assembly: { name: 'Asamblea de prueba', status: 'completed', lobbyStatus: 'lobby_closed', completedAt: '2026-10-02T18:30:00.000Z' }, participantCount: 3 } },
+  ]
+  let current = scenarios[0]!.state
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      await route.fulfill({ json: current })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for raw state test' } })
+  })
+
+  for (const scenario of scenarios) {
+    current = scenario.state
+    await page.goto('/projector?code=DEMO-ROOM')
+    await expect(page.locator('.pj h1'), scenario.name).toBeVisible()
+    await expect(page.locator('.pj'), scenario.name).not.toContainText(rawStates)
+  }
+})
+
+test('la mesa cuenta a quien votó y salió en la base, y solo marca como pendientes a los presentes sin votar', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: false }],
+        leftParticipants: [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }],
+        participantCount: 2, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 2, eligibleCount: 3 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 2, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for left voter test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.locator('.vote-progress')).toContainText('de 3 ya votaron')
+  const summary = page.locator('.attendance-summary')
+  await expect(summary).toContainText('2 votaron')
+  await expect(summary).toContainText('1 falta')
+  await expect(page.locator('li', { hasText: 'Rosa Paz' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
+})
+
+test('el acta incluye a quienes salieron en la lista y en el total de registrados', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+    window.print = () => {}
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }], leftParticipants: [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }], participantCount: 1,
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'published', participationCount: 2, eligibleCount: 2, options: [{ id: 'a', label: 'Alfa' }], results: [{ optionId: 'a', label: 'Alfa', count: 2 }], officialResult: null }],
+      } })
+      return
+    }
+    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null } }); return }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for acta left test' } })
+  })
+
+  await page.goto('/moderator')
+  await page.getByRole('button', { name: 'Imprimir o guardar PDF' }).click()
+  const acta = page.locator('.acta-print')
+  await expect(acta).toContainText('Participantes registrados: 2.')
+  await expect(acta.locator('ol li')).toHaveText(['Ana Reyes', 'Pedro Vargas (salió)'])
+})
+
+for (const roundStatus of ['published', 'closed'] as const) {
+  test(`al reabrir el ingreso con la votación ${roundStatus === 'published' ? 'publicada' : 'cerrada sin publicar'}, el proyector vuelve a mostrar el QR`, async ({ page }) => {
+    await page.route(api, async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+        await route.fulfill({ json: {
+          assembly: { name: 'Asamblea de prueba', status: 'lobby_open', lobbyStatus: 'lobby_open' }, joinUrl: 'http://192.168.1.50/?join=DEMO-ROOM',
+          participantCount: 2, participants: [{ firstName: 'Ana', lastName: 'Reyes' }, { firstName: 'Rosa', lastName: 'Paz' }], eligibleCount: 2, recordedCount: 2,
+          round: { id: 'r1', title: 'Presidencia', status: roundStatus, category: 'office' }, ...(roundStatus === 'published' ? { results: [{ label: 'Alfa', count: 2 }] } : {}),
+        } })
+        return
+      }
+      await route.fulfill({ status: 404, json: { message: 'No mock route for reopened lobby test' } })
+    })
+
+    await page.goto('/projector?code=DEMO-ROOM')
+    await expect(page.getByText('192.168.1.50')).toBeVisible()
+    await expect(page.getByText('Rosa Paz')).toBeVisible()
+    await expect(page.getByText('Alfa')).toHaveCount(0)
+    await expect(page.getByText('Votación cerrada')).toHaveCount(0)
+  })
+}
+
+test('si el servidor no confirma la salida, el teléfono avisa y conserva la sesión para reintentar', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'leaving-session-token')
+    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
+  })
+  let leaveStatus = 503
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ status: leaveStatus, json: leaveStatus === 503 ? { message: 'Servicio no disponible' } : { left: true } })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: participantState() })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for failed leave test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  await page.getByRole('button', { name: 'Salir', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('No se pudo salir')
+  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('leaving-session-token')
+
+  leaveStatus = 200
+  await page.getByRole('button', { name: 'Salir', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
+})
+
+test('si no se confirma la salida de la Asamblea anterior, el QR de otra Asamblea no cambia la sesión', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'old-session-token')
+    localStorage.setItem('participantAssemblyId', 'assembly-a')
+  })
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: { ...participantState(), assembly: { id: 'assembly-a', name: 'Asamblea A', status: 'in_progress' } } })
+      return
+    }
+    if (request.method() === 'GET' && url.pathname.endsWith('/assemblies/CODE-B/public-state')) {
+      await route.fulfill({ json: { assembly: { id: 'assembly-b', name: 'Asamblea B' } } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
+      await route.fulfill({ status: 503, json: { message: 'Servicio no disponible' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for failed switch test' } })
+  })
+
+  await page.goto('/?join=CODE-B')
+  await page.getByRole('button', { name: 'Cerrar sesión y cambiar a la Asamblea del QR' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'No se pudo salir' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('old-session-token')
+  await expect(page.getByRole('button', { name: 'Entrar a la sala' })).toHaveCount(0)
 })

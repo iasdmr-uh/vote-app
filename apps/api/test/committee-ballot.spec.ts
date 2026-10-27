@@ -54,8 +54,9 @@ test('a committee vote takes from one up to the committee size, never more', asy
     anonymousVote: { createMany: async ({ data }: { data: Array<{ optionId: string }> }) => { votes.push(data.map((vote) => vote.optionId)) } },
   }
   const database = {
-    participantSession: { findUnique: async () => ({ id: 'delegate', assemblyId: 'assembly', status: 'active' }), count: async () => 1 },
+    participantSession: { findUnique: async () => ({ id: 'delegate', assemblyId: 'assembly', status: 'active' }), count: async () => 1, findMany: async () => [] },
     participation: { count: async () => 1 },
+    round: { findMany: async () => [{ id: 'round', committeeRootRoundId: null }] },
     $transaction: async (work: (value: unknown) => unknown) => work(tx),
   }
   const voting = new VotingService(database as never, { participantState: () => undefined, participationCount: () => undefined } as never)
@@ -92,20 +93,22 @@ test('the mesa sees who voted in the latest opened ballot, never what they chose
       assert.deepEqual(where.openedAt, { not: null }, 'a closed ballot keeps its dots until the next one opens')
       assert.deepEqual(orderBy, { openedAt: 'desc' })
       return { id: 'closed-round', status: 'closed' }
-    } },
+    }, findMany: async () => [{ id: 'closed-round', committeeRootRoundId: null }] },
     participation: { findMany: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? [{ participantSessionId: 'ana' }] : [] },
+    participantSession: { count: async () => 2, findMany: async () => [] },
   }
   const voting = new VotingService(database as never, {} as never)
   const state = await voting.moderatorAssembly('assembly')
   assert.deepEqual(state.participants.map((person) => [person.id, person.voted]), [['ana', true], ['luis', false]])
-  assert.deepEqual(state.attendanceRound, { roundId: 'closed-round', status: 'closed', votedCount: 1 })
+  assert.deepEqual(state.attendanceRound, { roundId: 'closed-round', status: 'closed', votedCount: 1, eligibleCount: 2 })
 })
 
 test('before any ballot opens, nobody carries a voted flag', async () => {
   const database = {
     assembly: { findUnique: async () => ({ id: 'assembly', name: 'Asamblea', status: 'lobby_closed', completedAt: null, participants: [{ id: 'ana', firstName: 'Ana', lastName: 'Reyes' }], rounds: [] }) },
-    round: { findFirst: async () => null },
+    round: { findFirst: async () => null, findMany: async () => [] },
     participation: { findMany: async () => assert.fail('no receipts to read') },
+    participantSession: { count: async () => 1, findMany: async () => [] },
   }
   const state = await new VotingService(database as never, {} as never).moderatorAssembly('assembly')
   assert.equal('voted' in state.participants[0]!, false)
