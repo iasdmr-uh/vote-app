@@ -1439,25 +1439,28 @@ test('el acta incluye a quienes salieron en la lista y en el total de registrado
   await expect(acta.locator('ol li')).toHaveText(['Ana Reyes', 'Pedro Vargas (salió)'])
 })
 
-test('al reabrir el ingreso después de publicar, el proyector vuelve a mostrar el QR', async ({ page }) => {
-  await page.route(api, async (route) => {
-    const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: {
-        assembly: { name: 'Asamblea de prueba', status: 'lobby_open', lobbyStatus: 'lobby_open' }, joinUrl: 'http://192.168.1.50/?join=DEMO-ROOM',
-        participantCount: 2, participants: [{ firstName: 'Ana', lastName: 'Reyes' }, { firstName: 'Rosa', lastName: 'Paz' }], eligibleCount: 2, recordedCount: 2,
-        round: { id: 'r1', title: 'Presidencia', status: 'published', category: 'office' }, results: [{ label: 'Alfa', count: 2 }],
-      } })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for reopened lobby test' } })
-  })
+for (const roundStatus of ['published', 'closed'] as const) {
+  test(`al reabrir el ingreso con la votación ${roundStatus === 'published' ? 'publicada' : 'cerrada sin publicar'}, el proyector vuelve a mostrar el QR`, async ({ page }) => {
+    await page.route(api, async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+        await route.fulfill({ json: {
+          assembly: { name: 'Asamblea de prueba', status: 'lobby_open', lobbyStatus: 'lobby_open' }, joinUrl: 'http://192.168.1.50/?join=DEMO-ROOM',
+          participantCount: 2, participants: [{ firstName: 'Ana', lastName: 'Reyes' }, { firstName: 'Rosa', lastName: 'Paz' }], eligibleCount: 2, recordedCount: 2,
+          round: { id: 'r1', title: 'Presidencia', status: roundStatus, category: 'office' }, ...(roundStatus === 'published' ? { results: [{ label: 'Alfa', count: 2 }] } : {}),
+        } })
+        return
+      }
+      await route.fulfill({ status: 404, json: { message: 'No mock route for reopened lobby test' } })
+    })
 
-  await page.goto('/projector?code=DEMO-ROOM')
-  await expect(page.getByText('192.168.1.50')).toBeVisible()
-  await expect(page.getByText('Rosa Paz')).toBeVisible()
-  await expect(page.getByText('Alfa')).toHaveCount(0)
-})
+    await page.goto('/projector?code=DEMO-ROOM')
+    await expect(page.getByText('192.168.1.50')).toBeVisible()
+    await expect(page.getByText('Rosa Paz')).toBeVisible()
+    await expect(page.getByText('Alfa')).toHaveCount(0)
+    await expect(page.getByText('Votación cerrada')).toHaveCount(0)
+  })
+}
 
 test('si el servidor no confirma la salida, el teléfono avisa y conserva la sesión para reintentar', async ({ page }) => {
   await page.addInitScript(() => {

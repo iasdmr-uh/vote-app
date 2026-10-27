@@ -17,7 +17,7 @@ const progressPercent = computed(() => eligible.value > 0 ? Math.min(100, Math.r
 const isCommittee = computed(() => round.value?.category === 'committee')
 
 const view = computed(() => {
-  if (lobbyStatus.value === 'lobby_open' && round.value?.status !== 'open' && round.value?.status !== 'closed') return 'lobby'
+  if (lobbyStatus.value === 'lobby_open') return 'lobby'
   if (round.value?.status === 'published') return 'results'
   if (assemblyStatus.value === 'completed') return 'completed'
   if (round.value?.status === 'annulled') return 'annulled'
