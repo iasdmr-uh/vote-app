@@ -619,7 +619,7 @@ test('la mesa ve el resultado calculado de una comisión y abre el desempate por
   await expect(ballot).toContainText('CONTEO PUBLICADO')
   await expect(ballot.locator('.majority-chip')).toHaveText('3 integrantes · Mayoría: 20')
   const rows = ballot.locator('.ranked-rows > li')
-  await expect(rows.nth(0)).toHaveText(/^1\s*Ana Ruiz\s*Electa\s*30 votos\s*79 %/)
+  await expect(rows.nth(0)).toHaveText(/^1\s*Ana Ruiz\s*Electo\/a\s*30 votos\s*79 %/)
   await expect(rows.nth(1)).toHaveText(/^2\s*Juan Mora\s*Desempate\s*19 votos/)
   await expect(rows.nth(3)).toHaveText(/^4\s*Pedro Vargas\s*Desempate\s*17 votos/)
   await expect(rows.nth(4)).toHaveText(/^5\s*Sofía Méndez\s*14 votos/)
@@ -1255,7 +1255,7 @@ test('un cargo con mayoría queda electo sin intervención de la mesa y la elecc
   const ballot = page.locator('.ballot-card')
   await expect(ballot).toContainText(/9 de 9\s*votaron/)
   const rows = ballot.locator('.ranked-rows > li')
-  await expect(rows).toHaveText([/^1\s*María López\s*Electa\s*6 votos\s*67 %/, /^2\s*Carlos Gómez\s*2 votos\s*22 %/, /^3\s*Rosa Díaz\s*1 voto\s*11 %/])
+  await expect(rows).toHaveText([/^1\s*María López\s*Electo\/a\s*6 votos\s*67 %/, /^2\s*Carlos Gómez\s*2 votos\s*22 %/, /^3\s*Rosa Díaz\s*1 voto\s*11 %/])
   await expect(ballot.locator('.majority-chip')).toHaveText('Mayoría: 5')
   await expect(ballot.getByRole('button', { name: /Abrir desempate|Declarar|Repetir/ })).toHaveCount(0)
   await expect(page.locator('.workflow-steps li.complete')).toHaveCount(5)
@@ -1515,7 +1515,7 @@ test('si no se confirma la salida de la Asamblea anterior, el QR de otra Asamble
   await expect(page.getByRole('button', { name: 'Entrar a la sala' })).toHaveCount(0)
 })
 
-test('el proyector marca Electa y Desempate en una comisión publicada, con la mayoría bajo el título (P20)', async ({ page }) => {
+test('el proyector marca Electo/a y Desempate en una comisión publicada, con la mayoría bajo el título (P20)', async ({ page }) => {
   const labels = ['Ana Ruiz', 'Juan Mora', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez']
   const counts = [30, 19, 17, 17, 14, 11]
   await page.route(api, async (route) => {
@@ -1536,7 +1536,7 @@ test('el proyector marca Electa y Desempate en una comisión publicada, con la m
   await page.goto('/projector?code=DEMO-ROOM')
   await expect(page.getByRole('heading', { name: 'Comisión de Finanzas' })).toBeVisible()
   await expect(page.locator('.pj-subtitle')).toHaveText('3 integrantes · Mayoría: 20')
-  await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electa')
+  await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
   await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate', 'Desempate'])
   await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-turnout')).toHaveText(/36\s*de 38\s*votaron · 2 no votaron/)
@@ -1562,7 +1562,7 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
   await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
   await expect(page.locator('.pj-elected')).toContainText('María López')
-  await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electa')
+  await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
 })
 
 test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan» sin contarlos', async ({ page }) => {
@@ -1619,6 +1619,16 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
   await expect(summary).toContainText('1 falta')
   await expect(summary).toContainText('1 inhabilitado')
   expect(calls).toEqual(['p3:enable', 'p2:disable'])
+
+  // Someone who already voted counts only in «votaron», so the three numbers add up to the list.
+  const ana = page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })
+  await ana.locator('summary').click()
+  await ana.getByRole('button', { name: 'Inhabilitar' }).click()
+  await expect(ana.getByText('Inhabilitado', { exact: true })).toBeVisible()
+  await expect(summary).toContainText('1 votó')
+  await expect(summary).toContainText('1 falta')
+  await expect(summary).toContainText('1 inhabilitado')
+  await expect(summary).not.toContainText('2 inhabilitados')
 })
 
 test('la mesa inhabilita desde el aviso «salió de la sala» y la persona vuelve a la lista', async ({ page }) => {

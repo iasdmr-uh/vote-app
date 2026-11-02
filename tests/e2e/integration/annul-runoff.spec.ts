@@ -51,9 +51,9 @@ test('F · anular el primer desempate y repetirlo: sigue siendo la 2.ª votació
   await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
   await closeAndPublish(room)
 
-  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electa')
+  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   await expect(mesa.locator('.ballot-card .eyebrow-row .badge-info')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
-  await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electa')
+  await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
   await expect(phones[4].page.locator('.official-card strong')).toHaveText('Ana Ruiz')
 })

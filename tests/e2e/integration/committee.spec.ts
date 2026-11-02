@@ -67,15 +67,15 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('3 integrantes · Mayoría: 4')
   await expect(mesa.locator('.ballot-card .voters-total')).toContainText('votaron · 2 no votaron')
-  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electa')
+  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(mesaRow(mesa, name), 'Desempate')
   await expectBadge(mesaRow(mesa, 'Elsa Vega'), null)
-  await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electa')
+  await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
   for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(projectorRow(projector, name), 'Desempate')
   await expect(projector.locator('.pj-subtitle')).toHaveText('3 integrantes · Mayoría: 4')
   await expect(projector.locator('.pj-turnout')).toContainText('votaron · 2 no votaron')
   await expect(phones[0].page.locator('.official-card strong')).toHaveText('Ana Ruiz')
-  await expectBadge(phoneRow(phones[0], 'Ana Ruiz'), 'Electa')
+  await expectBadge(phoneRow(phones[0], 'Ana Ruiz'), 'Electo/a')
   for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(phoneRow(phones[0], name), 'Desempate')
 
   // 2nd vote: the runoff for 2 seats among Bruno, Carla and Diego (T02).
@@ -107,12 +107,12 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
   await closeAndPublish(room)
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('2 puestos · Mayoría: 4')
-  await expectBadge(mesaRow(mesa, 'Bruno Díaz'), 'Electo')
+  await expectBadge(mesaRow(mesa, 'Bruno Díaz'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Carla Mora'), 'Desempate')
   await expectBadge(mesaRow(mesa, 'Diego Paz'), 'Desempate')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz · Bruno Díaz')
   await expect(phones[3].page.locator('.official-card strong')).toHaveText('Ana Ruiz · Bruno Díaz')
-  await expectBadge(phoneRow(phones[3], 'Bruno Díaz'), 'Electo')
+  await expectBadge(phoneRow(phones[3], 'Bruno Díaz'), 'Electo/a')
 
   // 3rd vote, 1 seat: it may take a new candidate (#40), but this one opens as it is.
   await mesa.getByRole('button', { name: 'Abrir desempate · 1 puesto', exact: true }).click()
@@ -127,10 +127,10 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await closeAndPublish(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('1 puesto · Mayoría: 4')
-  await expectBadge(mesaRow(mesa, 'Carla Mora'), 'Electa')
+  await expectBadge(mesaRow(mesa, 'Carla Mora'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Diego Paz'), null)
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
-  await expectBadge(projectorRow(projector, 'Carla Mora'), '✓ Electa')
+  await expectBadge(projectorRow(projector, 'Carla Mora'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz · Bruno Díaz · Carla Mora')
   await expect(phones[5].page.locator('.official-card strong')).toHaveText('Ana Ruiz · Bruno Díaz · Carla Mora')
 

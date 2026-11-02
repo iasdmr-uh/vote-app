@@ -61,9 +61,9 @@ export function outcomeTag(outcome: Outcome | undefined, optionId?: string) {
   return outcome.runoff.includes(optionId) ? 'runoff' as const : null
 }
 
-/** Ballots only hold typed names, so the form follows the first name: "Ana Ruiz" → Electa. */
-export function electedText(name: string) {
-  return /a$/i.test(name.trim().split(/\s+/)[0] || '') ? 'Electa' : 'Electo'
+/** Ballots only hold typed names, so the badge never guesses the gender. */
+export function electedText(_name?: string) {
+  return 'Electo/a'
 }
 
 /** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, nothing for the first vote. Annulled votes are not counted in the number. */
@@ -109,7 +109,7 @@ export function decisionVerdict(target: DecisionTarget, outcome?: Outcome, resul
   return winner ? results.find((result) => result.optionId === winner)?.label ?? '' : ''
 }
 
-/** Badge of the option that won: "Aprobada" in a decision, Electa / Electo in an election. */
+/** Badge of the option that won: "Aprobada" in a decision, Electo/a in an election. */
 export function winnerText(target: DecisionTarget, label: string) {
   return isDecision(target) ? 'Aprobada' : electedText(label)
 }
@@ -133,7 +133,7 @@ export function voteCountOf(target: RoundRecord, option: { id: string; label: st
   return (counts.find((result) => result.optionId === option.id) || counts.find((result) => result.label === option.label))?.count ?? 0
 }
 
-export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Electa']
+export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Electo/a']
 
 export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string, string> = {}) {
   const rows: Cell[][] = [ACTA_SHEET_HEADER]

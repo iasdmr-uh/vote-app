@@ -37,9 +37,9 @@ const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
   const participants = state.value?.participants || []
-  // An inhabilitado still counts in the base, but no longer "falta".
+  // An inhabilitado still counts in the base, but no longer "falta"; one who already voted counts only in "votaron".
   const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
-  const disabled = participants.filter((person) => person.votingDisabled).length
+  const disabled = participants.filter((person) => person.votingDisabled && !person.voted).length
   return { ...record, pending, disabled }
 })
 const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']

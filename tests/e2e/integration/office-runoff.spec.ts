@@ -53,20 +53,20 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 3')
   await expect(mesa.locator('.ballot-card .voters-total')).toContainText('votaron · 0 no votaron')
-  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electa')
+  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Carlos Gómez'), null)
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
   await expect(mesa.locator('.workflow-steps li.complete')).toHaveCount(5)
 
   await expect(projector.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/)
-  await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electa')
+  await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
 
   // The phones show the official result of the election once it is published.
   for (const phone of phones) {
     await expect(phone.page.locator('.official-card')).toContainText('RESULTADO OFICIAL')
     await expect(phone.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
-    await expectBadge(phoneRow(phone, 'Ana Ruiz'), 'Electa')
+    await expectBadge(phoneRow(phone, 'Ana Ruiz'), 'Electo/a')
     await expectBadge(phoneRow(phone, 'Carlos Gómez'), null)
   }
 })

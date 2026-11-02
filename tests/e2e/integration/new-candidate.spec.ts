@@ -70,10 +70,10 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
   await closeAndPublish(room)
 
-  await expectBadge(mesaRow(mesa, 'Elena Castro'), 'Electa')
+  await expectBadge(mesaRow(mesa, 'Elena Castro'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), null)
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
-  await expectBadge(projectorRow(projector, 'Elena Castro'), '✓ Electa')
+  await expectBadge(projectorRow(projector, 'Elena Castro'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Elena Castro')
   await expect(projector.locator('.pj-status')).toHaveText(/DESEMPATE · 3\.ª VOTACIÓN/)
   for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Elena Castro')
