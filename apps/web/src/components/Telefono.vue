@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { isTied, percentOf } from '../resultados'
+import { isTied, percentOf, voteLabel } from '../resultados'
 import { ApiRequestError, useAssembly } from '../useAssembly'
 
 const {
@@ -171,7 +171,7 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
       <h1>Voto inhabilitado</h1>
     </template>
     <template v-else-if="ballotShown && round">
-      <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p>
+      <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>{{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
       <div v-if="seatsToFill" class="phone-ballot-heading"><h1>{{ round.title }}</h1><span class="count-pill">{{ selectedOptions.length }} de {{ seatsToFill }}</span></div>
       <h1 v-else>{{ round.title }}</h1>
       <fieldset class="options" :aria-label="seatsToFill ? `${selectedOptions.length} de ${seatsToFill}` : undefined">

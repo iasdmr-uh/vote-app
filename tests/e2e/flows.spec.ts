@@ -120,6 +120,7 @@ test('delegado vota en comisión marcando exactamente los cupos', async ({ page 
   })
 
   await page.goto('/')
+  await expect(page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await expect(page.getByText('0 de 2', { exact: true })).toBeVisible()
   const review = page.getByRole('button', { name: 'Revisar mi voto' })
@@ -150,7 +151,7 @@ test('en un desempate se marcan exactamente los puestos que faltan y la papeleta
       await route.fulfill({ json: {
         assembly: { id: 'committee-assembly', name: 'Asamblea prueba', status: 'in_progress' },
         participationStatus: voted ? 'recorded' : 'pending',
-        openRound: { roundId: 'finance-runoff', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 3, electionSeats: 2, options: [
+        openRound: { roundId: 'finance-runoff', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 3, electionSeats: 2, voteNumber: 2, runoff: true, options: [
           { optionId: 'candidate-b', label: 'Beto (prueba)' }, { optionId: 'candidate-c', label: 'Celia (prueba)' }, { optionId: 'candidate-d', label: 'Dora (prueba)' },
         ] },
       } })
@@ -165,6 +166,7 @@ test('en un desempate se marcan exactamente los puestos que faltan y la papeleta
   })
 
   await page.goto('/')
+  await expect(page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
   await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
   const review = page.getByRole('button', { name: 'Revisar mi voto' })
