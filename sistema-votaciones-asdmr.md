@@ -3,6 +3,7 @@
 **Estado:** Documento de alcance inicial (V1)
 **Organización inicial:** ASDMR – Unión Hondureña
 **Preparado:** 1 de octubre de 2026
+**Actualizado:** 2 de noviembre de 2026 (resultados automáticos, decisiones e inhabilitación)
 
 ## 1. Contexto
 
@@ -16,7 +17,7 @@ El manual de identidad de ASDMR establece el azul como color principal y proporc
 
 ## 2. Problema
 
-La votación en papel requiere distribuir, recoger y contabilizar papeletas, mientras que las personas que presiden y Secretaría necesitan saber cuántos participantes se han incorporado y cuántos han emitido su voto. La solución debe reducir pasos y errores operativos sin comprometer la confidencialidad de la selección individual ni atribuir al software decisiones que corresponden a la Asamblea.
+La votación en papel requiere distribuir, recoger y contabilizar papeletas, mientras que las personas que presiden y Secretaría necesitan saber cuántos participantes se han incorporado y cuántos han emitido su voto. La solución debe reducir pasos y errores operativos sin comprometer la confidencialidad de la selección individual. El software aplica solo las reglas de conteo confirmadas por la mesa; quórum, elegibilidad y proclamación siguen correspondiendo a la Asamblea.
 
 ## 3. Objetivo general
 
@@ -29,6 +30,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Permitir al moderador preparar cargos, preguntas y opciones/candidatos antes de abrir cada votación.
 - Actualizar en tiempo real el estado de la papeleta y el conteo de participación, sin revelar resultados parciales.
 - Permitir votar sin cronómetro, cerrar la votación bajo decisión del moderador y publicar resultados únicamente cuando este lo indique.
+- Calcular automáticamente electos, desempates y decisiones con mayoría sobre los participantes habilitados.
 - Separar técnicamente identidad/participación de la selección emitida para proteger el secreto del voto.
 - Dejar el modelo de datos listo para organizaciones y asambleas de la Unión y asociaciones, sin habilitar iglesias en V1.
 
@@ -37,7 +39,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 | Usuario | Necesidad y responsabilidad |
 |---|---|
 | Delegado | Ingresar con nombre y apellido, esperar la papeleta, revisar su selección, confirmarla y recibir confirmación. |
-| Moderador / mesa autorizada | Abrir la sesión, revisar participantes, cerrar ingreso, configurar y abrir/cerrar votaciones, y publicar resultados. |
+| Moderador / mesa autorizada | Abrir la sesión, revisar e inhabilitar/habilitar participantes, cerrar ingreso, configurar, abrir, cerrar y anular votaciones, y publicar resultados. No elige ganadores. |
 | Secretaría | Apoyar la verificación presencial de asistentes y quórum conforme al Reglamento; puede asistir en la revisión de nombres. El sistema no certifica oficialmente la calidad de delegado. |
 | Asamblea / pantalla pública | Ver la sala de espera, el estado general de la votación y los resultados después de su publicación. |
 
@@ -50,7 +52,8 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Herramientas del moderador para revisar, corregir o retirar nombres antes de iniciar votaciones, cerrar el ingreso y gestionar las rondas.
 - Papeletas configuradas por el moderador, con candidatos/opciones ingresados por este.
 - Voto secreto, una participación por sesión de participante y ronda; confirmación explícita antes de emitir el voto.
-- Sin límite de tiempo para votar. El moderador decide cuándo cerrar; el sistema no fuerza el cierre al llegar a cero ni decide quién ganó según reglas no configuradas.
+- Sin límite de tiempo para votar. El moderador decide cuándo cerrar; el sistema no fuerza el cierre al llegar a cero.
+- Resultado automático al cerrar: electos, desempates y decisiones según las reglas 11–16 de la sección 8.
 - Indicador de votos recibidos/participantes habilitados para el moderador; durante una votación no se presentan totales por candidato ni selecciones individuales.
 - Resultados retenidos hasta que el moderador seleccione **Publicar resultados**.
 - Registro de eventos administrativos relevantes (por ejemplo, apertura/cierre y publicación) sin guardar una asociación consultable entre identidad y opción votada.
@@ -67,20 +70,26 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 7. La papeleta aparece en los teléfonos. El delegado selecciona, revisa y confirma. Puede emitir una sola respuesta en esa ronda.
 8. El moderador ve el progreso de participación, sin resultados parciales. No hay cronómetro.
 9. El moderador cierra la ronda cuando corresponda. El sistema deja de aceptar respuestas y calcula el resultado configurado.
-10. El moderador verifica y publica los resultados; estos aparecen en el proyector. Los participantes regresan al estado de espera para la siguiente ronda.
+10. El moderador verifica y publica los resultados; estos aparecen en el proyector. Si quedan puestos sin cubrir, el sistema deja preparado el desempate como borrador y la mesa lo abre. Los participantes regresan al estado de espera para la siguiente ronda.
 
 ## 8. Reglas funcionales
 
 1. **Identidad de ingreso:** nombre y apellido son requeridos para aparecer en la sala de espera. No equivalen a validación de identidad ni acreditación oficial.
 2. **Ingreso controlado:** una vez cerrado el ingreso, no se admiten participantes nuevos salvo que el moderador reabra explícitamente la sala antes de una votación, dejando registro del evento.
 3. **Nombres repetidos:** no bloquear automáticamente a dos personas con el mismo nombre; permitir que el moderador los distinga/revise.
-4. **Configuración de papeleta:** el moderador define el título, formato, candidatos/opciones y, cuando proceda, la regla de conteo. La V1 no debe codificar “más votos gana” como regla universal.
+4. **Configuración de papeleta:** el moderador define el título, el tipo (Cargo, Comisión o Decisión), los candidatos/opciones, los puestos de una comisión (N) y, en decisiones, la regla de aprobación (mayoría simple o 3/4).
 5. **Inmutabilidad de ronda abierta:** no editar candidatos/opciones después de abrir una votación. Si existe un error, el moderador debe cerrar/anular según decisión de la mesa y crear una nueva ronda; conservar el evento en el historial.
 6. **Un voto por ronda:** el servidor acepta como máximo una respuesta por sesión participante y ronda. Una respuesta confirmada no puede editarse desde el dispositivo.
 7. **Tiempo:** no existe vencimiento automático. Solo el moderador cierra la papeleta.
 8. **Resultados:** no mostrar conteos de opciones antes del cierre; no publicar hasta que el moderador lo ordene.
-9. **Autoridad:** quórum, elegibilidad, validez de una ronda, desempates y proclamación oficial corresponden a las instancias designadas por el Reglamento/Asamblea. El sistema presenta datos y ejecuta acciones autorizadas.
+9. **Autoridad:** quórum, elegibilidad oficial, validez de una ronda y proclamación corresponden a las instancias designadas por el Reglamento/Asamblea. El resultado es 100 % automático según las reglas 11–16: la mesa solo abre, cierra, publica y puede anular; nunca elige ganadores.
 10. **Tipos de procedimiento:** V1 se concentra en papeletas electrónicas secretas. Aclamación, votación a mano alzada y otros métodos pueden registrarse en futuras fases, no se simulan como papeleta secreta.
+11. **Mayoría y electos (cargos y comisiones):** la base son los participantes habilitados congelados al cierre (`eligibleCount`); los inhabilitados y quienes no votan cuentan en ella. Mayoría = más del 50 % de la base (38 → 20); la mitad exacta no es mayoría. Un cargo tiene N = 1; una comisión, N puestos. Queda electo quien está entre los N primeros **y** tiene mayoría. Si hay más candidatos con mayoría que puestos, quedan los más votados; un empate en el corte va a desempate solo entre los empatados.
+12. **Desempates:** pasan los que están entre los N primeros sin mayoría y los empatados en el corte. Si así no hay más candidatos que puestos libres, entra también el siguiente (y sus empatados); en un cargo, los 2 primeros más los empatados con el 2.º. En el desempate se exige de nuevo mayoría y se repite hasta cubrir los puestos. El sistema prepara cada desempate como borrador; la mesa lo abre. Ejemplo: comisión de 3, el 1.º con mayoría, el 2.º sin mayoría, el 3.º y el 4.º empatados → queda el 1.º; el 2.º, el 3.º y el 4.º van a desempate por 2 puestos.
+13. **Selección exacta y candidato nuevo:** en comisiones y desempates cada delegado marca exactamente los puestos abiertos, ni más ni menos; el servidor también lo valida. Desde la 3.ª votación (2.º desempate en adelante) la mesa puede agregar un candidato nuevo; nunca en el primer desempate.
+14. **Decisiones:** formato A favor / En contra u Opciones (se elige una), con regla de mayoría simple (más de 1/2 de la base) o 3/4 (al menos 3/4 de la base, redondeado hacia arriba: 38 → 29). Base = participantes habilitados; sin abstención. A favor / En contra: aprobada si «A favor» alcanza el umbral; si no, no aprobada (50/50 = no aprobada). Opciones: la ganadora debe alcanzar el umbral; si ninguna lo logra, se repite entre las 2 más votadas y las empatadas.
+15. **Inhabilitar:** para quien sale durante la Asamblea. Sigue en la sala y en la lista, no recibe papeletas y el servidor rechaza su voto, pero sigue contando en la base. Es reversible (Habilitar) y queda en el historial. Un voto ya emitido se conserva.
+16. **Conteo publicado:** muestra los votos de cada candidato/opción y cuántos no votaron (base − votos emitidos).
 
 ## 9. Seguridad y privacidad
 
@@ -124,8 +133,8 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 |---|---|
 | Organización | Nombre, tipo (`union` o `association`), identidad institucional y estado. En V1 se configura la Unión Hondureña. |
 | Asamblea | Organización, nombre, fecha, estado, configuración de sala y metadatos operativos. |
-| Participante de sesión | Asamblea, nombre y apellido, identificador aleatorio de sesión, hora de ingreso y estado. No contiene el voto. |
-| Ronda de votación | Asamblea, título/cargo, formato, reglas configuradas, opciones, estado, tiempos de apertura/cierre y publicación. |
+| Participante de sesión | Asamblea, nombre y apellido, identificador aleatorio de sesión, hora de ingreso y estado (incluye habilitado/inhabilitado). No contiene el voto. |
+| Ronda de votación | Asamblea, título/cargo, tipo (cargo, comisión o decisión), puestos, regla de aprobación, ronda de origen si es desempate, base al cierre, opciones, estado, tiempos de apertura/cierre y publicación. |
 | Opción/candidato | Ronda, nombre/etiqueta y orden mostrado. Se bloquea al abrir la ronda. |
 | Participación | Ronda y sesión participante, con estado emitido/pendiente; restricción única por ronda y sesión. No incluye la opción seleccionada. |
 | Voto anónimo | Ronda y opción seleccionada; sin `participant_id`, nombre ni clave de enlace con Participación. |
@@ -138,7 +147,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - Uso por iglesias locales; no se contempla en V1.
 - Operación remota/híbrida: V1 supone que todos están físicamente en el mismo recinto.
 - Aplicación nativa para iOS/Android.
-- Sustitución de los Estatutos o del Reglamento, cálculo automático de quórum oficial, interpretación legal, proclamación automática o decisión autónoma de desempates.
+- Sustitución de los Estatutos o del Reglamento, cálculo automático de quórum oficial, interpretación legal o proclamación oficial. El cálculo de electos, desempates y decisiones sí es automático (sección 8).
 - Votación pública/nominal, resultados parciales, temporizador o sistema de puntos.
 - Procedimientos no secretos (aclamación/mano alzada), gestión integral de la Asamblea, actas institucionales, padrones o directorio permanente.
 
@@ -149,6 +158,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - El moderador puede completar el ciclo preparar → abrir → recibir votos → cerrar → publicar sin asistencia técnica continua.
 - No hay cronómetro; los votos se reciben hasta el cierre manual.
 - El sistema bloquea votos repetidos de la misma sesión en la misma ronda y no presenta resultados parciales.
+- Electos, desempates y decisiones calculados coinciden con las reglas 11–16 en todos los casos de prueba.
 - La interfaz no permite vincular desde sus vistas operativas un nombre con su opción elegida.
 - Una prueba operativa con 50–70 dispositivos/sesiones verifica conectividad, reconexión, proyección y procedimientos de contingencia antes de la Asamblea.
 - Secretaría y la mesa pueden mantener su procedimiento oficial para asistencia, quórum y decisiones reglamentarias.
@@ -162,7 +172,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 | Delegados con poca familiaridad tecnológica | Flujo QR → nombre → unirse, botones grandes, lenguaje claro, voluntarios de apoyo y simulacro. |
 | Duplicados/errores de nombres | Herramientas del moderador para revisar, distinguir y corregir antes de votar. |
 | Exposición accidental del voto | Separación de almacenamiento, ausencia de relación persona-opción en el diseño, controles de acceso y revisión técnica. |
-| Interpretación incorrecta del Reglamento o reglas electorales | Configuración por ronda y validación previa con Secretaría/autoridad competente; no automatizar desempates o quórum en V1. |
+| Interpretación incorrecta del Reglamento o reglas electorales | Reglas confirmadas con la mesa (2 de noviembre de 2026), cálculo con pruebas por caso y anulación por la mesa; no automatizar quórum en V1. |
 | Falla del dispositivo o sesión desconectada | Diseñar reconexión segura sin permitir segundo voto; definir cómo la mesa resolverá casos excepcionales. |
 | Resultados publicados antes de validación | Estado de resultados retenidos y acción explícita de publicación por el moderador. |
 
@@ -182,6 +192,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - El delegado ingresa escaneando un QR común, sin cuenta, e introduce nombre y apellido.
 - Los nombres de quienes se unen se muestran en la sala de espera/proyector para facilitar el control visual.
 - Existe un moderador que prepara las opciones/candidatos, abre y cierra cada votación y publica resultados.
+- Los resultados son automáticos: mayoría sobre habilitados, desempates encadenados, selección exacta, decisiones (simple o 3/4) e inhabilitación (reglas 11–16, 2 de noviembre de 2026).
 - No hay límite de tiempo para votar.
 - Se protege el secreto: no se debe relacionar el nombre con la opción elegida.
 - Las credenciales individuales y la acreditación digital se dejan para una versión futura para mantener la adopción inicial sencilla.
@@ -193,10 +204,11 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 
 - ~~Confirmar con Secretaría y la mesa las reglas exactas para cada cargo, mayorías, abstenciones, desempates, anulaciones y repetición de rondas.~~ Respondido por Secretaría (octubre 2026):
   - No se valida en el sistema quién vota (votan delegados y ex oficio).
-  - No se automatiza la mayoría: se muestran todos los candidatos ordenados por votos y la mesa, con la Asamblea, decide quién continúa (puede repetir la votación entre los más votados) y quién queda. Cerrar una papeleta no elige a nadie. Los empates se resuelven igual.
+  - ~~No se automatiza la mayoría: se muestran todos los candidatos ordenados por votos y la mesa, con la Asamblea, decide quién continúa (puede repetir la votación entre los más votados) y quién queda. Cerrar una papeleta no elige a nadie. Los empates se resuelven igual.~~ Sustituido el 2 de noviembre de 2026: mayoría y desempates automáticos (reglas 11–13 de la sección 8).
   - ~~Existe el voto en blanco y se llama «Voto nulo».~~ Eliminado el 21 de octubre de 2026: la papeleta solo muestra candidatos y no se puede enviar vacía.
   - La mesa puede anular una papeleta.
-  - Comisiones (21 de octubre de 2026): la mesa escribe los candidatos y cuántos integrantes quedarán (N). Cada persona marca de 1 a N; puede haber más candidatos que integrantes. Al publicar, el proyector muestra a todos ordenados de mayor a menor. Se eliminó el flujo de propuestas, apoyos y aprobación de la Comisión de Nombramiento.
+  - Comisiones (21 de octubre de 2026): la mesa escribe los candidatos y cuántos integrantes quedarán (N). ~~Cada persona marca de 1 a N~~ Desde el 2 de noviembre de 2026 cada persona marca exactamente N (regla 13); puede haber más candidatos que integrantes. Al publicar, el proyector muestra a todos ordenados de mayor a menor. Se eliminó el flujo de propuestas, apoyos y aprobación de la Comisión de Nombramiento.
+  - Reglas automáticas (2 de noviembre de 2026): mayoría sobre habilitados, desempates, selección exacta, candidato nuevo, decisiones, inhabilitación y «no votaron» (reglas 11–16 de la sección 8).
   - La mesa ve quién ya votó (punto amarillo: falta; verde: ya votó), nunca por quién; se mantiene tras cerrar hasta abrir la siguiente papeleta. El tiempo para votar se maneja de forma presencial.
   - Las llegadas tarde las decide la Asamblea; la mesa reabre el ingreso.
   - Una persona técnica modera; una laptop funciona como servidor en una red Wi-Fi propia (Starlink).
