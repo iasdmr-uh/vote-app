@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { electionOutcome, meetsThreshold, thresholdVotes, type Tally } from '../src/voting/results-engine.js'
+import { decisionOutcome, electionOutcome, meetsThreshold, thresholdVotes, type Tally } from '../src/voting/results-engine.js'
 
 function tallies(counts: Record<string, number>): Tally[] {
   return Object.entries(counts).map(([optionId, count]) => ({ optionId, count }))
@@ -102,4 +102,49 @@ test('a vote with no votes keeps everyone in the runoff; ties keep ballot order'
 test('the input order of tallies does not change who is elected', () => {
   const outcome = electionOutcome(tallies({ D: 22, B: 28, A: 30, C: 25 }), 3, 38)
   assert.deepEqual(outcome.elected, ['A', 'B', 'C'])
+})
+
+// Decisions (#42): "A favor" is the first tally, in ballot order.
+
+test('decision A favor / En contra · mayoría simple: 20 of 38 approves, 19 does not', () => {
+  assert.deepEqual(decisionOutcome(tallies({ favor: 20, contra: 16 }), 'boolean', 38), {
+    seats: 1, base: 38, threshold: 20, elected: [], runoff: [], openSeats: 0, rule: 'simple', approved: true,
+  })
+  assert.equal(decisionOutcome(tallies({ favor: 19, contra: 2 }), 'boolean', 38).approved, false, 'exactly half is not a majority, even with few against')
+})
+
+test('decision A favor / En contra · 3/4: 29 of 38 approves, 28 does not, and nothing repeats', () => {
+  const approved = decisionOutcome(tallies({ favor: 30, contra: 6 }), 'boolean', 38, 'three_quarters')
+  assert.equal(approved.threshold, 29)
+  assert.equal(approved.approved, true)
+  const rejected = decisionOutcome(tallies({ favor: 28, contra: 8 }), 'boolean', 38, 'three_quarters')
+  assert.equal(rejected.approved, false)
+  assert.deepEqual(rejected.runoff, [])
+  assert.equal(rejected.openSeats, 0)
+})
+
+test('decision A favor / En contra: a 50/50 tie is not approved', () => {
+  assert.equal(decisionOutcome(tallies({ favor: 19, contra: 19 }), 'boolean', 38).approved, false)
+  assert.equal(decisionOutcome(tallies({ favor: 0, contra: 0 }), 'boolean', 0).approved, false, 'with nobody enabled nothing is approved')
+})
+
+test('decision with options · mayoría simple: the most voted wins once it reaches the threshold', () => {
+  const outcome = decisionOutcome(tallies({ Tegucigalpa: 8, SPS: 22, Ceiba: 6, Choluteca: 2 }), 'options', 38)
+  assert.deepEqual(outcome, { seats: 1, base: 38, threshold: 20, elected: ['SPS'], runoff: [], openSeats: 0, rule: 'simple', approved: true })
+})
+
+test('decision with options · 3/4: without the threshold it repeats between the top 2', () => {
+  const outcome = decisionOutcome(tallies({ Tegucigalpa: 8, SPS: 25, Ceiba: 3 }), 'options', 38, 'three_quarters')
+  assert.equal(outcome.threshold, 29)
+  assert.equal(outcome.approved, false)
+  assert.deepEqual(outcome.elected, [])
+  assert.deepEqual(outcome.runoff, ['SPS', 'Tegucigalpa'])
+  assert.equal(outcome.openSeats, 1)
+})
+
+test('decision with options: anyone tied with the 2nd also goes to the repeat', () => {
+  const outcome = decisionOutcome(tallies({ A: 15, B: 10, C: 10, D: 3 }), 'options', 38)
+  assert.deepEqual(outcome.runoff, ['A', 'B', 'C'])
+  const tiedFirst = decisionOutcome(tallies({ A: 12, B: 12, C: 12 }), 'options', 36)
+  assert.deepEqual(tiedFirst.runoff, ['A', 'B', 'C'], 'a tie for first repeats among only the tied')
 })
