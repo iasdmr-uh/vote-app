@@ -1,5 +1,11 @@
-/** Computed by the API's results engine; ids are the round's ballot options. */
-export type Outcome = { seats: number; base: number; threshold: number; elected: string[]; runoff: string[]; openSeats: number }
+export type RoundCategory = 'office' | 'committee' | 'decision'
+/** Decision only: A favor / En contra, or options written by the mesa. */
+export type DecisionFormat = 'boolean' | 'options'
+/** 'simple': more than half of the habilitados; 'three_quarters': at least 3/4. */
+export type ApprovalRule = 'simple' | 'three_quarters'
+
+/** Computed by the API's results engine; ids are the round's ballot options. Decisions add `rule` and `approved`. */
+export type Outcome = { seats: number; base: number; threshold: number; elected: string[]; runoff: string[]; openSeats: number; rule?: ApprovalRule; approved?: boolean }
 
 export type PublicState = {
   assembly?: { id?: string; name?: string; status?: string; completedAt?: string | null; lobbyStatus?: string }
@@ -14,14 +20,14 @@ export type PublicState = {
   eligibleCount?: number
   participationStatus?: 'pending' | 'recorded'
   votingDisabled?: boolean
-  currentRound?: { id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; memberCount?: number | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; options?: Array<{ id: string; label: string }>; participationCount?: number; recordedCount?: number; eligibleCount?: number; annulReason?: string | null }
+  currentRound?: { id: string; title: string; status: string; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; options?: Array<{ id: string; label: string }>; participationCount?: number; recordedCount?: number; eligibleCount?: number; annulReason?: string | null }
   results?: Array<{ optionId?: string; label: string; count: number }>
   outcome?: Outcome
   officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredAt: string }
   joinUrl?: string
   publicAppUrl?: string
   rounds?: Array<{
-    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string }>
+    id: string; title: string; status: string; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string }>
     results?: Array<{ optionId: string; label: string; count: number }>
     privateResults?: Array<{ optionId: string; label: string; count: number }>
     outcome?: Outcome

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { electedText, isTied as tiedAt, majorityText, outcomeTag, percentOf, voteLabel } from '../resultados'
+import { decisionVerdict, displayOrder, isTied as tiedAt, majorityText, outcomeTag, percentOf, voteLabel, winnerText } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
 const LOBBY_SLOTS = 21
@@ -43,9 +43,12 @@ const lobbyTotal = computed(() => state.value?.participantCount ?? participants.
 const lobbyNames = computed(() => participants.value.slice(0, lobbyTotal.value > LOBBY_SLOTS ? LOBBY_SLOTS - 1 : LOBBY_SLOTS))
 const lobbyMore = computed(() => lobbyTotal.value > LOBBY_SLOTS ? lobbyTotal.value - lobbyNames.value.length : 0)
 
-const results = computed(() => [...(state.value?.results || [])].sort((a, b) => b.count - a.count))
+const results = computed(() => displayOrder(round.value, state.value?.results || []))
 const outcome = computed(() => state.value?.outcome)
 const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
+// A favor / En contra: "Aprobada" or "No aprobada" in the banner, and its two rows without a rank (P21).
+const booleanDecision = computed(() => round.value?.category === 'decision' && round.value.decisionFormat === 'boolean')
+const verdict = computed(() => booleanDecision.value && round.value ? decisionVerdict(round.value, outcome.value) : '')
 // The badges show this vote; the banner adds who earlier votes of the same election elected.
 const officeElected = computed(() => !isCommittee.value || (round.value?.voteNumber ?? 1) > 1 ? state.value?.officialResult?.elected || [] : [])
 
@@ -63,7 +66,7 @@ const resultsList = ref<HTMLElement | null>(null)
 const density = ref(1)
 
 async function fitResults() {
-  const rows = rowsPerColumn.value + (officeElected.value.length ? 1.2 : 0)
+  const rows = rowsPerColumn.value + (officeElected.value.length || verdict.value ? 1.2 : 0)
   density.value = Math.max(0.45, Math.min(1, 4.2 / rows))
   await nextTick()
   const list = resultsList.value
@@ -130,11 +133,12 @@ async function toggleProjectorFullscreen() {
         </div>
         <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron</small></p>
       </header>
-      <div v-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
-      <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
+      <div v-if="verdict" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
+      <div v-else-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
+      <ol ref="resultsList" class="pj-results" :class="{ 'pj-unranked': booleanDecision }" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
         <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
-          <span class="pj-rank">{{ index + 1 }}</span>
-          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ electedText(result.label) }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">Empate</em></span>
+          <span v-if="!booleanDecision" class="pj-rank">{{ index + 1 }}</span>
+          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, result.label) : '' }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">Empate</em></span>
           <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
           <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
           <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
@@ -213,6 +217,8 @@ async function toggleProjectorFullscreen() {
 .pj-elected { margin-top: calc(var(--u) * 28); padding: calc(var(--u) * 28) calc(var(--u) * 48); border-radius: calc(var(--u) * 22); background: var(--blue-dark); color: #fff; }
 .pj-check { color: var(--cream); }
 .pj-elected h2 { color: #fff; font-size: calc(var(--u) * 76); font-weight: 800; line-height: 1.15; }
+.pj-rejected { background: #fff2f0; }
+.pj-rejected h2 { color: #b42318; }
 .pj-results {
   display: grid;
   min-height: 0;
@@ -228,6 +234,7 @@ async function toggleProjectorFullscreen() {
   list-style: none;
 }
 .pj-results li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); align-items: center; column-gap: calc(var(--u) * 30 * var(--k)); row-gap: calc(var(--u) * 16 * var(--k)); padding: calc(var(--u) * 26 * var(--k)) calc(var(--u) * 40); }
+.pj-unranked li { grid-template-columns: minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); }
 .pj-rank { display: grid; width: calc(var(--u) * 76 * var(--k)); height: calc(var(--u) * 76 * var(--k)); place-items: center; border-radius: 50%; background: var(--soft); color: var(--ink); font-size: calc(var(--u) * 32 * var(--k)); font-weight: 800; }
 .pj-first .pj-rank { background: var(--blue); color: #fff; }
 .pj-name { display: flex; min-width: 0; align-items: center; gap: calc(var(--u) * 20 * var(--k)); overflow: hidden; font-size: calc(var(--u) * 48 * var(--k)); font-weight: 600; white-space: nowrap; }

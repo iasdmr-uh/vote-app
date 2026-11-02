@@ -2,7 +2,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { actaSheetRows, isTied, percentOf } from './resultados'
-import type { RoundRecord } from './types'
+import type { ApprovalRule, DecisionFormat, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
 const {
@@ -16,8 +16,10 @@ const moderationReason = ref('')
 const moderatorCredential = ref('')
 const assemblyName = ref('Asamblea de Delegados')
 const roundTitle = ref('')
-const roundCategory = ref<'office' | 'committee'>('office')
+const roundCategory = ref<RoundCategory>('office')
 const committeeMemberCount = ref<number | null>(null)
+const decisionFormat = ref<DecisionFormat>('boolean')
+const approvalRule = ref<ApprovalRule>('simple')
 const showNextBallotForm = ref(false)
 const resumeQr = ref<{ name: string; image: string; url: string; expiresAt: string } | null>(null)
 const ballotCandidates = ref<string[]>([])
@@ -42,6 +44,8 @@ const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => it
 /** Every seat of the election is filled, across its first vote and its runoffs. */
 function electionComplete(target: RoundRecord) {
   const root = rootRoundOf(target) || target
+  // A favor / En contra settles on its single vote, approved or not.
+  if (root.category === 'decision' && root.decisionFormat === 'boolean') return Boolean(target.outcome)
   const seats = root.category === 'committee' ? Math.max(1, root.memberCount ?? 1) : 1
   return (root.officialResult?.elected.length ?? 0) >= seats
 }
@@ -122,7 +126,7 @@ function removeBallotCandidate(index: number) {
   ballotCandidates.value.splice(index, 1)
 }
 
-function chooseRoundCategory(category: 'office' | 'committee') {
+function chooseRoundCategory(category: RoundCategory) {
   roundCategory.value = category
 }
 
@@ -347,23 +351,28 @@ function resetBallotForm() {
   ballotCandidates.value = []
   newBallotCandidate.value = ''
   committeeMemberCount.value = null
+  decisionFormat.value = 'boolean'
+  approvalRule.value = 'simple'
 }
 
 async function createRound() {
   if (newBallotCandidate.value.trim()) addBallotCandidate()
-  const office = roundCategory.value === 'office'
+  const category = roundCategory.value
   const options = ballotCandidates.value.map((label) => ({ label }))
   const seats = committeeMemberCount.value
-  if (!roundTitle.value.trim()) { error.value = office ? 'Escribe el cargo que se vota.' : 'Escribe el nombre de la comisión.'; return }
-  if (office && options.length < 2) { error.value = 'Agrega al menos dos candidatos.'; return }
-  if (!office && (!seats || seats < 1)) { error.value = 'Indica cuántos integrantes quedarán en la comisión.'; return }
-  if (!office && options.length < seats!) { error.value = `Agrega al menos ${seats} candidatos: pueden ser más que los integrantes, pero no menos.`; return }
+  if (!roundTitle.value.trim()) { error.value = { office: 'Escribe el cargo que se vota.', committee: 'Escribe el nombre de la comisión.', decision: 'Escribe la decisión que se vota.' }[category]; return }
+  if (category === 'office' && options.length < 2) { error.value = 'Agrega al menos dos candidatos.'; return }
+  if (category === 'committee' && (!seats || seats < 1)) { error.value = 'Indica cuántos integrantes quedarán en la comisión.'; return }
+  if (category === 'committee' && options.length < seats!) { error.value = `Agrega al menos ${seats} candidatos: pueden ser más que los integrantes, pero no menos.`; return }
+  if (category === 'decision' && decisionFormat.value === 'options' && options.length < 2) { error.value = 'Agrega al menos dos opciones.'; return }
   showNextBallotForm.value = false
+  // The server computes every result; a decision also carries its format and the rule that approves it.
   await moderatorAction(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/rounds`, 'POST', {
-    title: roundTitle.value.trim(), format: office ? 'single_choice' : 'multiple_choice', options,
-    category: roundCategory.value,
-    ...(!office ? { memberCount: seats } : {}),
-    countingRule: { kind: 'count_only', label: 'Mayoría sobre los participantes habilitados' },
+    title: roundTitle.value.trim(), format: category === 'committee' ? 'multiple_choice' : 'single_choice', category,
+    ...(category === 'decision'
+      ? { decisionFormat: decisionFormat.value, approvalRule: approvalRule.value, ...(decisionFormat.value === 'options' ? { options } : {}) }
+      : { options }),
+    ...(category === 'committee' ? { memberCount: seats } : {}),
   }, resetBallotForm)
 }
 
@@ -398,7 +407,7 @@ async function signInModerator() {
 
 export function useMesa() {
   return {
-    moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount,
+    moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
     showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate,
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,

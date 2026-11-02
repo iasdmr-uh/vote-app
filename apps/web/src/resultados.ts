@@ -64,14 +64,50 @@ export function voteLabel(target?: { voteNumber?: number; runoff?: boolean } | n
 }
 
 /** "Mayoría: 20", or "3 integrantes · Mayoría: 20" for a committee ("2 puestos" in its runoffs). */
-export function majorityText(target: { category?: string; runoff?: boolean }, outcome?: Outcome) {
+export function majorityText(target: DecisionTarget & { runoff?: boolean }, outcome?: Outcome) {
   if (!outcome) return ''
+  if (isDecision(target)) return approvalText(target, outcome)
   const majority = `Mayoría: ${outcome.threshold}`
   if (target.category !== 'committee') return majority
   const seats = target.runoff
     ? `${outcome.seats} ${outcome.seats === 1 ? 'puesto' : 'puestos'}`
     : `${outcome.seats} ${outcome.seats === 1 ? 'integrante' : 'integrantes'}`
   return `${seats} · ${majority}`
+}
+
+type DecisionTarget = { category?: string; decisionFormat?: string | null; approvalRule?: string | null }
+
+export function isDecision(target?: DecisionTarget | null) {
+  return target?.category === 'decision'
+}
+
+/** "Se aprueba con 3/4 · 29 votos" or "Se aprueba con mayoría simple · 20 votos" for a decision. */
+export function approvalText(target: DecisionTarget, outcome?: Outcome) {
+  if (!outcome) return ''
+  const rule = (outcome.rule ?? target.approvalRule) === 'three_quarters' ? '3/4' : 'mayoría simple'
+  return `Se aprueba con ${rule} · ${outcome.threshold} ${outcome.threshold === 1 ? 'voto' : 'votos'}`
+}
+
+/**
+ * A decision's result: "Aprobada" / "No aprobada" for A favor / En contra, the winning option's label
+ * when one reached the rule, or nothing while it repeats between the most voted.
+ */
+export function decisionVerdict(target: DecisionTarget, outcome?: Outcome, results: Array<{ optionId?: string; label: string }> = []) {
+  if (!isDecision(target) || !outcome) return ''
+  if (target.decisionFormat === 'boolean') return outcome.approved ? 'Aprobada' : 'No aprobada'
+  const winner = outcome.elected[0]
+  return winner ? results.find((result) => result.optionId === winner)?.label ?? '' : ''
+}
+
+/** Badge of the option that won: "Aprobada" in a decision, Electa / Electo in an election. */
+export function winnerText(target: DecisionTarget, label: string) {
+  return isDecision(target) ? 'Aprobada' : electedText(label)
+}
+
+/** A boolean decision keeps its ballot order (A favor first); everything else ranks by votes. */
+export function displayOrder<T extends { label: string; count: number }>(target: DecisionTarget | null | undefined, results: T[]) {
+  if (target?.category === 'decision' && target.decisionFormat === 'boolean') return [...results].sort((a, b) => Number(b.label === 'A favor') - Number(a.label === 'A favor'))
+  return [...results].sort((a, b) => b.count - a.count)
 }
 
 export function formatNames(names: string[]) {
@@ -96,9 +132,10 @@ export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string
     const { recorded, eligible } = turnoutOf(item)
     const participation = item.recordedCount !== undefined || item.participationCount !== undefined ? votedText(recorded, eligible) : ''
     const elected = new Set((item.officialResult?.elected || []).map((person) => person.optionId))
+    const verdict = decisionVerdict(item, item.outcome, item.results)
     if (item.results?.length) {
       for (const result of rankedResults(item.results, eligible)) {
-        rows.push([item.title, status, participation, result.rank, result.label, result.count, eligible ? result.percent : '', result.tied ? 'sí' : '', elected.has(result.optionId) ? 'sí' : ''])
+        rows.push([item.title, verdict ? `${status} · ${verdict}` : status, participation, result.rank, result.label, result.count, eligible ? result.percent : '', result.tied ? 'sí' : '', elected.has(result.optionId) ? 'sí' : ''])
       }
     } else {
       rows.push([item.title, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, participation, '', '', '', '', '', (item.officialResult?.elected || []).map((person) => person.label).join('; ')])
