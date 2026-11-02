@@ -21,7 +21,7 @@ export type PublicState = {
   joinUrl?: string
   publicAppUrl?: string
   rounds?: Array<{
-    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string }>
+    id: string; title: string; status: string; format?: string; category?: 'office' | 'committee'; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string; isNew?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number }>
     privateResults?: Array<{ optionId: string; label: string; count: number }>
     outcome?: Outcome
