@@ -58,7 +58,7 @@ test('D · inhabilitar durante una votación: el teléfono no recibe la papeleta
   await expect(left).toContainText('Rosa Díaz salió de la sala')
   await left.getByRole('button', { name: 'Inhabilitar' }).click()
   await expect(left).toHaveCount(0)
-  // Current behavior: inhabilitar someone who left brings them back to the list (open product question).
+  // Inhabilitar someone who left brings them back to the list (confirmed by the user).
   await expect(person(mesa, 'Rosa Díaz').locator('.badge-disabled')).toHaveText('Inhabilitado')
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('6')
   await expect(summary.locator(':scope > span')).toHaveText(['2 votaron', '3 faltan', '1 inhabilitado'])

@@ -33,6 +33,8 @@ Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activ
 | `inhabilitar.spec.ts` | D · Inhabilitar y Habilitar durante una votación, voto rechazado con 403, sigue en la base; inhabilitar desde «salió de la sala» (#43). |
 | `decisions.spec.ts` | E · Decisiones 3/4 aprobada y no aprobada, 50/50 con mayoría simple, opciones que se repiten (#42). |
 | `annul-runoff.spec.ts` | F · Anular el primer desempate y repetirlo: sigue siendo la 2.ª votación y no admite candidato nuevo. |
+| `remove-candidate.spec.ts` | G · «Quitar» un candidato nuevo en la 3.ª votación: sale del borrador y ningún teléfono lo recibe (#40). |
+| `inhabilitar-reconnect.spec.ts` | H · Un inhabilitado que salió vuelve con «Reconectar dispositivo» y sigue viendo «Voto inhabilitado»; Habilitar le devuelve la papeleta (#43). |
 | `assembly-simulation.spec.ts` | Asamblea completa con nueve teléfonos; capturas y notas de tiempo en `SIMULATION_OUTPUT_DIR`. |
 
 ## Evidencia
