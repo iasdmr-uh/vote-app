@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { isTied as tiedAt, percentOf } from '../resultados'
+import { electedText, isTied as tiedAt, majorityText, outcomeTag, percentOf, voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
 const LOBBY_SLOTS = 21
@@ -26,9 +26,10 @@ const view = computed(() => {
   return 'idle'
 })
 
+const roundLabel = computed(() => voteLabel(round.value))
 const statusLabel = computed(() => ({
-  voting: round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta',
-  results: assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado',
+  voting: [round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
+  results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),
   annulled: 'Votación anulada',
   completed: 'Asamblea finalizada',
   lobby: '',
@@ -43,8 +44,14 @@ const lobbyNames = computed(() => participants.value.slice(0, lobbyTotal.value >
 const lobbyMore = computed(() => lobbyTotal.value > LOBBY_SLOTS ? lobbyTotal.value - lobbyNames.value.length : 0)
 
 const results = computed(() => [...(state.value?.results || [])].sort((a, b) => b.count - a.count))
-const electedLabels = computed(() => new Set((state.value?.officialResult?.elected || []).map((person) => person.label)))
-const officeElected = computed(() => !isCommittee.value ? state.value?.officialResult?.elected || [] : [])
+const outcome = computed(() => state.value?.outcome)
+const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
+// The badges show this vote; the banner adds who earlier votes of the same election elected.
+const officeElected = computed(() => !isCommittee.value || (round.value?.voteNumber ?? 1) > 1 ? state.value?.officialResult?.elected || [] : [])
+
+function tagOf(result: { optionId?: string }) {
+  return outcomeTag(outcome.value, result.optionId)
+}
 
 function isTied(index: number) {
   return tiedAt(results.value, index)
@@ -118,7 +125,8 @@ async function toggleProjectorFullscreen() {
         <div>
           <p class="pj-status">{{ statusLabel }}</p>
           <h1 class="pj-title">{{ round?.title }}</h1>
-          <p v-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
+          <p v-if="majority" class="pj-subtitle">{{ majority }}</p>
+          <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
         </div>
         <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron</small></p>
       </header>
@@ -126,7 +134,7 @@ async function toggleProjectorFullscreen() {
       <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
         <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
           <span class="pj-rank">{{ index + 1 }}</span>
-          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="isTied(index)" class="pj-tie">Empate</em><em v-if="isCommittee && electedLabels.has(result.label)" class="pj-elected-tag" aria-label="Electo">✓</em></span>
+          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ electedText(result.label) }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">Empate</em></span>
           <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
           <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
           <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
@@ -226,7 +234,7 @@ async function toggleProjectorFullscreen() {
 .pj-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pj-name em { flex: none; padding: calc(var(--u) * 6 * var(--k)) calc(var(--u) * 18 * var(--k)); border-radius: 999px; font-size: calc(var(--u) * 26 * var(--k)); font-style: normal; font-weight: 700; }
 .pj-tie { background: #f3d9a4; color: #8a5a14; }
-.pj-elected-tag { background: var(--blue-dark); color: var(--cream); letter-spacing: .06em; text-transform: uppercase; }
+.pj-elected-tag { background: #1f7a4d; color: #fff; }
 .pj-votes { color: var(--blue); font-size: calc(var(--u) * 48 * var(--k)); font-weight: 800; white-space: nowrap; }
 .pj-percent { color: var(--muted); font-size: calc(var(--u) * 40 * var(--k)); font-weight: 600; text-align: right; white-space: nowrap; }
 .pj-bar { grid-column: 1 / -1; height: calc(var(--u) * 16 * var(--k)); overflow: hidden; border-radius: 999px; background: var(--soft); }
