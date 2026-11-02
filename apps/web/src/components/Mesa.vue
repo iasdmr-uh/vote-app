@@ -188,7 +188,7 @@ function closePersonMenu(event: Event) {
               <span v-else-if="person.voted !== undefined" :class="['vote-dot', person.voted ? 'vote-dot-done' : 'vote-dot-pending']" role="img" :aria-label="person.voted ? 'Ya votó' : 'Falta votar'" :title="person.voted ? 'Ya votó' : 'Falta votar'"></span>
               <span class="person-name">{{ person.firstName }} {{ person.lastName }}<span v-if="person.votingDisabled" class="badge badge-disabled">Inhabilitado</span></span>
               <button v-if="person.id && person.votingDisabled && assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="setVotingDisabled(person.id, false)">Habilitar</button>
-              <details v-else-if="person.id && !person.votingDisabled" class="person-menu">
+              <details v-if="person.id && !(person.votingDisabled && assemblyStatus === 'completed')" class="person-menu">
                 <summary :aria-label="`Acciones para ${person.firstName} ${person.lastName}`">⋯</summary>
                 <div class="person-menu-list">
                   <template v-if="assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed'">
@@ -196,7 +196,7 @@ function closePersonMenu(event: Event) {
                     <button type="button" class="remove-link" @click="closePersonMenu($event); moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button>
                   </template>
                   <button type="button" @click="closePersonMenu($event); issueResumeCode(person)">Reconectar dispositivo</button>
-                  <button type="button" class="remove-link" :disabled="loading" @click="closePersonMenu($event); setVotingDisabled(person.id, true)">Inhabilitar</button>
+                  <button v-if="!person.votingDisabled" type="button" class="remove-link" :disabled="loading" @click="closePersonMenu($event); setVotingDisabled(person.id, true)">Inhabilitar</button>
                 </div>
               </details>
             </li>
