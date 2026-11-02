@@ -195,14 +195,15 @@ test('database committee flow: delegates mark 1..N typed names, the mesa sees wh
     assert.equal((await service.moderatorAssembly(activeAssemblyId)).attendanceRound, null, 'a prepared ballot shows no dots yet')
     await service.openRound(round.id)
     const phone = await service.participantState(delegates[0]!.id)
-    assert.equal(phone.openRound?.electionSeats, 3, 'the phone knows how many names it may mark')
-    await assert.rejects(service.castVote(delegates[0]!.id, round.id, round.options.slice(0, 4).map((option) => option.id)), /como máximo 3 nombres/)
-    const [ana, luis, rosa, jose] = round.options
+    assert.equal(phone.openRound?.electionSeats, 3, 'the phone knows how many names it must mark')
+    await assert.rejects(service.castVote(delegates[0]!.id, round.id, round.options.slice(0, 4).map((option) => option.id)), /exactamente 3 nombres/)
+    const [ana, luis, rosa, jose, carlos] = round.options
+    await assert.rejects(service.castVote(delegates[0]!.id, round.id, [ana!.id, luis!.id]), /exactamente 3 nombres/)
     await service.castVote(delegates[0]!.id, round.id, [ana!.id, luis!.id, rosa!.id])
-    await service.castVote(delegates[1]!.id, round.id, [ana!.id, luis!.id])
-    await service.castVote(delegates[2]!.id, round.id, [ana!.id])
-    await service.castVote(delegates[3]!.id, round.id, [jose!.id, rosa!.id])
-    assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 8)
+    await service.castVote(delegates[1]!.id, round.id, [ana!.id, luis!.id, jose!.id])
+    await service.castVote(delegates[2]!.id, round.id, [ana!.id, luis!.id, carlos!.id])
+    await service.castVote(delegates[3]!.id, round.id, [ana!.id, rosa!.id, jose!.id])
+    assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 12)
     assert.equal('participantSessionId' in ((await prisma.anonymousVote.findFirst({ where: { roundId: round.id } })) ?? {}), false)
 
     const whileOpen = await service.moderatorAssembly(activeAssemblyId)
@@ -214,28 +215,28 @@ test('database committee flow: delegates mark 1..N typed names, the mesa sees wh
     assert.deepEqual((await service.moderatorAssembly(activeAssemblyId)).participants.map((person) => person.voted), [true, true, true, true, false, false], 'dots stay after closing')
     assert.equal('results' in await service.publicState(joinCode), false)
     const ranked = (await service.publishRound(round.id)).results
-    assert.deepEqual(ranked.map((option) => [option.label, option.count]), [['Ana Reyes', 3], ['Luis Mejía', 2], ['Rosa Paz', 2], ['José Díaz', 1], ['Carlos Ruiz', 0]], 'every candidate, most voted first')
+    assert.deepEqual(ranked.map((option) => [option.label, option.count]), [['Ana Reyes', 4], ['Luis Mejía', 3], ['Rosa Paz', 2], ['José Díaz', 2], ['Carlos Ruiz', 1]], 'every candidate, most voted first')
     assert.deepEqual((await service.publicState(joinCode)).results?.map((option) => option.label), ranked.map((option) => option.label), 'the projector shows the same ranking')
     assert.equal('officialResult' in await service.publicState(joinCode), false, 'closing and publishing elect no one')
 
-    // Luis and Rosa tie for the last seat; the mesa repeats the vote between them for one seat.
-    const repeat = await service.repeatRound(round.id, { optionIds: [luis!.id, rosa!.id], seats: 1 })
+    // Rosa and José tie for the last seat; the mesa repeats the vote between them for one seat.
+    const repeat = await service.repeatRound(round.id, { optionIds: [rosa!.id, jose!.id], seats: 1 })
     assert.equal(repeat.committeeRootRoundId, round.id)
-    assert.deepEqual(repeat.options.map((option) => option.label), ['Luis Mejía', 'Rosa Paz'], 'nothing is added to the repeated ballot')
+    assert.deepEqual(repeat.options.map((option) => option.label), ['Rosa Paz', 'José Díaz'], 'nothing is added to the repeated ballot')
     await service.openRound(repeat.id)
     assert.deepEqual((await service.moderatorAssembly(activeAssemblyId)).participants.map((person) => person.voted), [false, false, false, false, false, false], 'opening the next ballot resets the dots')
-    await assert.rejects(service.castVote(delegates[0]!.id, repeat.id, [repeat.options[0]!.id, repeat.options[1]!.id]), /como máximo 1 nombre/)
+    await assert.rejects(service.castVote(delegates[0]!.id, repeat.id, [repeat.options[0]!.id, repeat.options[1]!.id]), /exactamente 1 nombre/)
     await service.castVote(delegates[0]!.id, repeat.id, [repeat.options[0]!.id])
     await service.castVote(delegates[1]!.id, repeat.id, [repeat.options[0]!.id])
     await service.castVote(delegates[2]!.id, repeat.id, [repeat.options[1]!.id])
     await assert.rejects(service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id, rosa!.id] }), /Cierra la votación abierta/)
     await service.closeRound(repeat.id)
     const repeatResults = (await service.publishRound(repeat.id)).results
-    assert.deepEqual(repeatResults.map((option) => [option.label, option.count]), [['Luis Mejía', 2], ['Rosa Paz', 1]])
+    assert.deepEqual(repeatResults.map((option) => [option.label, option.count]), [['Rosa Paz', 2], ['José Díaz', 1]])
     await assert.rejects(service.declareOfficialResult(repeat.id, { optionIds: [repeat.options[0]!.id] }), /papeleta original/)
     await assert.rejects(service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id] }), /exactamente 3 integrantes/)
 
-    const declared = await service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id, jose!.id], note: 'Composición aprobada por la mesa' })
+    const declared = await service.declareOfficialResult(round.id, { optionIds: [ana!.id, luis!.id, rosa!.id], note: 'Composición aprobada por la mesa' })
     assert.equal(declared.publishedAt, null)
     assert.equal('officialResult' in await service.publicState(joinCode), false)
     await service.publishOfficialResult(round.id)

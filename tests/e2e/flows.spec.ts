@@ -94,7 +94,7 @@ test('delegado ingresa con datos sintéticos y confirma su participación', asyn
   expect(voteCount).toBe(1)
 })
 
-test('delegado vota en comisión con selección múltiple limitada a los cupos', async ({ page }) => {
+test('delegado vota en comisión marcando exactamente los cupos', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'committee-session'))
   let recorded = false
   await page.route(api, async (route) => {
@@ -121,21 +121,27 @@ test('delegado vota en comisión con selección múltiple limitada a los cupos',
 
   await page.goto('/')
   await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
+  await expect(page.getByText('0 de 2', { exact: true })).toBeVisible()
+  const review = page.getByRole('button', { name: 'Revisar mi voto' })
+  await expect(review).toBeDisabled()
   await page.getByLabel('Ana (prueba)').check()
+  await expect(review).toBeDisabled()
   await page.getByLabel('Beto (prueba)').check()
   await expect(page.getByRole('group', { name: '2 de 2' })).toBeVisible()
-  // Over the limit the box does not stay ticked: the mesa's rule is shown instead.
+  await expect(review).toBeEnabled()
+  // Over the limit the box does not stay ticked, and no message is shown.
   await page.getByLabel('Celia (prueba)').click()
-  await expect(page.getByRole('alert')).toContainText('Máximo 2 candidatos')
   await expect(page.getByLabel('Celia (prueba)')).not.toBeChecked()
+  await expect(page.getByRole('group', { name: '2 de 2' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
   await page.getByRole('button', { name: 'Revisar mi voto' }).click()
   await expect(page.locator('.review-details')).toContainText('Ana (prueba), Beto (prueba)')
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
   await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
 })
 
-test('en una comisión se puede marcar menos que el máximo y la papeleta no ofrece voto nulo', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'fewer-session'))
+test('en un desempate se marcan exactamente los puestos que faltan y la papeleta no ofrece voto nulo', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'runoff-session'))
   let voted: unknown
   await page.route(api, async (route) => {
     const request = route.request()
@@ -144,30 +150,41 @@ test('en una comisión se puede marcar menos que el máximo y la papeleta no ofr
       await route.fulfill({ json: {
         assembly: { id: 'committee-assembly', name: 'Asamblea prueba', status: 'in_progress' },
         participationStatus: voted ? 'recorded' : 'pending',
-        openRound: { roundId: 'finance', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 3, electionSeats: 3, options: [
-          { optionId: 'candidate-a', label: 'Ana (prueba)' }, { optionId: 'candidate-b', label: 'Beto (prueba)' }, { optionId: 'candidate-c', label: 'Celia (prueba)' }, { optionId: 'candidate-d', label: 'Dora (prueba)' },
+        openRound: { roundId: 'finance-runoff', title: 'Comisión de Finanzas', status: 'open', format: 'multiple_choice', category: 'committee', memberCount: 3, electionSeats: 2, options: [
+          { optionId: 'candidate-b', label: 'Beto (prueba)' }, { optionId: 'candidate-c', label: 'Celia (prueba)' }, { optionId: 'candidate-d', label: 'Dora (prueba)' },
         ] },
       } })
       return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/finance/vote')) {
+    if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/finance-runoff/vote')) {
       voted = request.postDataJSON()
       await route.fulfill({ status: 201, json: { status: 'recorded' } })
       return
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for fewer-names test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route for runoff test' } })
   })
 
   await page.goto('/')
-  await expect(page.getByRole('group', { name: '0 de 3' })).toBeVisible()
+  await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toBeDisabled()
+  const review = page.getByRole('button', { name: 'Revisar mi voto' })
+  await expect(review).toBeDisabled()
+  await expect(review).toHaveCSS('opacity', '0.4')
   await page.getByLabel('Beto (prueba)').check()
-  await expect(page.getByRole('group', { name: '1 de 3' })).toBeVisible()
-  await page.getByRole('button', { name: 'Revisar mi voto' }).click()
+  await expect(page.getByRole('group', { name: '1 de 2' })).toBeVisible()
+  await expect(review).toBeDisabled()
+  await page.getByLabel('Dora (prueba)').check()
+  await page.getByLabel('Celia (prueba)').click()
+  await expect(page.getByLabel('Celia (prueba)')).not.toBeChecked()
+  await expect(review).toBeEnabled()
+  // Unmarking one drops below the seats again.
+  await page.getByLabel('Dora (prueba)').uncheck()
+  await expect(review).toBeDisabled()
+  await page.getByLabel('Celia (prueba)').check()
+  await review.click()
   await page.getByRole('button', { name: 'Confirmar voto' }).click()
   await expect(page.getByText('Tu voto quedó registrado')).toBeVisible()
-  expect(voted).toEqual({ optionIds: ['candidate-b'], confirmation: true })
+  expect(voted).toEqual({ optionIds: ['candidate-b', 'candidate-c'], confirmation: true })
 })
 
 test('moderador anula una papeleta con motivo y prepara una nueva votación con los más votados', async ({ page }) => {

@@ -272,10 +272,10 @@ export class VotingService implements OnModuleInit {
         if (round.format === 'single_choice' && optionIds.length !== 1) throw new UnprocessableEntityException('Esta papeleta permite una sola opción')
         const options = await tx.ballotOption.count({ where: { id: { in: optionIds }, roundId } })
         if (options !== optionIds.length) throw new UnprocessableEntityException('Todas las opciones deben pertenecer a esta papeleta')
-        // A committee ballot takes from one name up to the committee size, never more.
-        const maxSelections = round.election_seats ?? round.member_count
-        if (maxSelections !== null && maxSelections !== undefined && optionIds.length > maxSelections) {
-          throw new UnprocessableEntityException(`Puedes marcar como máximo ${maxSelections} ${maxSelections === 1 ? 'nombre' : 'nombres'}`)
+        // A committee ballot or runoff takes exactly the open seats, never fewer or more.
+        const seats = round.election_seats ?? round.member_count
+        if (seats !== null && seats !== undefined && optionIds.length !== seats) {
+          throw new UnprocessableEntityException(`Marca exactamente ${seats} ${seats === 1 ? 'nombre' : 'nombres'}`)
         }
         // The unique participation claim and anonymous ballot share a transaction but no shared identity key.
         // If either insert fails, PostgreSQL rolls both back.
