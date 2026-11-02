@@ -71,6 +71,9 @@ button:not(:disabled):active { transform: translateY(1px); }
 .status-dot { width: .7rem; height: .7rem; margin-top: .25rem; border-radius: 50%; background: #e0aa42; box-shadow: 0 0 0 4px #f8efd9; }
 .options { display: grid; gap: .65rem; margin: 1.4rem 0; padding: 0; border: 0; }
 .options legend { margin-bottom: .6rem; color: #34435b; font-weight: 700; }
+.phone-ballot-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.phone-ballot-heading .count-pill { flex: none; margin-top: .35rem; }
+.phone-ballot-submit:disabled { cursor: not-allowed; opacity: .4; }
 .option { display: flex; min-height: 58px; align-items: center; gap: .8rem; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: .7rem; cursor: pointer; }
 .option:has(input:checked) { border-color: var(--blue); background: #f2f6ff; }
 .option input { width: 1.15rem; height: 1.15rem; accent-color: var(--blue); }

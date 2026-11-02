@@ -175,9 +175,10 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     assert.equal((await service.moderatorAssembly(activeAssemblyId)).attendanceRound, null, 'a prepared ballot shows no dots yet')
     await service.openRound(round.id)
     const phone = await service.participantState(delegates[0]!.id)
-    assert.equal(phone.openRound?.electionSeats, 3, 'the phone knows how many names it may mark')
-    await assert.rejects(service.castVote(delegates[0]!.id, round.id, round.options.slice(0, 4).map((option) => option.id)), /como máximo 3 nombres/)
+    assert.equal(phone.openRound?.electionSeats, 3, 'the phone knows how many names it must mark')
+    await assert.rejects(service.castVote(delegates[0]!.id, round.id, round.options.slice(0, 4).map((option) => option.id)), /exactamente 3 nombres/)
     const [ana, luis, rosa, jose, carlos] = round.options
+    await assert.rejects(service.castVote(delegates[0]!.id, round.id, [ana!.id, luis!.id]), /exactamente 3 nombres/, 'fewer than the open seats is rejected too')
     const vote = (index: number, roundId: string, options: Array<{ id: string } | undefined>) => service.castVote(delegates[index]!.id, roundId, options.map((option) => option!.id))
     await vote(0, round.id, [ana, luis, rosa])
     await vote(1, round.id, [ana, luis, rosa])
@@ -228,6 +229,8 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     assert.equal(runoffPhone.openRound?.voteNumber, 2)
     assert.equal(runoffPhone.openRound?.runoff, true)
     const [luis2, rosa2, jose2] = runoff1.options
+    await assert.rejects(vote(0, runoff1.id, [luis2]), /exactamente 2 nombres/, 'a runoff takes exactly its open seats')
+    await assert.rejects(vote(0, runoff1.id, [luis2, rosa2, jose2]), /exactamente 2 nombres/)
     await vote(0, runoff1.id, [luis2, rosa2])
     await vote(1, runoff1.id, [luis2, rosa2])
     await vote(2, runoff1.id, [luis2, jose2])
@@ -247,6 +250,7 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     // 3rd vote: Rosa 4 of 6 completes the committee; no further runoff is prepared.
     await service.openRound(runoff2.id)
     const [rosa3, jose3] = runoff2.options
+    await assert.rejects(vote(0, runoff2.id, [rosa3, jose3]), /exactamente 1 nombre/)
     for (const index of [0, 1, 2, 3]) await vote(index, runoff2.id, [rosa3])
     await vote(4, runoff2.id, [jose3])
     await service.closeRound(runoff2.id)
