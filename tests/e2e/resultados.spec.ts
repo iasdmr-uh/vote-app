@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { actaSheetRows, isTied, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../apps/web/src/resultados'
+import { actaSheetRows, isTied, notVotedOf, notVotedText, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../apps/web/src/resultados'
 
 test.describe('resultados', () => {
   const tiedFirst = [{ count: 4 }, { count: 4 }, { count: 2 }, { count: 0 }, { count: 0 }]
@@ -26,6 +26,9 @@ test.describe('resultados', () => {
     expect(votedText(18, 20)).toBe('18 de 20 votaron')
     expect(votedText(1, 20)).toBe('1 de 20 votó')
     expect(votedText(3, 0)).toBe('3 votaron')
+    expect(notVotedText(36, 38)).toBe('2 no votaron')
+    expect(notVotedText(37, 38)).toBe('1 no votó')
+    expect(notVotedOf(5, 4)).toBe(0)
     expect(turnoutOf({ participationCount: 7, eligibleCount: 9 })).toEqual({ recorded: 7, eligible: 9 })
     expect(turnoutOf({ recordedCount: 8, participationCount: 7, eligibleCount: 9 })).toEqual({ recorded: 8, eligible: 9 })
   })
@@ -43,8 +46,8 @@ test.describe('resultados', () => {
       { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Error', participationCount: 2, options: [] },
     ], { published: 'publicada', annulled: 'anulada' })
     expect(rows.slice(1)).toEqual([
-      ['Presidencia', 'publicada', '3 de 4 votaron', 1, 'Rosa', 1, 25, 'sí', 'sí'],
-      ['Presidencia', 'publicada', '3 de 4 votaron', 2, 'Pedro', 1, 25, 'sí', ''],
+      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 1, 'Rosa', 1, 25, 'sí', 'sí'],
+      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 2, 'Pedro', 1, 25, 'sí', ''],
       ['Secretaría', 'anulada: Error', '2 votaron', '', '', '', '', '', ''],
     ])
   })

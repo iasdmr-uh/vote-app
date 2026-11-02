@@ -27,6 +27,16 @@ export function votedText(recorded: number, eligible?: number | null) {
   return eligible ? `${recorded} de ${eligible} ${verb}` : `${recorded} ${verb}`
 }
 
+/** Base frozen at close minus votes cast: inhabilitados who did not vote count here too. */
+export function notVotedOf(recorded: number, eligible?: number | null) {
+  return Math.max(0, (eligible ?? 0) - recorded)
+}
+
+export function notVotedText(recorded: number, eligible?: number | null) {
+  const missing = notVotedOf(recorded, eligible)
+  return `${missing} ${missing === 1 ? 'no votó' : 'no votaron'}`
+}
+
 export function rankedResults<T extends Counted>(results: T[], eligible?: number | null) {
   const sorted = [...results].sort((a, b) => b.count - a.count)
   return sorted.map((result, index) => ({ ...result, rank: index + 1, tied: isTied(sorted, index), percent: percentOf(result.count, eligible) }))
@@ -94,7 +104,7 @@ export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string
   for (const item of rounds) {
     const status = statusLabels[item.status] || item.status
     const { recorded, eligible } = turnoutOf(item)
-    const participation = item.recordedCount !== undefined || item.participationCount !== undefined ? votedText(recorded, eligible) : ''
+    const participation = item.recordedCount !== undefined || item.participationCount !== undefined ? [votedText(recorded, eligible), eligible ? notVotedText(recorded, eligible) : ''].filter(Boolean).join(' · ') : ''
     const elected = new Set((item.officialResult?.elected || []).map((person) => person.optionId))
     if (item.results?.length) {
       for (const result of rankedResults(item.results, eligible)) {

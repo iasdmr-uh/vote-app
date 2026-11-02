@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { electedText, isTied as tiedAt, majorityText, outcomeTag, percentOf, voteLabel } from '../resultados'
+import { electedText, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
 const LOBBY_SLOTS = 21
@@ -128,7 +128,7 @@ async function toggleProjectorFullscreen() {
           <p v-if="majority" class="pj-subtitle">{{ majority }}</p>
           <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
         </div>
-        <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron</small></p>
+        <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
       </header>
       <div v-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
       <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
