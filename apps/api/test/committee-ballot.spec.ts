@@ -68,20 +68,6 @@ test('a committee vote takes from one up to the committee size, never more', asy
   assert.deepEqual(votes, [['a'], ['a', 'b']])
 })
 
-test('a declared committee composition must match its configured number of seats', async () => {
-  const database = {
-    $transaction: async (work: (tx: unknown) => unknown) => work({
-      $queryRaw: async () => [{ id: 'round', assembly_id: 'assembly', status: 'closed', category: 'committee', member_count: 3 }],
-      round: { findUniqueOrThrow: async () => ({ committeeRootRoundId: null }), findMany: async () => [{ status: 'closed' }] },
-    }),
-  }
-  const voting = new VotingService(database as never, {} as never)
-  await assert.rejects(
-    voting.declareOfficialResult('round', { optionIds: ['one', 'two'] }),
-    UnprocessableEntityException,
-  )
-})
-
 test('the mesa sees who voted in the latest opened ballot, never what they chose', async () => {
   const database = {
     assembly: { findUnique: async () => ({

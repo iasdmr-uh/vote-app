@@ -103,9 +103,10 @@ test('leaving ends the session once, and the percentage base keeps those who vot
     assert.equal(afterArrival.rounds[0]!.eligibleCount, 2)
     assert.equal((await service.participantState(people.Marta!.id)).eligibleCount, 2)
 
-    // A repetition belongs to the same chain, so whoever voted in the original keeps counting, and its
-    // base stays live until it closes: Marta and Rosa in the room plus Ana.
-    const repeated = await service.repeatRound(round.id, { optionIds: round.options.map((option) => option.id) })
+    // A and B tied 1–1 without majority, so closing prepared a runoff. It belongs to the same chain, so
+    // whoever voted in the original keeps counting, and its base stays live until it closes: Marta and
+    // Rosa in the room plus Ana.
+    const repeated = await prisma.round.findFirstOrThrow({ where: { committeeRootRoundId: round.id, status: 'draft' } })
     const afterRepeat = await service.moderatorAssembly(assemblyId)
     assert.equal(afterRepeat.rounds.find((item) => item.id === repeated.id)?.eligibleCount, 3)
     await service.openRound(repeated.id)
