@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { decisionVerdict, displayOrder, isDecision, isTied, percentOf, voteLabel } from '../resultados'
+import { decisionVerdict, displayOrder, isDecision, isTied, outcomeTag, percentOf, voteLabel, winnerText } from '../resultados'
 import { ApiRequestError, useAssembly } from '../useAssembly'
 
 const {
@@ -23,12 +23,15 @@ const resultBase = computed(() => state.value?.eligibleCount ?? 0)
 const resultVoters = computed(() => state.value?.recordedCount ?? round.value?.participationCount ?? 0)
 const resultRows = computed(() => {
   const results = displayOrder(round.value, state.value?.results || [])
+  const outcome = state.value?.outcome
   return results.map((result, index) => ({
     label: result.label,
     count: result.count,
     rank: index + 1,
+    // The computed result marks the elected and the runoff, as on the mesa and the projector.
+    tag: outcomeTag(outcome, result.optionId),
     // A decision's result is its verdict, so a tie needs no badge.
-    tied: !isDecision(round.value) && isTied(results, index),
+    tied: !outcome && !isDecision(round.value) && isTied(results, index),
     percent: percentOf(result.count, resultBase.value),
   }))
 })
@@ -194,7 +197,7 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
         <ol v-if="resultRows.length" class="ranked-rows">
           <li v-for="row in resultRows" :key="row.label" :class="{ first: row.rank === 1 }">
             <span class="rank-number">{{ row.rank }}</span>
-            <span class="ranked-label">{{ row.label }}<span v-if="row.tied" class="badge badge-warning">Empate</span></span>
+            <span class="ranked-label">{{ row.label }}<span v-if="row.tag === 'elected'" class="badge badge-success">{{ round ? winnerText(round, row.label) : '' }}</span><span v-else-if="row.tag === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="row.tied" class="badge badge-warning">Empate</span></span>
             <strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong>
             <span class="ranked-percent">{{ row.percent }} %</span>
             <span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span>
