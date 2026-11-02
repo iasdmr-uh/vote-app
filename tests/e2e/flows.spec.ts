@@ -659,6 +659,8 @@ test('cargo sin mayoría: chip de mayoría, desempate entre los dos primeros y b
   await expect(ballot.locator('.majority-chip')).toHaveText('Mayoría: 20')
   await expect(ballot.locator('.ranked-rows > li .badge-warning')).toHaveCount(2)
   await expect(ballot.locator('.ranked-rows > li').nth(2)).not.toContainText('Desempate')
+  await expect(ballot.locator('.voters-total')).toHaveText(/36 de 38\s*votaron · 2 no votaron/)
+  await expect(page.locator('#acta-de-resultados')).toContainText('36 de 38 votaron · 2 no votaron')
   await expect(ballot.getByRole('button', { name: 'Abrir desempate', exact: true })).toBeVisible()
   await expect(page.locator('.workflow-steps li.current')).toContainText('Resultado')
 })
@@ -773,8 +775,8 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await page.getByRole('button', { name: 'Descargar hoja de cálculo' }).click()
   expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
   const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron', 1, 'Rosa', 2, 50, '', 'sí'])
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron', 2, 'Pedro', 1, 25, '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 1, 'Rosa', 2, 50, '', 'sí'])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 2, 'Pedro', 1, 25, '', ''])
   expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', '1 votó', '', '', '', '', '', ''])
   // A name typed as a formula is a text cell: no formula element exists, and re-saving keeps it as text.
   expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', '1 votó', 1, '=HYPERLINK("http://x","y")', 1, '', '', ''])
@@ -1537,6 +1539,7 @@ test('el proyector marca Electa y Desempate en una comisión publicada, con la m
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electa')
   await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate', 'Desempate'])
   await expect(page.locator('.pj-elected')).toHaveCount(0)
+  await expect(page.locator('.pj-turnout')).toHaveText(/36\s*de 38\s*votaron · 2 no votaron/)
 })
 
 test('el proyector rotula el desempate de un cargo y suma el electo al publicarlo', async ({ page }) => {
