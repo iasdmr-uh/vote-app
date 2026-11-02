@@ -141,6 +141,18 @@ export class ModeratorController {
     return this.voting.patchParticipant(participantId, input)
   }
 
+  @Post('participants/:participantId/disable-voting')
+  @HttpCode(200)
+  disableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.setVotingDisabled(participantId, true)
+  }
+
+  @Post('participants/:participantId/enable-voting')
+  @HttpCode(200)
+  enableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.setVotingDisabled(participantId, false)
+  }
+
   @Post('participants/:participantId/resume-code')
   participantResumeCode(@Param('participantId', ParseUUIDPipe) participantId: string) {
     return this.voting.issueResumeCode(participantId)

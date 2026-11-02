@@ -54,6 +54,7 @@ export interface ParticipantStateEvent {
   lobbyStatus: LobbyStatus
   openRound: (RoundStateEvent & { options: Array<{ optionId: string; label: string }> }) | null
   participationStatus: 'pending' | 'recorded'
+  votingDisabled?: boolean
   results?: PublishedResultOption[]
   recordedCount?: number
   eligibleCount?: number
@@ -77,6 +78,7 @@ export interface RealtimeServerToClientEvents {
   'participant.updated': (payload: ParticipantSummaryEvent) => void
   'participant.removed': (payload: { participantId: string }) => void
   'participant.left': (payload: ParticipantSummaryEvent) => void
+  'participant.voting': (payload: { participantId: string; votingDisabled: boolean }) => void
   'participant.state': (payload: ParticipantStateEvent) => void
   'round.state': (payload: RoundStateEvent) => void
   'round.opened': (payload: RoundStateEvent & { options: Array<{ optionId: string; label: string }> }) => void
