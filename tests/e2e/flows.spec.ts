@@ -301,7 +301,7 @@ test('la mesa prepara una comisión escribiendo los candidatos y cuántos integr
 
   await page.goto('/moderator')
   await expect(page.getByText('Delegado Sintético')).toBeVisible()
-  await page.getByRole('radio', { name: 'Una comisión' }).click()
+  await page.getByRole('radio', { name: 'Comisión', exact: true }).click()
   await expect(page.getByText('Nombramiento')).toHaveCount(0)
   await expect(page.getByText('Secretaría validó esta comisión')).toHaveCount(0)
   await page.getByLabel('Nombre de la comisión').fill('Comisión de Finanzas')

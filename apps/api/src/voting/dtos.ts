@@ -70,18 +70,27 @@ export class CreateRoundDto {
   @IsOptional() @IsIn(['single_choice', 'multiple_choice'])
   format: 'single_choice' | 'multiple_choice' = 'single_choice'
 
-  @IsOptional() @IsIn(['office', 'committee'])
-  category?: 'office' | 'committee'
+  @IsOptional() @IsIn(['office', 'committee', 'decision'])
+  category?: 'office' | 'committee' | 'decision'
 
   /** Committee only: how many people stay on it; each delegate marks from one up to this many names. */
   @IsOptional() @IsInt() @Min(1) @Max(40)
   memberCount?: number
 
+  /** Decision only: A favor / En contra (the server writes both options) or options written by the mesa. */
+  @IsOptional() @IsIn(['boolean', 'options'])
+  decisionFormat?: 'boolean' | 'options'
+
+  /** Decision only: mayoría simple (> 1/2) or 3/4 of the habilitados. Elections always use mayoría simple. */
+  @IsOptional() @IsIn(['simple', 'three_quarters'])
+  approvalRule?: 'simple' | 'three_quarters'
+
   @IsOptional() @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => BallotOptionDto)
   options?: BallotOptionDto[]
 
-  @IsObject()
-  countingRule!: Record<string, unknown>
+  /** Kept for older clients; the result is always computed by the server, so its content is not used. */
+  @IsOptional() @IsObject()
+  countingRule?: Record<string, unknown>
 }
 
 export class VoteDto {

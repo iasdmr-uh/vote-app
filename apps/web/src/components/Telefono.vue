@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { isTied, percentOf, voteLabel } from '../resultados'
+import { decisionVerdict, displayOrder, isDecision, isTied, percentOf, voteLabel } from '../resultados'
 import { ApiRequestError, useAssembly } from '../useAssembly'
 
 const {
@@ -22,15 +22,17 @@ const votingDisabled = computed(() => Boolean(state.value?.votingDisabled) && as
 const resultBase = computed(() => state.value?.eligibleCount ?? 0)
 const resultVoters = computed(() => state.value?.recordedCount ?? round.value?.participationCount ?? 0)
 const resultRows = computed(() => {
-  const results = [...(state.value?.results || [])].sort((a, b) => b.count - a.count)
+  const results = displayOrder(round.value, state.value?.results || [])
   return results.map((result, index) => ({
     label: result.label,
     count: result.count,
     rank: index + 1,
-    tied: isTied(results, index),
+    // A decision's result is its verdict, so a tie needs no badge.
+    tied: !isDecision(round.value) && isTied(results, index),
     percent: percentOf(result.count, resultBase.value),
   }))
 })
+const verdict = computed(() => round.value ? decisionVerdict(round.value, state.value?.outcome, state.value?.results) : '')
 
 watch(reviewingVote, (reviewing) => {
   if (reviewing) void nextTick(() => reviewHeading.value?.focus())
@@ -182,12 +184,13 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
     <template v-else>
       <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
       <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
-      <section v-if="resultRows.length || state?.officialResult" class="phone-results" aria-labelledby="phone-results-title">
+      <section v-if="resultRows.length || state?.officialResult || verdict" class="phone-results" aria-labelledby="phone-results-title">
         <div class="phone-results-heading">
           <div><p class="eyebrow">RESULTADOS</p><h2 id="phone-results-title">{{ round?.title }}</h2></div>
           <p v-if="resultBase" class="voters-total"><strong>{{ resultVoters }} de {{ resultBase }}</strong><span>votaron</span></p>
         </div>
-        <div v-if="state?.officialResult" class="official-card"><p class="eyebrow">RESULTADO OFICIAL</p><strong>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div>
+        <div v-if="verdict" class="official-card"><p class="eyebrow">RESULTADO</p><strong>{{ verdict }}</strong></div>
+        <div v-else-if="state?.officialResult" class="official-card"><p class="eyebrow">RESULTADO OFICIAL</p><strong>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div>
         <ol v-if="resultRows.length" class="ranked-rows">
           <li v-for="row in resultRows" :key="row.label" :class="{ first: row.rank === 1 }">
             <span class="rank-number">{{ row.rank }}</span>

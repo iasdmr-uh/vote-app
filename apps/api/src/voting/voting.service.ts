@@ -16,7 +16,7 @@ import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CreateRoundDto, RepeatRoundDto } from './dtos.js'
-import { electionOutcome, type ElectionOutcome } from './results-engine.js'
+import { decisionOutcome, electionOutcome, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const RESUME_CODE_TTL_MS = 10 * 60_000
@@ -234,7 +234,7 @@ export class VotingService implements OnModuleInit {
     // An inhabilitado receives no ballot: the open round is announced without its options.
     const ballotWithheld = participant.votingDisabled && round?.status === 'open'
     const openRound = round
-      ? { roundId: round.id, status: round.status, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...chain, options: ballotWithheld ? [] : round.options.map((o) => ({ optionId: o.id, label: o.label })) }
+      ? { roundId: round.id, status: round.status, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...decisionFields(round), ...chain, options: ballotWithheld ? [] : round.options.map((o) => ({ optionId: o.id, label: o.label })) }
       : null
     // Runoffs belong to the election's first vote, where the official result accumulates.
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
@@ -271,8 +271,8 @@ export class VotingService implements OnModuleInit {
     if (!participant || participant.status !== 'active') throw new ForbiddenException()
     try {
       await this.prisma.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; format: string; member_count: number | null; election_seats: number | null }>>`
-          SELECT id, assembly_id, status, format, member_count, election_seats FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+        const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; format: string; category: string; member_count: number | null; election_seats: number | null }>>`
+          SELECT id, assembly_id, status, format, category::text AS category, member_count, election_seats FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
         `
         const round = rows[0]
         if (!round) throw new NotFoundException('Ronda no encontrada')
@@ -286,8 +286,10 @@ export class VotingService implements OnModuleInit {
         if (round.format === 'single_choice' && optionIds.length !== 1) throw new UnprocessableEntityException('Esta papeleta permite una sola opción')
         const options = await tx.ballotOption.count({ where: { id: { in: optionIds }, roundId } })
         if (options !== optionIds.length) throw new UnprocessableEntityException('Todas las opciones deben pertenecer a esta papeleta')
-        // A committee ballot or runoff takes exactly the open seats, never fewer or more.
-        const seats = round.election_seats ?? round.member_count
+        // A committee ballot or runoff takes exactly the open seats, never fewer or more. A decision is
+        // single choice, so the rule never applies to it.
+        const seats = round.category === 'decision' ? null : round.election_seats ?? round.member_count
+        if (round.category === 'decision' && optionIds.length !== 1) throw new UnprocessableEntityException('Esta papeleta permite una sola opción')
         if (seats !== null && seats !== undefined && optionIds.length !== seats) {
           throw new UnprocessableEntityException(`Marca exactamente ${seats} ${seats === 1 ? 'nombre' : 'nombres'}`)
         }
@@ -346,7 +348,7 @@ export class VotingService implements OnModuleInit {
       participantCount,
       ...(participants ? { participants } : {}),
       ...(recordedCount !== undefined ? { recordedCount, eligibleCount: eligibleCounts.get(round!.id) ?? participantCount } : {}),
-      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...chain } : null,
+      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...decisionFields(round), ...chain } : null,
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
       ...(officialResult ? { officialResult } : {}),
@@ -386,6 +388,7 @@ export class VotingService implements OnModuleInit {
       category: round.category,
       memberCount: round.memberCount,
       electionSeats: round.electionSeats,
+      ...decisionFields(round),
       committeeRootRoundId: round.committeeRootRoundId,
       countingRule: round.countingRule,
       status: round.status,
@@ -658,18 +661,23 @@ export class VotingService implements OnModuleInit {
 
   async createRound(assemblyId: string, input: CreateRoundDto) {
     const category = input.category ?? 'office'
-    if (category === 'office' && input.memberCount !== undefined) {
+    if (category !== 'committee' && input.memberCount !== undefined) {
       throw new UnprocessableEntityException('El número de integrantes solo aplica a comisiones')
     }
     if (category === 'committee' && !input.memberCount) {
       throw new UnprocessableEntityException('Indica cuántos integrantes quedarán en la comisión')
     }
-    if (!input.countingRule || Array.isArray(input.countingRule) || Object.keys(input.countingRule).length === 0) {
-      throw new UnprocessableEntityException('countingRule debe declarar explícitamente la regla configurada')
+    if (category !== 'decision' && (input.decisionFormat !== undefined || (input.approvalRule ?? 'simple') !== 'simple')) {
+      throw new UnprocessableEntityException('El formato y la regla de aprobación solo aplican a decisiones')
     }
-    if (input.countingRule.kind !== 'count_only') throw new UnprocessableEntityException('La única regla compatible con V1 es kind: count_only; no se determina un ganador')
-    const labels = (input.options ?? []).map(({ label }) => label.trim())
+    if (category === 'decision' && !input.decisionFormat) throw new UnprocessableEntityException('Indica el formato de la decisión')
+    // Results are computed on close (Asamblea, Nov 2026): the rule is the server's, whatever the client sends.
+    const approvalRule: ThresholdRule = input.approvalRule ?? 'simple'
+    const boolean = category === 'decision' && input.decisionFormat === 'boolean'
+    if (boolean && input.options?.length) throw new UnprocessableEntityException('Una decisión A favor / En contra no lleva opciones')
+    const labels = boolean ? [...BOOLEAN_DECISION_LABELS] : (input.options ?? []).map(({ label }) => label.trim())
     if (labels.length < 1) throw new UnprocessableEntityException('Agrega al menos una opción')
+    if (category === 'decision' && labels.length < 2) throw new UnprocessableEntityException('Agrega al menos dos opciones')
     if (labels.some((label) => !label) || new Set(labels.map((label) => label.toLocaleLowerCase())).size !== labels.length) {
       throw new UnprocessableEntityException('Las opciones deben tener etiquetas no vacías y distintas')
     }
@@ -689,11 +697,13 @@ export class VotingService implements OnModuleInit {
         data: {
           assemblyId,
           title: input.title.trim(),
-          format: category === 'committee' ? 'multiple_choice' : (input.format ?? 'single_choice'),
+          format: category === 'committee' ? 'multiple_choice' : category === 'decision' ? 'single_choice' : (input.format ?? 'single_choice'),
           category,
           memberCount: category === 'committee' ? input.memberCount : null,
           electionSeats: category === 'committee' ? input.memberCount : null,
-          countingRule: input.countingRule as Prisma.InputJsonValue,
+          decisionFormat: category === 'decision' ? input.decisionFormat : null,
+          approvalRule,
+          countingRule: { kind: 'automatic', rule: approvalRule },
           options: { create: labels.map((label, order) => ({ label, order })) },
         },
         include: { options: { orderBy: { order: 'asc' } } },
@@ -702,7 +712,7 @@ export class VotingService implements OnModuleInit {
       return created
     })
     await this.announceRound(round.id)
-    return { id: round.id, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, countingRule: round.countingRule, status: round.status, options: round.options }
+    return { id: round.id, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...decisionFields(round), countingRule: round.countingRule, status: round.status, options: round.options }
   }
 
   /** Phones and projector refetch on round.state. */
@@ -914,6 +924,8 @@ export class VotingService implements OnModuleInit {
           format: source.format,
           category: source.category,
           memberCount: source.memberCount,
+          decisionFormat: source.decisionFormat,
+          approvalRule: source.approvalRule,
           committeeRootRoundId: rootId,
           electionSeats: seats,
           countingRule: { kind: 'count_only', reason: 'repeat', sourceRoundId: source.id },
@@ -962,6 +974,9 @@ export class VotingService implements OnModuleInit {
             format: round.format,
             category: round.category,
             memberCount: round.memberCount,
+            // A decision with options repeats under the same rule until one option reaches it.
+            decisionFormat: round.decisionFormat,
+            approvalRule: round.approvalRule,
             committeeRootRoundId: rootId,
             electionSeats: round.category === 'committee' ? outcome.openSeats : null,
             countingRule: { kind: 'count_only', reason: 'runoff', sourceRoundId: round.id },
@@ -977,6 +992,7 @@ export class VotingService implements OnModuleInit {
         base: outcome.base, threshold: outcome.threshold, seats: outcome.seats, openSeats: outcome.openSeats,
         electedLabels: outcome.elected.map((id) => labelOf.get(id) ?? id), runoffLabels: outcome.runoff.map((id) => labelOf.get(id) ?? id),
         runoffRoundId: runoff?.id ?? null,
+        ...('approved' in outcome ? { rule: outcome.rule, approved: outcome.approved } : {}),
       },
     } })
     return runoff?.id ?? null
@@ -1166,9 +1182,25 @@ function seatsOf(round: { category: string; memberCount: number | null; election
   return round.category === 'committee' ? Math.max(1, round.electionSeats ?? round.memberCount ?? 1) : 1
 }
 
-function outcomeOf(round: { category: string; memberCount: number | null; electionSeats: number | null; options: Array<{ id: string }> }, counts: Array<{ optionId: string; count: number }>, base: number): ElectionOutcome {
+type OutcomeRound = {
+  category: string; memberCount: number | null; electionSeats: number | null; decisionFormat: string | null; approvalRule: string
+  options: Array<{ id: string }>
+}
+
+function outcomeOf(round: OutcomeRound, counts: Array<{ optionId: string; count: number }>, base: number): ElectionOutcome | DecisionOutcome {
   const countOf = new Map(counts.map((row) => [row.optionId, row.count]))
-  return electionOutcome(round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 })), seatsOf(round), base)
+  // Ballot order: a boolean decision's first option is "A favor".
+  const tallies = round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 }))
+  if (round.category === 'decision') return decisionOutcome(tallies, round.decisionFormat as DecisionFormat, base, round.approvalRule as ThresholdRule)
+  return electionOutcome(tallies, seatsOf(round), base)
+}
+
+/** A boolean decision's ballot, written by the server in this order. */
+const BOOLEAN_DECISION_LABELS = ['A favor', 'En contra'] as const
+
+/** Format and rule are only sent for decisions, so election payloads stay as they were. */
+function decisionFields(round: { category: string; decisionFormat: string | null; approvalRule: string }) {
+  return round.category === 'decision' ? { decisionFormat: round.decisionFormat, approvalRule: round.approvalRule } : {}
 }
 
 /** The vote whose result prepared this runoff. */

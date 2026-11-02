@@ -63,3 +63,29 @@ export function electionOutcome(tallies: Tally[], seats: number, base: number, r
   }
   return { seats: wanted, base, threshold, elected: elected.map((item) => item.optionId), runoff: pool.map((item) => item.optionId), openSeats }
 }
+
+/** A decision: 'boolean' is A favor / En contra; with 'options' the mesa writes the choices. */
+export type DecisionFormat = 'boolean' | 'options'
+
+export type DecisionOutcome = ElectionOutcome & {
+  rule: ThresholdRule
+  /** Boolean: "A favor" reached the rule. Options: one option did, and it is the only one in `elected`. */
+  approved: boolean
+}
+
+/**
+ * Decisions are single choice with no abstention, over the same frozen base as elections.
+ * Boolean: approved when "A favor" (the first tally, in ballot order) reaches the rule; otherwise not
+ * approved, a tie included, and nothing repeats. `elected` stays empty: no option is elected.
+ * Options: the most voted needs the rule; otherwise the vote repeats between the top 2 plus ties,
+ * exactly as an office runoff does.
+ */
+export function decisionOutcome(tallies: Tally[], format: DecisionFormat, base: number, rule: ThresholdRule = 'simple'): DecisionOutcome {
+  if (format === 'boolean') {
+    const threshold = thresholdVotes(base, rule)
+    const approved = (tallies[0]?.count ?? 0) >= threshold
+    return { seats: 1, base, threshold, elected: [], runoff: [], openSeats: 0, rule, approved }
+  }
+  const outcome = electionOutcome(tallies, 1, base, rule)
+  return { ...outcome, rule, approved: outcome.elected.length > 0 }
+}

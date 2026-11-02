@@ -37,6 +37,7 @@ enum RoundStatus {
 enum RoundCategory {
   office
   committee
+  decision
 }
 
 model Organization {
@@ -98,6 +99,10 @@ model Round {
   electionSeats  Int?             @map("election_seats")
   /** Set on a repeated vote: the original round, where the official result is declared. */
   committeeRootRoundId String?    @map("committee_root_round_id") @db.Uuid
+  /** Decision only: 'boolean' (A favor / En contra) or 'options' (written by the mesa; one is chosen). */
+  decisionFormat String?          @map("decision_format")
+  /** Votes needed over the frozen base: 'simple' (more than half) or 'three_quarters' (at least 3/4). */
+  approvalRule   String           @default("simple") @map("approval_rule")
   countingRule   Json            @map("counting_rule")
   status         RoundStatus     @default(draft)
   openedAt       DateTime?       @map("opened_at")
