@@ -1,4 +1,4 @@
-import type { RoundRecord } from './types'
+import type { Outcome, RoundRecord } from './types'
 import type { Cell } from './xlsx'
 
 type Counted = { count: number }
@@ -44,6 +44,36 @@ export function decisionTie(target: RoundRecord) {
   return { tied, count: edge, openSeats, text: `Empate ${where}: ${names}, ${edge} votos cada uno.` }
 }
 
+/** Badge of a candidate in a computed result: elected, or passing to the runoff. */
+export function outcomeTag(outcome: Outcome | undefined, optionId?: string) {
+  if (!outcome || !optionId) return null
+  if (outcome.elected.includes(optionId)) return 'elected' as const
+  return outcome.runoff.includes(optionId) ? 'runoff' as const : null
+}
+
+/** Ballots only hold typed names, so the form follows the first name: "Ana Ruiz" → Electa. */
+export function electedText(name: string) {
+  return /a$/i.test(name.trim().split(/\s+/)[0] || '') ? 'Electa' : 'Electo'
+}
+
+/** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, "2.ª VOTACIÓN" for a repeated annulled vote, nothing for the first. */
+export function voteLabel(target?: { voteNumber?: number; runoff?: boolean } | null) {
+  const number = target?.voteNumber ?? 1
+  if (number <= 1) return ''
+  return `${target?.runoff ? 'DESEMPATE · ' : ''}${number}.ª VOTACIÓN`
+}
+
+/** "Mayoría: 20", or "3 integrantes · Mayoría: 20" for a committee ("2 puestos" in its runoffs). */
+export function majorityText(target: { category?: string; runoff?: boolean }, outcome?: Outcome) {
+  if (!outcome) return ''
+  const majority = `Mayoría: ${outcome.threshold}`
+  if (target.category !== 'committee') return majority
+  const seats = target.runoff
+    ? `${outcome.seats} ${outcome.seats === 1 ? 'puesto' : 'puestos'}`
+    : `${outcome.seats} ${outcome.seats === 1 ? 'integrante' : 'integrantes'}`
+  return `${seats} · ${majority}`
+}
+
 export function formatNames(names: string[]) {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0] || ''
 }
@@ -57,7 +87,7 @@ export function voteCountOf(target: RoundRecord, option: { id: string; label: st
   return (counts.find((result) => result.optionId === option.id) || counts.find((result) => result.label === option.label))?.count ?? 0
 }
 
-export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Declarada electa']
+export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Electa']
 
 export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string, string> = {}) {
   const rows: Cell[][] = [ACTA_SHEET_HEADER]

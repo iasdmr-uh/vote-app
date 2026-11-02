@@ -15,7 +15,8 @@ import { hashCredential, newOpaqueCredential } from '../auth/credentials.js'
 import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
-import type { CreateRoundDto, OfficialResultDto, RepeatRoundDto } from './dtos.js'
+import type { CreateRoundDto, RepeatRoundDto } from './dtos.js'
+import { electionOutcome, type ElectionOutcome } from './results-engine.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const RESUME_CODE_TTL_MS = 10 * 60_000
@@ -23,6 +24,8 @@ const VACUUM_LOCK_TIMEOUT_MS = 5_000
 /** Rounds whose votes are at rest and must be unlinked from their participation receipts. */
 const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
 const PARTICIPANT_ACTOR = 'participant_session'
+/** The official result is computed, never declared by hand (Asamblea, Nov 2026). */
+const RESULTS_ENGINE_ACTOR = 'results_engine'
 const SECRECY_CLEANUP_PENDING = 'No se completó la limpieza que protege el secreto del voto. La operación no se realizó; usa «Reintentar limpieza» en unos segundos.'
 
 @Injectable()
@@ -227,16 +230,18 @@ export class VotingService implements OnModuleInit {
           select: { id: true },
         })
       : null
+    const chain = round ? await this.chainPosition(round) : null
     const openRound = round
-      ? { roundId: round.id, status: round.status, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, options: round.options.map((o) => ({ optionId: o.id, label: o.label })) }
+      ? { roundId: round.id, status: round.status, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...chain, options: round.options.map((o) => ({ optionId: o.id, label: o.label })) }
       : null
-    // Repeated votes belong to the round they repeat; the mesa declares the official result there.
+    // Runoffs belong to the election's first vote, where the official result accumulates.
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
     const results = round?.status === 'published' ? await this.publishedResults(round.id) : undefined
     const officialResult = officialRoundId ? await this.publishedOfficialResult(officialRoundId) : null
     const [recordedCount, eligibleCounts] = results && round
       ? await Promise.all([this.prisma.participation.count({ where: { roundId: round.id } }), this.eligibleCounts(participant.assemblyId)])
       : [undefined, undefined]
+    const outcome = results && round && eligibleCounts ? outcomeOf(round, results, eligibleCounts.get(round.id) ?? 0) : undefined
     return {
       assembly: { id: participant.assembly.id, name: participant.assembly.name, status: participant.assembly.status, completedAt: participant.assembly.completedAt?.toISOString() ?? null },
       assemblyStatus: participant.assembly.status,
@@ -246,6 +251,7 @@ export class VotingService implements OnModuleInit {
       participationStatus: participation ? 'recorded' as const : 'pending' as const,
       ...(results ? { results } : {}),
       ...(recordedCount !== undefined && eligibleCounts && round ? { recordedCount, eligibleCount: eligibleCounts.get(round.id) ?? 0 } : {}),
+      ...(outcome ? { outcome } : {}),
       ...(officialResult ? { officialResult } : {}),
     }
   }
@@ -321,6 +327,10 @@ export class VotingService implements OnModuleInit {
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
     const result = round?.status === 'published' ? await this.publishedResults(round.id) : undefined
     const officialResult = officialRoundId ? await this.publishedOfficialResult(officialRoundId) : null
+    const [chain, ballot] = round
+      ? await Promise.all([this.chainPosition(round), this.prisma.ballotOption.findMany({ where: { roundId: round.id }, orderBy: { order: 'asc' }, select: { id: true } })])
+      : [null, []]
+    const outcome = result && round ? outcomeOf({ ...round, options: ballot }, result, eligibleCounts.get(round.id) ?? participantCount) : undefined
     return {
       assembly: { id: assembly.id, name: assembly.name, status: assembly.status, completedAt: assembly.completedAt?.toISOString() ?? null },
       // The projector runs on the server laptop, whose own address is not the one phones can reach.
@@ -328,8 +338,9 @@ export class VotingService implements OnModuleInit {
       participantCount,
       ...(participants ? { participants } : {}),
       ...(recordedCount !== undefined ? { recordedCount, eligibleCount: eligibleCounts.get(round!.id) ?? participantCount } : {}),
-      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats } : null,
+      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...chain } : null,
       ...(result ? { results: result } : {}),
+      ...(outcome ? { outcome } : {}),
       ...(officialResult ? { officialResult } : {}),
     }
   }
@@ -355,6 +366,11 @@ export class VotingService implements OnModuleInit {
       this.eligibleCounts(assemblyId),
       this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left' }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
     ])
+    const chainIds = new Map<string, string[]>()
+    for (const round of assembly.rounds) {
+      const rootId = round.committeeRootRoundId ?? round.id
+      chainIds.set(rootId, [...(chainIds.get(rootId) ?? []), round.id])
+    }
     const rounds = await Promise.all(assembly.rounds.map(async (round) => ({
       id: round.id,
       title: round.title,
@@ -374,8 +390,20 @@ export class VotingService implements OnModuleInit {
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
       // Only the mesa sees a closed ballot's counts, so it can review them before deciding to publish.
       ...(round.status === 'closed' ? { privateResults: await this.rankedCounts(round.id) } : {}),
+      ...(round.status === 'closed' || round.status === 'published'
+        ? { outcome: outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length) }
+        : {}),
+      voteNumber: (chainIds.get(round.committeeRootRoundId ?? round.id) ?? []).indexOf(round.id) + 1,
+      runoff: runoffSourceOf(round.countingRule) !== null,
+      runoffSourceRoundId: runoffSourceOf(round.countingRule),
       officialResult: await this.moderatorOfficialResult(round.id),
     })))
+    // A runoff prepared on closing waits as a draft: the mesa keeps seeing the vote that produced it
+    // until it opens the runoff.
+    const latest = rounds.at(-1)
+    const currentRound = latest?.status === 'draft' && latest.runoffSourceRoundId
+      ? rounds.find((item) => item.id === latest.runoffSourceRoundId && (item.status === 'closed' || item.status === 'published')) ?? latest
+      : latest
     return {
       id: assembly.id,
       name: assembly.name,
@@ -389,6 +417,7 @@ export class VotingService implements OnModuleInit {
       // The join code is only stored hashed, so the panel builds the QR from this base and the code it kept.
       publicAppUrl: process.env.PUBLIC_APP_URL,
       rounds,
+      currentRound: currentRound ?? null,
     }
   }
 
@@ -645,8 +674,9 @@ export class VotingService implements OnModuleInit {
       if (!assembly || !['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('El ingreso debe estar cerrado antes de abrir una papeleta')
       const otherOpen = await tx.round.findFirst({ where: { assemblyId: round.assembly_id, status: 'open' }, select: { id: true } })
       if (otherOpen) throw new ConflictException('Ya hay una papeleta abierta')
-      // A repetition prepared before the declaration must not open while that declaration is shown as official.
-      if (round.committee_root_round_id) await this.assertNoOfficialResult(tx, round.committee_root_round_id, 'La papeleta original ya tiene un resultado oficial; retíralo antes de abrir esta votación')
+      if (round.committee_root_round_id && await this.openSeatsOf(tx, round.committee_root_round_id) === 0) {
+        throw new ConflictException('Todos los puestos de esta elección ya están ocupados')
+      }
       const updated = await tx.round.update({ where: { id: round.id }, data: { status: 'open', openedAt: new Date() }, select: { id: true, assemblyId: true, title: true } })
       if (assembly.status === 'lobby_closed') await tx.assembly.update({ where: { id: round.assembly_id }, data: { status: 'in_progress' } })
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId: round.id, actorRef: MODERATOR_ACTOR, action: 'round.opened' } })
@@ -672,14 +702,15 @@ export class VotingService implements OnModuleInit {
       await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${current.assembly_id}::uuid FOR UPDATE`
       const assembly = await tx.assembly.findUnique({ where: { id: current.assembly_id }, select: { status: true } })
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
-      if (current.status === 'closed' || current.status === 'published') return { id: current.id, assemblyId: current.assembly_id, status: current.status, changed: false }
+      if (current.status === 'closed' || current.status === 'published') return { id: current.id, assemblyId: current.assembly_id, status: current.status, changed: false, runoffRoundId: null }
       if (current.status !== 'open') throw new ConflictException('Solo se puede cerrar una papeleta abierta')
       const updated = await tx.round.update({ where: { id: roundId }, data: { status: 'closed', closedAt: new Date() }, select: { id: true, assemblyId: true, status: true } })
       await tx.auditEvent.create({ data: { assemblyId: current.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.closed' } })
       await this.freezeEligibleCount(tx, current.assembly_id, roundId)
-      // Closing never elects anyone: the mesa reviews the ranking and declares the result, or repeats the vote.
       await this.unlinkRoundVotes(tx, roundId)
-      return { ...updated, changed: true }
+      // Closing computes the result: the elected join the official result and open seats get a runoff draft.
+      const runoffRoundId = await this.settleElection(tx, roundId)
+      return { ...updated, changed: true, runoffRoundId }
     })
     // Also runs when the round was already closed, so repeating "close" retries a failed cleanup.
     let secrecyCleanupPending = false
@@ -699,6 +730,7 @@ export class VotingService implements OnModuleInit {
       this.realtime.roundState(round.assemblyId, payload)
       if (round.status === 'closed') this.realtime.roundClosed(round.assemblyId, roundId)
       this.realtime.participationCount(round.assemblyId, { roundId, recorded, eligible })
+      if (round.runoffRoundId) await this.announceRound(round.runoffRoundId)
     }
     return {
       roundId, status: round.status, participation: { recorded, eligible },
@@ -707,7 +739,7 @@ export class VotingService implements OnModuleInit {
   }
 
   async publishRound(roundId: string) {
-    const current = await this.prisma.round.findUnique({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, title: true } })
+    const current = await this.prisma.round.findUnique({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, title: true, committeeRootRoundId: true } })
     if (!current) throw new NotFoundException('Ronda no encontrada')
     if (current.status !== 'closed' && current.status !== 'published') throw new ConflictException('Cierra la papeleta antes de publicar resultados')
     let publishedNow = false
@@ -724,7 +756,10 @@ export class VotingService implements OnModuleInit {
         if (latest.status !== 'closed') throw new ConflictException('La papeleta debe estar cerrada para publicar')
         const stillLinked = await tx.round.count({ where: { assemblyId: current.assemblyId, status: { in: [...SETTLED_ROUND_STATUSES] }, votesUnlinkedAt: null } })
         if (stillLinked) throw new ServiceUnavailableException(SECRECY_CLEANUP_PENDING)
-        await tx.round.update({ where: { id: roundId }, data: { status: 'published', publishedAt: new Date() } })
+        const publishedAt = new Date()
+        await tx.round.update({ where: { id: roundId }, data: { status: 'published', publishedAt } })
+        // Phones and projector show the elected of every published vote of the chain.
+        await tx.officialResult.updateMany({ where: { roundId: current.committeeRootRoundId ?? roundId }, data: { publishedAt } })
         await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.results_published' } })
         publishedNow = true
       })
@@ -735,86 +770,6 @@ export class VotingService implements OnModuleInit {
     this.realtime.roundState(current.assemblyId, { roundId, status: 'published', title: current.title })
     this.realtime.resultsPublished(current.assemblyId, payload)
     return { roundId, status: 'published', results }
-  }
-
-  async declareOfficialResult(roundId: string, input: OfficialResultDto) {
-    const optionIds = [...new Set(input.optionIds)]
-    if (optionIds.length !== input.optionIds.length) throw new UnprocessableEntityException('No repitas opciones en el resultado declarado')
-    const note = input.note?.trim() || null
-    const declared = await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; category: string; member_count: number | null }>>`
-        SELECT id, assembly_id, status, category, member_count FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
-      `
-      const round = rows[0]
-      if (!round) throw new NotFoundException('Ronda no encontrada')
-      await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${round.assembly_id}::uuid FOR UPDATE`
-      await this.assertDecidable(tx, roundId)
-      if (round.category === 'committee' && round.member_count !== null && optionIds.length !== round.member_count) {
-        throw new UnprocessableEntityException(`Selecciona exactamente ${round.member_count} integrantes para la comisión`)
-      }
-      const options = await tx.ballotOption.findMany({ where: { roundId, id: { in: optionIds } }, select: { id: true, label: true } })
-      if (options.length !== optionIds.length) throw new UnprocessableEntityException('Todas las opciones declaradas deben pertenecer a esta papeleta')
-      const current = await tx.officialResult.findUnique({
-        where: { roundId }, include: { options: { include: { option: { select: { label: true } } } } },
-      })
-      const now = new Date()
-      const saved = current
-        ? await tx.officialResult.update({
-            where: { id: current.id },
-            data: {
-              note, actorRef: MODERATOR_ACTOR, declaredAt: now, publishedAt: null,
-              options: { deleteMany: {}, create: optionIds.map((optionId) => ({ optionId })) },
-            },
-            include: { options: { include: { option: { select: { label: true } } } } },
-          })
-        : await tx.officialResult.create({
-            data: { roundId, note, actorRef: MODERATOR_ACTOR, declaredAt: now, options: { create: optionIds.map((optionId) => ({ optionId })) } },
-            include: { options: { include: { option: { select: { label: true } } } } },
-          })
-      await tx.auditEvent.create({
-        data: {
-          assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR,
-          action: current ? 'round.official_result.corrected' : 'round.official_result.declared',
-          occurredAt: now,
-          metadata: {
-            previous: current ? { optionLabels: current.options.map((item) => item.option.label), note: current.note } : null,
-            declared: { optionLabels: options.map((option) => option.label), note },
-          },
-        },
-      })
-      return saved
-    })
-    const round = await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { assemblyId: true, status: true, title: true } })
-    this.realtime.roundState(round.assemblyId, { roundId, status: round.status, title: round.title })
-    return this.serializeOfficialResult(declared)
-  }
-
-  async publishOfficialResult(roundId: string) {
-    const published = await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ assembly_id: string; status: string }>>`
-        SELECT assembly_id, status FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
-      `
-      const round = rows[0]
-      if (!round) throw new NotFoundException('Ronda no encontrada')
-      await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${round.assembly_id}::uuid FOR UPDATE`
-      const publishedInChain = await tx.round.count({ where: { OR: [{ id: roundId }, { committeeRootRoundId: roundId }], status: 'published' } })
-      if (!publishedInChain) throw new ConflictException('Publica primero el conteo de la papeleta o de su repetición')
-      const existing = await tx.officialResult.findUnique({ where: { roundId } })
-      if (!existing) throw new ConflictException('Registra primero el resultado oficial de la mesa')
-      if (existing.publishedAt) return tx.officialResult.findUniqueOrThrow({
-        where: { roundId }, include: { options: { include: { option: { select: { label: true } } } } },
-      })
-      const now = new Date()
-      const result = await tx.officialResult.update({
-        where: { roundId }, data: { publishedAt: now },
-        include: { options: { include: { option: { select: { label: true } } } } },
-      })
-      await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.official_result.published', occurredAt: now } })
-      return result
-    })
-    const round = await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { assemblyId: true, status: true, title: true } })
-    this.realtime.roundState(round.assemblyId, { roundId, status: round.status, title: round.title })
-    return this.serializeOfficialResult(published)
   }
 
   /**
@@ -833,11 +788,20 @@ export class VotingService implements OnModuleInit {
       const assembly = await tx.assembly.findUnique({ where: { id: round.assembly_id }, select: { status: true } })
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
       if (round.status === 'annulled') return { assemblyId: round.assembly_id, title: round.title, previousStatus: round.status, changed: false }
-      // A repetition's result is declared on the original ballot, so that is where the declaration lives.
-      // A draft has no votes, so discarding it cannot affect the declaration.
-      if (round.status !== 'draft') await this.assertNoOfficialResult(tx, round.committee_root_round_id ?? round.id, 'Ya hay un resultado oficial registrado con esta votación; retíralo antes de anularla')
-      if (await tx.round.count({ where: { committeeRootRoundId: roundId, status: 'open' } })) {
-        throw new ConflictException('Cierra primero la repetición abierta de esta papeleta')
+      // Only the latest vote of an election can be annulled: a later vote was prepared from its result.
+      const rootId = round.committee_root_round_id ?? round.id
+      const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true, countingRule: true } })
+      const later = chain.slice(chain.findIndex((item) => item.id === roundId) + 1)
+      const pendingRunoffs = later.filter((item) => item.status === 'draft' && runoffSourceOf(item.countingRule) === roundId)
+      if (later.some((item) => item.status !== 'annulled' && !pendingRunoffs.includes(item))) {
+        throw new ConflictException('Anula primero la votación posterior de esta elección')
+      }
+      // Whoever this vote elected leaves the official result, and the runoff it prepared is discarded.
+      await tx.officialResultOption.deleteMany({ where: { officialResult: { roundId: rootId }, option: { roundId } } })
+      await tx.officialResult.deleteMany({ where: { roundId: rootId, options: { none: {} } } })
+      if (pendingRunoffs.length) {
+        await tx.round.deleteMany({ where: { id: { in: pendingRunoffs.map((item) => item.id) } } })
+        await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.runoff_discarded', metadata: { runoffRoundIds: pendingRunoffs.map((item) => item.id) } } })
       }
       await tx.round.update({
         where: { id: roundId },
@@ -863,9 +827,8 @@ export class VotingService implements OnModuleInit {
   }
 
   /**
-   * Prepares a new vote among the options the mesa selected from a closed, published or annulled ballot,
-   * for example the most voted candidates. The new round is linked to the original one, where the mesa
-   * declares the official result once it decides.
+   * Prepares the same vote again after it was annulled (for example, a misspelled candidate). Results are
+   * automatic, so this is the only manual repetition: a runoff is prepared by closing the vote.
    */
   async repeatRound(roundId: string, input: RepeatRoundDto) {
     const optionIds = [...new Set(input.optionIds)]
@@ -877,11 +840,12 @@ export class VotingService implements OnModuleInit {
       const assembly = await tx.assembly.findUnique({ where: { id: source.assemblyId }, select: { status: true } })
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten nuevas papeletas')
       if (!['lobby_closed', 'in_progress'].includes(assembly?.status ?? '')) throw new ConflictException('Cierra el ingreso antes de preparar una papeleta')
-      if (!['closed', 'published', 'annulled'].includes(source.status)) throw new ConflictException('Solo se puede repetir una papeleta cerrada, publicada o anulada')
-      await this.assertNoOfficialResult(tx, source.committeeRootRoundId ?? source.id, 'La papeleta original ya tiene un resultado oficial; retíralo antes de repetir la votación')
+      if (source.status !== 'annulled') throw new ConflictException('Solo se puede repetir una papeleta anulada; los desempates se preparan solos')
+      const rootId = source.committeeRootRoundId ?? source.id
+      const later = await tx.round.count({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }], createdAt: { gt: source.createdAt }, status: { not: 'annulled' } } })
+      if (later) throw new ConflictException('Esta elección ya tiene una votación posterior')
       const selected = source.options.filter((option) => optionIds.includes(option.id))
       if (selected.length !== optionIds.length) throw new UnprocessableEntityException('Todas las opciones deben pertenecer a la papeleta original')
-      const rootId = source.committeeRootRoundId ?? source.id
       const root = source.committeeRootRoundId ? await tx.round.findUniqueOrThrow({ where: { id: rootId }, select: { title: true } }) : source
       const seats = source.category === 'committee' ? (input.seats ?? Math.min(source.electionSeats ?? source.memberCount ?? selected.length, selected.length)) : null
       if (seats !== null && (seats < 1 || seats > selected.length)) throw new UnprocessableEntityException(`Indica entre 1 y ${selected.length} cupos para esta votación`)
@@ -889,13 +853,13 @@ export class VotingService implements OnModuleInit {
       const round = await tx.round.create({
         data: {
           assemblyId: source.assemblyId,
-          title: input.title?.trim() || `${root.title} — nueva votación`,
+          title: input.title?.trim() || root.title,
           format: source.format,
           category: source.category,
           memberCount: source.memberCount,
           committeeRootRoundId: rootId,
           electionSeats: seats,
-          countingRule: { kind: 'count_only', reason: 'repeat' },
+          countingRule: { kind: 'count_only', reason: 'repeat', sourceRoundId: source.id },
           options: { create: selected.map((option, order) => ({ label: option.label, order })) },
         },
         include: { options: { orderBy: { order: 'asc' } } },
@@ -906,52 +870,75 @@ export class VotingService implements OnModuleInit {
     return { id: created.id, title: created.title, status: created.status, committeeRootRoundId: created.committeeRootRoundId, electionSeats: created.electionSeats, options: created.options }
   }
 
-  /** Removes the mesa's declaration (published or not) so the ballot can be repeated or annulled; the audit keeps it. */
-  async withdrawOfficialResult(roundId: string) {
-    const withdrawn = await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ assembly_id: string; title: string; status: string }>>`
-        SELECT assembly_id, title, status FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
-      `
-      const round = rows[0]
-      if (!round) throw new NotFoundException('Ronda no encontrada')
-      await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${round.assembly_id}::uuid FOR UPDATE`
-      const assembly = await tx.assembly.findUnique({ where: { id: round.assembly_id }, select: { status: true } })
-      if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus resultados')
-      const current = await tx.officialResult.findUnique({ where: { roundId }, include: { options: { include: { option: { select: { label: true } } } } } })
-      if (!current) throw new NotFoundException('Esta papeleta no tiene un resultado oficial registrado')
-      await tx.officialResult.delete({ where: { roundId } })
-      await tx.auditEvent.create({ data: {
-        assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.official_result.withdrawn',
-        metadata: { previous: { optionLabels: current.options.map((item) => item.option.label), note: current.note, publishedAt: current.publishedAt?.toISOString() ?? null } },
-      } })
-      return round
-    })
-    this.realtime.roundState(withdrawn.assembly_id, { roundId, status: withdrawn.status as RoundStatus, title: withdrawn.title })
-    return { roundId, withdrawn: true }
+  /** Which vote of its election a round is (1 for the first) and whether it is a runoff. */
+  private async chainPosition(round: { id: string; committeeRootRoundId: string | null; countingRule: unknown }) {
+    const rootId = round.committeeRootRoundId ?? round.id
+    const chain = await this.prisma.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true } })
+    return { voteNumber: chain.findIndex((item) => item.id === round.id) + 1, runoff: runoffSourceOf(round.countingRule) !== null }
   }
 
-  private async assertNoOfficialResult(tx: Prisma.TransactionClient, rootRoundId: string, message: string) {
-    if (await tx.officialResult.count({ where: { roundId: rootRoundId } })) throw new ConflictException(message)
-  }
-
-  /** The official result is declared on the original ballot once it, or one of its repetitions, has been counted. */
-  private async assertDecidable(tx: Prisma.TransactionClient, roundId: string) {
-    const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { committeeRootRoundId: true } })
-    if (round.committeeRootRoundId) throw new UnprocessableEntityException('Registra el resultado oficial en la papeleta original, no en su repetición')
-    const chain = await tx.round.findMany({ where: { OR: [{ id: roundId }, { committeeRootRoundId: roundId }] }, select: { status: true } })
-    if (chain.some((item) => item.status === 'open')) throw new ConflictException('Cierra la votación abierta antes de registrar el resultado oficial')
-    if (!chain.some((item) => item.status === 'closed' || item.status === 'published')) {
-      throw new ConflictException('Cierra la papeleta antes de registrar el resultado oficial')
+  /**
+   * Runs the results engine on a vote that just closed. The elected join the official result of the
+   * election (kept on its first vote); if seats remain open, the runoff is prepared as a draft among
+   * the candidates that pass, for exactly the open seats. Returns the runoff's id, if any.
+   */
+  private async settleElection(tx: Prisma.TransactionClient, roundId: string) {
+    const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, include: { options: { orderBy: { order: 'asc' } } } })
+    const counts = await tx.anonymousVote.groupBy({ by: ['optionId'], where: { roundId }, _count: { _all: true } })
+    const outcome = outcomeOf(round, counts.map((row) => ({ optionId: row.optionId, count: row._count._all })), round.eligibleCount ?? 0)
+    const rootId = round.committeeRootRoundId ?? round.id
+    const labelOf = new Map(round.options.map((option) => [option.id, option.label]))
+    const now = new Date()
+    if (outcome.elected.length) {
+      await tx.officialResult.upsert({
+        where: { roundId: rootId },
+        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: outcome.elected.map((optionId) => ({ optionId })) } },
+        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: outcome.elected.map((optionId) => ({ optionId })) } },
+      })
     }
+    const rootTitle = round.committeeRootRoundId ? (await tx.round.findUniqueOrThrow({ where: { id: rootId }, select: { title: true } })).title : round.title
+    const runoff = outcome.openSeats > 0 && outcome.runoff.length
+      ? await tx.round.create({
+          data: {
+            assemblyId: round.assemblyId,
+            title: rootTitle,
+            format: round.format,
+            category: round.category,
+            memberCount: round.memberCount,
+            committeeRootRoundId: rootId,
+            electionSeats: round.category === 'committee' ? outcome.openSeats : null,
+            countingRule: { kind: 'count_only', reason: 'runoff', sourceRoundId: round.id },
+            // Ballot order, not rank order, so the runoff ballot does not favor the most voted.
+            options: { create: round.options.filter((option) => outcome.runoff.includes(option.id)).map((option, order) => ({ label: option.label, order })) },
+          },
+          select: { id: true },
+        })
+      : null
+    await tx.auditEvent.create({ data: {
+      assemblyId: round.assemblyId, roundId, actorRef: RESULTS_ENGINE_ACTOR, action: 'round.result_computed', occurredAt: now,
+      metadata: {
+        base: outcome.base, threshold: outcome.threshold, seats: outcome.seats, openSeats: outcome.openSeats,
+        electedLabels: outcome.elected.map((id) => labelOf.get(id) ?? id), runoffLabels: outcome.runoff.map((id) => labelOf.get(id) ?? id),
+        runoffRoundId: runoff?.id ?? null,
+      },
+    } })
+    return runoff?.id ?? null
+  }
+
+  /** Seats of the election still open: its size minus everyone elected in any of its votes. */
+  private async openSeatsOf(tx: Prisma.TransactionClient, rootRoundId: string) {
+    const root = await tx.round.findUniqueOrThrow({ where: { id: rootRoundId }, select: { category: true, memberCount: true, electionSeats: true } })
+    const elected = await tx.officialResultOption.count({ where: { officialResult: { roundId: rootRoundId } } })
+    return Math.max(0, seatsOf(root) - elected)
   }
 
   private serializeOfficialResult(result: {
     roundId: string; note: string | null; actorRef: string; declaredAt: Date; publishedAt: Date | null;
-    options: Array<{ optionId: string; option: { label: string } }>
+    options: Array<{ optionId: string; option: { label: string; roundId: string } }>
   }) {
     return {
       roundId: result.roundId,
-      elected: result.options.map(({ optionId, option }) => ({ optionId, label: option.label })),
+      elected: result.options.map(({ optionId, option }) => ({ optionId, label: option.label, roundId: option.roundId })),
       note: result.note,
       declaredBy: result.actorRef,
       declaredAt: result.declaredAt.toISOString(),
@@ -961,19 +948,20 @@ export class VotingService implements OnModuleInit {
 
   private async moderatorOfficialResult(roundId: string) {
     const result = await this.prisma.officialResult.findUnique({
-      where: { roundId }, include: { options: { include: { option: { select: { label: true } } } } },
+      where: { roundId }, include: { options: { include: { option: { select: { label: true, roundId: true } } } } },
     })
     return result ? this.serializeOfficialResult(result) : null
   }
 
+  /** The elected of every published vote of the election; a closed, unpublished vote stays with the mesa. */
   private async publishedOfficialResult(roundId: string) {
-    const result = await this.prisma.officialResult.findFirst({
-      where: { roundId, publishedAt: { not: null } },
-      include: { options: { include: { option: { select: { label: true } } } } },
+    const result = await this.prisma.officialResult.findUnique({
+      where: { roundId },
+      include: { options: { where: { option: { round: { status: 'published' } } }, include: { option: { select: { label: true, roundId: true } } } } },
     })
-    if (!result) return null
+    if (!result?.options.length) return null
     const serialized = this.serializeOfficialResult(result)
-    return { elected: serialized.elected, note: serialized.note, declaredAt: serialized.declaredAt }
+    return { elected: serialized.elected.map(({ optionId, label }) => ({ optionId, label })), note: serialized.note, declaredAt: serialized.declaredAt }
   }
 
   /**
@@ -1114,4 +1102,20 @@ export class VotingService implements OnModuleInit {
       .map((option) => ({ optionId: option.id, label: option.label, count: countByOption.get(option.id) ?? 0 }))
       .sort((a, b) => b.count - a.count)
   }
+}
+
+/** Seats one vote fills: an office fills one; a runoff asks for the seats still open. */
+function seatsOf(round: { category: string; memberCount: number | null; electionSeats: number | null }) {
+  return round.category === 'committee' ? Math.max(1, round.electionSeats ?? round.memberCount ?? 1) : 1
+}
+
+function outcomeOf(round: { category: string; memberCount: number | null; electionSeats: number | null; options: Array<{ id: string }> }, counts: Array<{ optionId: string; count: number }>, base: number): ElectionOutcome {
+  const countOf = new Map(counts.map((row) => [row.optionId, row.count]))
+  return electionOutcome(round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 })), seatsOf(round), base)
+}
+
+/** The vote whose result prepared this runoff. */
+function runoffSourceOf(countingRule: unknown) {
+  const rule = countingRule as { reason?: unknown; sourceRoundId?: unknown } | null
+  return rule?.reason === 'runoff' && typeof rule.sourceRoundId === 'string' ? rule.sourceRoundId : null
 }

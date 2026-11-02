@@ -170,7 +170,7 @@ test('en una comisión se puede marcar menos que el máximo y la papeleta no ofr
   expect(voted).toEqual({ optionIds: ['candidate-b'], confirmation: true })
 })
 
-test('moderador anula una papeleta con motivo y prepara una nueva votación con los más votados', async ({ page }) => {
+test('moderador anula una papeleta con motivo y la repite con las mismas opciones; el acta marca el desempate calculado', async ({ page }) => {
   let annulled = false
   let repeated: Record<string, unknown> | null = null
   await page.addInitScript(() => {
@@ -185,8 +185,9 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress',
         rounds: [
           { id: 'first', title: 'Presidencia', status: 'published', participationCount: 9, eligibleCount: 10, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gama' }],
-            results: [{ optionId: 'b', label: 'Beta', count: 4 }, { optionId: 'a', label: 'Alfa', count: 4 }, { optionId: 'c', label: 'Gama', count: 1 }], officialResult: null },
-          { id: 'second', title: 'Secretaría', status: annulled ? 'annulled' : 'open', annulReason: annulled ? 'Nombre mal escrito' : null, options: [{ id: 'x', label: 'Rosa' }], officialResult: null },
+            results: [{ optionId: 'b', label: 'Beta', count: 4 }, { optionId: 'a', label: 'Alfa', count: 4 }, { optionId: 'c', label: 'Gama', count: 1 }], officialResult: null,
+            outcome: { seats: 1, base: 10, threshold: 6, elected: [], runoff: ['b', 'a'], openSeats: 1 } },
+          { id: 'second', title: 'Secretaría', status: annulled ? 'annulled' : 'open', annulReason: annulled ? 'Nombre mal escrito' : null, options: [{ id: 'x', label: 'Rosa' }, { id: 'y', label: 'Pedro' }], officialResult: null },
         ],
       } })
       return
@@ -197,7 +198,7 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
       await route.fulfill({ status: 201, json: { roundId: 'second', status: 'annulled' } })
       return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/first/repeat')) {
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/second/repeat')) {
       repeated = request.postDataJSON()
       await route.fulfill({ status: 201, json: { id: 'third' } })
       return
@@ -208,10 +209,12 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await page.goto('/moderator')
   const ranking = page.locator('.official-round').first().locator('.ranked-rows > li')
   await expect(ranking).toHaveCount(3)
-  await expect(ranking.nth(0)).toHaveText(/^1\s*Beta\s*Empate\s*4 votos\s*40 %/)
-  await expect(ranking.nth(1)).toHaveText(/^2\s*Alfa\s*Empate\s*4 votos\s*40 %/)
+  await expect(ranking.nth(0)).toHaveText(/^1\s*Beta\s*Desempate\s*4 votos\s*40 %/)
+  await expect(ranking.nth(1)).toHaveText(/^2\s*Alfa\s*Desempate\s*4 votos\s*40 %/)
   await expect(ranking.nth(2)).toHaveText(/^3\s*Gama\s*1 voto\s*10 %/)
   await expect(page.locator('.official-round').first()).toContainText('9 de 10 votaron')
+  await expect(page.locator('.official-round').first()).toContainText('Mayoría: 6')
+  await expect(page.getByRole('button', { name: /Declarar|Repetir votación…/ })).toHaveCount(0)
   await expect(page.locator('.official-round').first()).not.toContainText('Voto nulo')
 
   await page.getByRole('button', { name: 'Anular votación' }).click()
@@ -223,18 +226,10 @@ test('moderador anula una papeleta con motivo y prepara una nueva votación con 
   await expect(page.locator('.annulled-summary')).toContainText('PAPELETA ANULADA')
   await expect(page.locator('.annulled-summary')).toContainText('Nombre mal escrito')
 
-  await page.locator('.official-round').first().getByRole('button', { name: 'Repetir votación…' }).click()
-  const repeatDialog = page.getByRole('dialog')
-  await expect(repeatDialog).toContainText('Presidencia — 2.ª votación')
-  const repeatOptions = repeatDialog.getByRole('group', { name: '¿Quiénes pasan a la nueva votación?' })
-  await expect(repeatDialog).not.toContainText('Voto nulo')
-  // The tied leaders come preselected (S05).
-  await expect(repeatOptions.getByLabel('Beta')).toBeChecked()
-  await expect(repeatOptions.getByLabel('Alfa')).toBeChecked()
-  await expect(repeatOptions.getByLabel('Gama')).not.toBeChecked()
-  await repeatDialog.getByRole('button', { name: 'Preparar 2.ª votación' }).click()
+  await page.locator('.annulled-summary').getByRole('button', { name: 'Repetir con las mismas opciones' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Repetir votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
-  expect(repeated).toEqual({ optionIds: ['b', 'a'] })
+  expect(repeated).toEqual({ optionIds: ['x', 'y'] })
 })
 
 test('el teléfono muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
@@ -566,82 +561,87 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
 })
 
-test('moderador declara el resultado desde el acta con el diálogo y puede corregirlo o retirarlo', async ({ page }) => {
-  let officialResult: Record<string, unknown> | null = null
-  let publishCount = 0
-  let withdrawCount = 0
+test('la mesa ve el resultado calculado de una comisión y abre el desempate por los puestos que faltan (M21)', async ({ page }) => {
+  let opened = ''
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
+  const labels = ['Ana Ruiz', 'Juan Mora', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez']
+  const counts = [30, 19, 17, 17, 14, 11]
+  const first = {
+    id: 'finanzas', title: 'Comisión de Finanzas', status: 'published', category: 'committee', memberCount: 3, electionSeats: 3, voteNumber: 1, runoff: false,
+    participationCount: 36, eligibleCount: 38, options: labels.map((label, index) => ({ id: `o${index}`, label })),
+    results: labels.map((label, index) => ({ optionId: `o${index}`, label, count: counts[index] })),
+    outcome: { seats: 3, base: 38, threshold: 20, elected: ['o0'], runoff: ['o1', 'o2', 'o3'], openSeats: 2 },
+    officialResult: { roundId: 'finanzas', elected: [{ optionId: 'o0', label: 'Ana Ruiz' }], note: null, declaredBy: 'results_engine', declaredAt: '2026-11-02T10:00:00.000Z', publishedAt: '2026-11-02T10:01:00.000Z' },
+  }
+  const runoff = {
+    id: 'finanzas-2', title: 'Comisión de Finanzas', status: 'draft', category: 'committee', memberCount: 3, electionSeats: 2, voteNumber: 2, runoff: true,
+    committeeRootRoundId: 'finanzas', runoffSourceRoundId: 'finanzas', options: labels.slice(1, 4).map((label, index) => ({ id: `r${index}`, label })), officialResult: null,
+  }
   await page.route(api, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
-        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress',
-        rounds: [{
-          id: 'synthetic-round', title: 'Elección de prueba', status: 'published', participationCount: 3, eligibleCount: 4,
-          options: [{ id: 'a', label: 'Candidata Alfa' }, { id: 'b', label: 'Candidato Beta' }],
-          results: [{ optionId: 'a', label: 'Candidata Alfa', count: 2 }, { optionId: 'b', label: 'Candidato Beta', count: 1 }],
-          officialResult,
-        }],
-      } })
+      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [first, runoff], currentRound: first } })
       return
     }
-    if (request.method() === 'PUT' && url.pathname.endsWith('/moderator/rounds/synthetic-round/official-result')) {
-      expect(request.postDataJSON()).toEqual({ optionIds: ['b'], note: 'Decisión de la Asamblea' })
-      officialResult = {
-        elected: [{ optionId: 'b', label: 'Candidato Beta' }], note: 'Decisión de la Asamblea',
-        declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-13T10:00:00.000Z', publishedAt: null,
-      }
-      await route.fulfill({ status: 200, json: officialResult })
+    if (request.method() === 'POST' && url.pathname.endsWith('/open')) {
+      opened = url.pathname
+      await route.fulfill({ status: 201, json: { roundId: 'finanzas-2', status: 'open' } })
       return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/synthetic-round/official-result/publish')) {
-      publishCount += 1
-      officialResult = { ...officialResult, publishedAt: '2026-10-13T10:05:00.000Z' }
-      await route.fulfill({ status: 200, json: officialResult })
-      return
-    }
-    if (request.method() === 'DELETE' && url.pathname.endsWith('/moderator/rounds/synthetic-round/official-result')) {
-      withdrawCount += 1
-      officialResult = null
-      await route.fulfill({ status: 200, json: { roundId: 'synthetic-round', withdrawn: true } })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for official result test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route for computed result test' } })
   })
 
   await page.goto('/moderator')
-  const acta = page.locator('#acta-de-resultados')
-  await expect(acta.getByRole('heading', { name: 'Declaraciones oficiales de la mesa' })).toBeVisible()
-  await expect(acta.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
-  await expect(acta.locator('.ranked-rows > li').first()).toHaveText(/^1\s*Candidata Alfa\s*2 votos\s*50 %/)
-  // The acta stays short: declaring happens in the dialog, not in a form per round.
+  const ballot = page.locator('.ballot-card')
+  await expect(ballot).toContainText('CONTEO PUBLICADO')
+  await expect(ballot.locator('.majority-chip')).toHaveText('3 integrantes · Mayoría: 20')
+  const rows = ballot.locator('.ranked-rows > li')
+  await expect(rows.nth(0)).toHaveText(/^1\s*Ana Ruiz\s*Electa\s*30 votos\s*79 %/)
+  await expect(rows.nth(1)).toHaveText(/^2\s*Juan Mora\s*Desempate\s*19 votos/)
+  await expect(rows.nth(3)).toHaveText(/^4\s*Pedro Vargas\s*Desempate\s*17 votos/)
+  await expect(rows.nth(4)).toHaveText(/^5\s*Sofía Méndez\s*14 votos/)
+  await expect(page.getByRole('button', { name: /Declarar|Repetir votación|Retirar declaración/ })).toHaveCount(0)
   await expect(page.getByRole('group', { name: '¿Quién queda electo?' })).toHaveCount(0)
-  await acta.getByRole('button', { name: 'Declarar resultado…' }).click()
-  await page.getByRole('dialog').getByRole('group', { name: '¿Quién queda electo?' }).getByLabel('Candidato Beta').check()
-  await page.getByRole('dialog').getByLabel('Observación (opcional)').fill('Decisión de la Asamblea')
-  await page.getByRole('dialog').getByRole('button', { name: 'Declarar resultado oficial' }).click()
-  // The count is already public, so the declaration goes to the projector at once, as the dialog promises.
-  await expect(acta.getByText('Declaración publicada')).toBeVisible()
-  await expect(acta.locator('.declared-result')).toContainText('Candidato Beta')
-  await expect(acta.getByText('Observación: Decisión de la Asamblea')).toBeVisible()
-  await expect(page.locator('.ballot-card')).toContainText('Declarado: Candidato Beta')
-  await expect(page.getByRole('button', { name: 'Declarar resultado…' })).toHaveCount(0)
-  expect(publishCount).toBe(1)
+  const acta = page.locator('#acta-de-resultados')
+  await expect(acta.locator('.declared-result')).toContainText('Ana Ruiz')
+  await expect(acta).toContainText('DESEMPATE · 2.ª VOTACIÓN')
 
-  await acta.getByRole('button', { name: 'Corregir declaración…' }).click()
-  await expect(page.getByRole('dialog').getByLabel('Candidato Beta')).toBeChecked()
-  await expect(page.getByRole('dialog').getByLabel('Observación (opcional)')).toHaveValue('Decisión de la Asamblea')
-  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
+  await ballot.getByRole('button', { name: 'Abrir desempate · 2 puestos' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Abrir votación' }).click()
+  await expect.poll(() => opened).toContain('/moderator/rounds/finanzas-2/open')
+})
 
-  await acta.getByRole('button', { name: 'Retirar declaración' }).click()
-  await expect(page.getByRole('dialog')).toContainText('¿Retirar la declaración oficial?')
-  await page.getByRole('dialog').getByRole('button', { name: 'Retirar declaración' }).click()
-  await expect(page.getByText('La mesa aún no ha registrado una declaración oficial.')).toBeVisible()
-  expect(withdrawCount).toBe(1)
+test('cargo sin mayoría: chip de mayoría, desempate entre los dos primeros y botón "Abrir desempate" (M20)', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  const first = {
+    id: 'presidencia', title: 'Presidencia', status: 'published', category: 'office', voteNumber: 1, runoff: false, participationCount: 36, eligibleCount: 38,
+    options: [{ id: 'm', label: 'María López' }, { id: 'c', label: 'Carlos Gómez' }, { id: 'r', label: 'Rosa Díaz' }],
+    results: [{ optionId: 'm', label: 'María López', count: 18 }, { optionId: 'c', label: 'Carlos Gómez', count: 12 }, { optionId: 'r', label: 'Rosa Díaz', count: 6 }],
+    outcome: { seats: 1, base: 38, threshold: 20, elected: [], runoff: ['m', 'c'], openSeats: 1 }, officialResult: null,
+  }
+  const runoff = { id: 'presidencia-2', title: 'Presidencia', status: 'draft', category: 'office', voteNumber: 2, runoff: true, committeeRootRoundId: 'presidencia', runoffSourceRoundId: 'presidencia', options: [{ id: 'm2', label: 'María López' }, { id: 'c2', label: 'Carlos Gómez' }], officialResult: null }
+  await page.route(api, async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [first, runoff], currentRound: first } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/moderator')
+  const ballot = page.locator('.ballot-card')
+  await expect(ballot.locator('.majority-chip')).toHaveText('Mayoría: 20')
+  await expect(ballot.locator('.ranked-rows > li .badge-warning')).toHaveCount(2)
+  await expect(ballot.locator('.ranked-rows > li').nth(2)).not.toContainText('Desempate')
+  await expect(ballot.getByRole('button', { name: 'Abrir desempate', exact: true })).toBeVisible()
+  await expect(page.locator('.workflow-steps li.current')).toContainText('Resultado')
 })
 
 test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de consulta', async ({ page }) => {
@@ -769,7 +769,7 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await page.emulateMedia({ media: 'print' })
   await expect(acta).toBeVisible()
   await expect(acta.getByRole('heading', { name: 'Acta de resultados' })).toBeVisible()
-  await expect(acta.getByText('Declarado electo por la mesa:')).toBeVisible()
+  await expect(acta.getByText('Electos:')).toBeVisible()
   await expect(acta.getByText('Anulada por la mesa: Nombre mal escrito. Sus votos no se contaron.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeHidden()
   await page.emulateMedia({ media: 'screen' })
@@ -1205,10 +1205,7 @@ test('moderador ve la limpieza pendiente aunque se actualice el estado y puede r
   expect(cleanupRequests).toBe(1)
 })
 
-test('el conteo publicado separa repetir la votación de declarar el resultado (M07b)', async ({ page }) => {
-  let officialBody: unknown = null
-  let published = false
-  let repeated: unknown = null
+test('un cargo con mayoría queda electo sin intervención de la mesa y la elección se completa', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -1220,30 +1217,16 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', participantCount: 9,
         rounds: [{
-          id: 'presidency', title: 'Presidencia', status: 'published', participationCount: 9, eligibleCount: 9,
+          id: 'presidency', title: 'Presidencia', status: 'published', category: 'office', voteNumber: 1, runoff: false, participationCount: 9, eligibleCount: 9,
           options: [{ id: 'm', label: 'María López' }, { id: 'c', label: 'Carlos Gómez' }, { id: 'r', label: 'Rosa Díaz' }],
-          results: [{ optionId: 'm', label: 'María López', count: 4 }, { optionId: 'c', label: 'Carlos Gómez', count: 4 }, { optionId: 'r', label: 'Rosa Díaz', count: 1 }],
-          officialResult: null,
+          results: [{ optionId: 'm', label: 'María López', count: 6 }, { optionId: 'c', label: 'Carlos Gómez', count: 2 }, { optionId: 'r', label: 'Rosa Díaz', count: 1 }],
+          outcome: { seats: 1, base: 9, threshold: 5, elected: ['m'], runoff: [], openSeats: 0 },
+          officialResult: { roundId: 'presidency', elected: [{ optionId: 'm', label: 'María López' }], note: null, declaredBy: 'results_engine', declaredAt: '2026-11-02T10:00:00.000Z', publishedAt: '2026-11-02T10:01:00.000Z' },
         }],
       } })
       return
     }
-    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/presidency/repeat')) {
-      repeated = request.postDataJSON()
-      await route.fulfill({ status: 201, json: { id: 'presidency-2' } })
-      return
-    }
-    if (request.method() === 'PUT' && url.pathname.endsWith('/moderator/rounds/presidency/official-result')) {
-      officialBody = request.postDataJSON()
-      await route.fulfill({ status: 200, json: {} })
-      return
-    }
-    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/presidency/official-result/publish')) {
-      published = true
-      await route.fulfill({ status: 200, json: {} })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for M07b test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/moderator')
@@ -1251,24 +1234,10 @@ test('el conteo publicado separa repetir la votación de declarar el resultado (
   const ballot = page.locator('.ballot-card')
   await expect(ballot).toContainText(/9 de 9\s*votaron/)
   const rows = ballot.locator('.ranked-rows > li')
-  await expect(rows).toHaveText([/^1\s*María López\s*Empate\s*4 votos\s*44 %/, /^2\s*Carlos Gómez\s*Empate\s*4 votos\s*44 %/, /^3\s*Rosa Díaz\s*1 voto\s*11 %/])
-
-  await ballot.getByRole('button', { name: 'Repetir votación…' }).click()
-  const repeatDialog = page.getByRole('dialog')
-  await expect(repeatDialog.getByLabel('María López')).toBeChecked()
-  await expect(repeatDialog.getByLabel('Carlos Gómez')).toBeChecked()
-  await expect(repeatDialog.getByLabel('Rosa Díaz')).not.toBeChecked()
-  await repeatDialog.getByRole('button', { name: 'Cancelar' }).click()
-  expect(repeated).toBeNull()
-
-  await ballot.getByRole('button', { name: 'Declarar resultado…' }).click()
-  const declareDialog = page.getByRole('dialog')
-  await expect(declareDialog.getByRole('button', { name: 'Declarar resultado oficial' })).toBeDisabled()
-  await declareDialog.getByLabel('María López').check()
-  await declareDialog.getByLabel('Observación (opcional)').fill('Desempate por la Asamblea')
-  await declareDialog.getByRole('button', { name: 'Declarar resultado oficial' }).click()
-  await expect.poll(() => published).toBe(true)
-  expect(officialBody).toEqual({ optionIds: ['m'], note: 'Desempate por la Asamblea' })
+  await expect(rows).toHaveText([/^1\s*María López\s*Electa\s*6 votos\s*67 %/, /^2\s*Carlos Gómez\s*2 votos\s*22 %/, /^3\s*Rosa Díaz\s*1 voto\s*11 %/])
+  await expect(ballot.locator('.majority-chip')).toHaveText('Mayoría: 5')
+  await expect(ballot.getByRole('button', { name: /Abrir desempate|Declarar|Repetir/ })).toHaveCount(0)
+  await expect(page.locator('.workflow-steps li.complete')).toHaveCount(5)
 })
 
 test('Salir avisa a la mesa con POST /participant/leave y limpia la sesión del teléfono', async ({ page }) => {
@@ -1523,4 +1492,53 @@ test('si no se confirma la salida de la Asamblea anterior, el QR de otra Asamble
   await expect(page.getByRole('alert').filter({ hasText: 'No se pudo salir' })).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('old-session-token')
   await expect(page.getByRole('button', { name: 'Entrar a la sala' })).toHaveCount(0)
+})
+
+test('el proyector marca Electa y Desempate en una comisión publicada, con la mayoría bajo el título (P20)', async ({ page }) => {
+  const labels = ['Ana Ruiz', 'Juan Mora', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez']
+  const counts = [30, 19, 17, 17, 14, 11]
+  await page.route(api, async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      await route.fulfill({ json: {
+        assembly: { name: 'Asamblea Ordinaria 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participantCount: 37, recordedCount: 36, eligibleCount: 38,
+        round: { id: 'finanzas', title: 'Comisión de Finanzas', status: 'published', category: 'committee', memberCount: 3, electionSeats: 3, voteNumber: 1, runoff: false },
+        results: labels.map((label, index) => ({ optionId: `o${index}`, label, count: counts[index] })),
+        outcome: { seats: 3, base: 38, threshold: 20, elected: ['o0'], runoff: ['o1', 'o2', 'o3'], openSeats: 2 },
+        officialResult: { elected: [{ optionId: 'o0', label: 'Ana Ruiz' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/projector?code=DEMO-ROOM')
+  await expect(page.getByRole('heading', { name: 'Comisión de Finanzas' })).toBeVisible()
+  await expect(page.locator('.pj-subtitle')).toHaveText('3 integrantes · Mayoría: 20')
+  await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electa')
+  await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate', 'Desempate'])
+  await expect(page.locator('.pj-elected')).toHaveCount(0)
+})
+
+test('el proyector rotula el desempate de un cargo y suma el electo al publicarlo', async ({ page }) => {
+  await page.route(api, async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      await route.fulfill({ json: {
+        assembly: { name: 'Asamblea Ordinaria 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participantCount: 38, recordedCount: 37, eligibleCount: 38,
+        round: { id: 'presidencia-2', title: 'Presidencia', status: 'published', category: 'office', voteNumber: 2, runoff: true },
+        results: [{ optionId: 'm', label: 'María López', count: 22 }, { optionId: 'c', label: 'Carlos Gómez', count: 15 }],
+        outcome: { seats: 1, base: 38, threshold: 20, elected: ['m'], runoff: [], openSeats: 0 },
+        officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+  })
+
+  await page.goto('/projector?code=DEMO-ROOM')
+  await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
+  await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
+  await expect(page.locator('.pj-elected')).toContainText('María López')
+  await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electa')
 })

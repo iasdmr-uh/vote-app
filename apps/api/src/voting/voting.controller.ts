@@ -8,7 +8,6 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  Put,
   Req,
   UseGuards,
 } from '@nestjs/common'
@@ -24,7 +23,6 @@ import {
   JoinAssemblyDto,
   LobbyPatchDto,
   ParticipantPatchDto,
-  OfficialResultDto,
   RepeatRoundDto,
   ResumeSessionDto,
   VoteDto,
@@ -174,20 +172,5 @@ export class ModeratorController {
   @Post('rounds/:roundId/repeat')
   repeatRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: RepeatRoundDto) {
     return this.voting.repeatRound(roundId, input)
-  }
-
-  @Put('rounds/:roundId/official-result')
-  officialResult(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: OfficialResultDto) {
-    return this.voting.declareOfficialResult(roundId, input)
-  }
-
-  @Delete('rounds/:roundId/official-result')
-  withdrawOfficialResult(@Param('roundId', ParseUUIDPipe) roundId: string) {
-    return this.voting.withdrawOfficialResult(roundId)
-  }
-
-  @Post('rounds/:roundId/official-result/publish')
-  publishOfficialResult(@Param('roundId', ParseUUIDPipe) roundId: string) {
-    return this.voting.publishOfficialResult(roundId)
   }
 }

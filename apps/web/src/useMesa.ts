@@ -1,7 +1,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
-import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
+import { actaSheetRows, isTied, percentOf } from './resultados'
 import type { RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -18,35 +18,15 @@ const assemblyName = ref('Asamblea de Delegados')
 const roundTitle = ref('')
 const roundCategory = ref<'office' | 'committee'>('office')
 const committeeMemberCount = ref<number | null>(null)
-const repeatSelections = ref<Record<string, string[]>>({})
-const repeatSeats = ref<Record<string, number | null>>({})
 const showNextBallotForm = ref(false)
 const resumeQr = ref<{ name: string; image: string; url: string; expiresAt: string } | null>(null)
-const officialSelections = ref<Record<string, string[]>>({})
-const officialNotes = ref<Record<string, string>>({})
 const ballotCandidates = ref<string[]>([])
 const newBallotCandidate = ref('')
-const repeatDialogRoundId = ref('')
-const declareDialogRoundId = ref('')
-watch(() => state.value?.rounds, (rounds) => {
-  for (const item of rounds || []) {
-    if (!Array.isArray(officialSelections.value[item.id])) {
-      officialSelections.value[item.id] = item.officialResult?.elected.map((person) => person.optionId) || []
-      officialNotes.value[item.id] = item.officialResult?.note || ''
-    }
-    if (!Array.isArray(repeatSelections.value[item.id])) repeatSelections.value[item.id] = []
-  }
-}, { immediate: true })
-
 const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
 const assemblyStatusLabels: Record<string, string> = { preparing: 'En preparación', lobby_open: 'Ingreso abierto', lobby_closed: 'Ingreso cerrado', in_progress: 'En curso', completed: 'Finalizada' }
 const roundStatusLabels: Record<string, string> = { draft: 'preparada', open: 'abierta', closed: 'cerrada', published: 'publicada', annulled: 'anulada' }
 function roundChain(target: RoundRecord) {
   return (state.value?.rounds || []).filter((item) => item.id === target.id || item.committeeRootRoundId === target.id)
-}
-function isDecidable(target: RoundRecord) {
-  const chain = roundChain(target)
-  return !target.committeeRootRoundId && !chain.some((item) => item.status === 'open') && chain.some((item) => item.status === 'closed' || item.status === 'published')
 }
 const attendance = computed(() => {
   const record = state.value?.attendanceRound
@@ -56,15 +36,21 @@ const attendance = computed(() => {
 })
 const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
-const currentRoundDeclared = computed(() => {
-  const record = currentRoundRecord.value
-  const rootId = record?.committeeRootRoundId ?? record?.id
-  return Boolean(state.value?.rounds?.find((item) => item.id === rootId)?.officialResult)
-})
+/** Every seat of the election is filled, across its first vote and its runoffs. */
+function electionComplete(target: RoundRecord) {
+  const root = rootRoundOf(target) || target
+  const seats = root.category === 'committee' ? Math.max(1, root.memberCount ?? 1) : 1
+  return (root.officialResult?.elected.length ?? 0) >= seats
+}
+/** The runoff draft that closing this vote prepared, waiting for the mesa to open it. */
+function runoffOf(target: RoundRecord) {
+  return state.value?.rounds?.find((item) => item.runoffSourceRoundId === target.id && item.status === 'draft')
+}
+const currentRoundComplete = computed(() => Boolean(currentRoundRecord.value && electionComplete(currentRoundRecord.value)))
 const moderatorWorkflowStep = computed(() => {
   if (round.value?.status === 'open') return 2
   if (round.value?.status === 'closed') return 3
-  if (round.value?.status === 'published') return currentRoundDeclared.value ? 5 : 4
+  if (round.value?.status === 'published') return currentRoundComplete.value ? 5 : 4
   if (round.value?.status === 'draft') return 1
   return lobbyStatus.value === 'lobby_open' ? 0 : 1
 })
@@ -102,28 +88,8 @@ function annulRound(target: { id: string; title: string }) {
   }
 }
 
-function repeatRound(target: RoundRecord, optionIds = repeatSelections.value[target.id] || []) {
-  if (!optionIds.length) { error.value = 'Selecciona las opciones que pasan a la nueva votación.'; return }
-  const seats = repeatSeats.value[target.id]
-  void moderatorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/repeat`, 'POST', {
-    optionIds, ...(target.category === 'committee' && seats ? { seats } : {}),
-  })
-}
-
-function repeatAllOptions(target: RoundRecord | undefined) {
-  if (target) repeatRound(target, target.options.map((option) => option.id))
-}
-
-async function runModeratorAction(path: string, method: string, body: unknown, onSuccess?: (result: any) => void | Promise<void>) {
-  moderationConfirmation.value = { title: '', consequence: '', label: '', path, method, body, ...(onSuccess ? { onSuccess } : {}) }
-  await confirmModeratorAction()
-}
-
-function latestCounted(target: RoundRecord) {
-  const counted = roundChain(target).filter((item) => item.status === 'closed' || item.status === 'published')
-  return counted[counted.length - 1] || target
-}
-function voteNumber(target: { id: string; committeeRootRoundId?: string | null }) {
+function voteNumber(target: { id: string; committeeRootRoundId?: string | null; voteNumber?: number }) {
+  if (target.voteNumber) return target.voteNumber
   const rootId = target.committeeRootRoundId || target.id
   const chain = (state.value?.rounds || []).filter((item) => item.id === rootId || item.committeeRootRoundId === rootId)
   return Math.max(1, chain.findIndex((item) => item.id === target.id) + 1)
@@ -132,60 +98,14 @@ function rootRoundOf(target: { id: string; committeeRootRoundId?: string | null 
   return state.value?.rounds?.find((item) => item.id === (target.committeeRootRoundId || target.id))
 }
 
-function nextVoteNumber(target: RoundRecord) {
-  return roundChain(rootRoundOf(target) || target).length + 1
-}
-const repeatContext = computed(() => {
-  const record = currentRoundRecord.value
-  const root = record && rootRoundOf(record)
-  if (!record || !root || root.id === record.id) return ''
-  const chain = roundChain(root)
-  const previous = chain[chain.findIndex((item) => item.id === record.id) - 1]
-  if (!previous) return ''
-  const number = voteNumber(previous)
-  if (previous.status === 'annulled') return `Se repite porque la ${number}.ª votación fue anulada.`
-  const tie = decisionTie(previous)
-  return tie
-    ? `Se repite por empate en la ${number}.ª votación (${tie.tied.map((result) => result.count).join(' – ')}).`
-    : `Se repite entre las opciones que eligió la Asamblea tras la ${number}.ª votación.`
-})
-const repeatDialogRound = computed(() => state.value?.rounds?.find((item) => item.id === repeatDialogRoundId.value))
-const declareDialogRound = computed(() => state.value?.rounds?.find((item) => item.id === declareDialogRoundId.value))
-
-function openRepeatDialog(target: RoundRecord) {
-  const tie = decisionTie(target)
-  repeatSelections.value[target.id] = tie ? tie.tied.map((result) => result.optionId) : []
-  repeatSeats.value[target.id] = tie && target.category === 'committee' ? tie.openSeats : null
-  repeatDialogRoundId.value = target.id
+/** An annulled vote is the only one the mesa repeats by hand, with the same options. */
+function repeatAllOptions(target: RoundRecord | undefined) {
+  if (target) void moderatorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/repeat`, 'POST', { optionIds: target.options.map((option) => option.id) })
 }
 
-async function confirmRepeatDialog() {
-  const target = repeatDialogRound.value
-  const optionIds = target ? repeatSelections.value[target.id] || [] : []
-  if (!target || !optionIds.length) return
-  const seats = repeatSeats.value[target.id]
-  repeatDialogRoundId.value = ''
-  await runModeratorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/repeat`, 'POST', {
-    optionIds, ...(target.category === 'committee' && seats ? { seats } : {}),
-  })
-}
-
-function openDeclareDialog(target: RoundRecord) {
-  if (target.officialResult) {
-    officialSelections.value[target.id] = target.officialResult.elected.map((person) => person.optionId)
-    officialNotes.value[target.id] = target.officialResult.note || ''
-  } else if (!Array.isArray(officialSelections.value[target.id])) officialSelections.value[target.id] = []
-  declareDialogRoundId.value = target.id
-}
-
-async function confirmDeclareDialog() {
-  const target = declareDialogRound.value
-  if (!target || !(officialSelections.value[target.id] || []).length) return
-  declareDialogRoundId.value = ''
-  const publish = roundChain(target).some((item) => item.status === 'published')
-  await runModeratorAction(`/moderator/rounds/${encodeURIComponent(target.id)}/official-result`, 'PUT', {
-    optionIds: officialSelections.value[target.id], note: officialNotes.value[target.id] || '',
-  }, publish ? () => request(`/moderator/rounds/${encodeURIComponent(target.id)}/official-result/publish`, { method: 'POST' }, moderatorToken.value) : undefined)
+function openRunoff(target: RoundRecord) {
+  const runoff = runoffOf(target)
+  if (runoff) void moderatorAction(`/moderator/rounds/${encodeURIComponent(runoff.id)}/open`)
 }
 
 function addBallotCandidate() {
@@ -217,13 +137,9 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown, on
         : path.endsWith('/close')
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
           : path.endsWith('/repeat')
-            ? { title: '¿Preparar una nueva votación?', consequence: 'Se crea una papeleta con las opciones seleccionadas. Ábrela cuando la Asamblea lo decida.', label: 'Preparar nueva votación' }
-          : method === 'DELETE' && path.endsWith('/official-result')
-            ? { title: '¿Retirar la declaración oficial?', consequence: 'Dejará de mostrarse en teléfonos y proyector. Quedará registrada en el historial. Después puedes repetir o anular la votación.', label: 'Retirar declaración' }
-          : path.endsWith('/official-result/publish')
-            ? { title: '¿Publicar la declaración oficial?', consequence: 'Teléfonos y proyector mostrarán a quien la mesa declaró electo, con la observación registrada.', label: 'Publicar declaración' }
+            ? { title: '¿Repetir la votación?', consequence: 'Se prepara una papeleta con las mismas opciones.', label: 'Repetir votación' }
           : path.endsWith('/publish')
-            ? { title: '¿Publicar el conteo?', consequence: 'Los conteos por opción se harán visibles para participantes y proyector. Publicar no elige a nadie: la mesa declara el resultado después.', label: 'Publicar conteo' }
+            ? { title: '¿Publicar el conteo?', consequence: 'Teléfonos y proyector mostrarán el conteo y los electos.', label: 'Publicar conteo' }
             : removed
               ? { title: '¿Retirar a esta persona?', consequence: 'Ya no podrá participar desde esta sesión.', label: 'Retirar participante' }
               : { title: '¿Guardar los cambios?', consequence: 'Se actualizarán los datos de esta persona en la lista.', label: 'Guardar cambios' }
@@ -428,12 +344,8 @@ async function createRound() {
     title: roundTitle.value.trim(), format: office ? 'single_choice' : 'multiple_choice', options,
     category: roundCategory.value,
     ...(!office ? { memberCount: seats } : {}),
-    countingRule: { kind: 'count_only', label: 'Conteo agregado por opción; sin proclamación automática' },
+    countingRule: { kind: 'count_only', label: 'Mayoría sobre los participantes habilitados' },
   }, resetBallotForm)
-}
-
-function formatActor(actor: string) {
-  return actor === 'shared_moderator_credential' ? 'moderación (credencial compartida)' : actor
 }
 
 async function signInModerator() {
@@ -468,14 +380,13 @@ async function signInModerator() {
 export function useMesa() {
   return {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount,
-    repeatSelections, repeatSeats, showNextBallotForm, resumeQr, officialSelections, officialNotes, ballotCandidates, newBallotCandidate,
-    repeatDialogRoundId, declareDialogRoundId,
-    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord, currentRoundDeclared,
-    moderatorWorkflowStep, repeatContext, repeatDialogRound, declareDialogRound, otherPendingActas,
-    roundChain, isDecidable, latestCounted, voteNumber, rootRoundOf, nextVoteNumber, eligibleOf, rankedRows,
-    annulRound, repeatAllOptions, openRepeatDialog, confirmRepeatDialog, openDeclareDialog, confirmDeclareDialog, addBallotCandidate,
+    showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate,
+    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
+    moderatorWorkflowStep, otherPendingActas,
+    roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
+    annulRound, repeatAllOptions, openRunoff, addBallotCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
-    createAssembly, editParticipant, createRound, formatActor, signInModerator,
+    createAssembly, editParticipant, createRound, signInModerator,
   }
 }

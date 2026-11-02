@@ -95,14 +95,6 @@ export class VoteDto {
   confirmation!: true
 }
 
-export class OfficialResultDto {
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(40) @IsUUID('all', { each: true })
-  optionIds!: string[]
-
-  @IsOptional() @IsString() @MaxLength(1000)
-  note?: string
-}
-
 export class AnnulRoundDto {
   @IsString() @Matches(/\S/) @MaxLength(1000)
   reason!: string

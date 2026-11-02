@@ -153,6 +153,8 @@ function normalizeState(value: Record<string, any>): PublicState {
     category: rawRound.category || 'office',
     memberCount: rawRound.memberCount,
     electionSeats: rawRound.electionSeats,
+    voteNumber: rawRound.voteNumber,
+    runoff: rawRound.runoff,
     annulReason: rawRound.annulReason,
     ...(options ? { options } : {}),
     ...(rawRound.participationCount !== undefined ? { participationCount: rawRound.participationCount } : {}),
