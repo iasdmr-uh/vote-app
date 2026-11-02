@@ -24,6 +24,9 @@ const showNextBallotForm = ref(false)
 const resumeQr = ref<{ name: string; image: string; url: string; expiresAt: string } | null>(null)
 const ballotCandidates = ref<string[]>([])
 const newBallotCandidate = ref('')
+/** The runoff draft from the 3rd vote on that the mesa is preparing (M22) before opening it. */
+const preparingRunoffId = ref('')
+const newRunoffCandidate = ref('')
 const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
 const assemblyStatusLabels: Record<string, string> = { preparing: 'En preparación', lobby_open: 'Ingreso abierto', lobby_closed: 'Ingreso cerrado', in_progress: 'En curso', completed: 'Finalizada' }
 const roundStatusLabels: Record<string, string> = { draft: 'preparada', open: 'abierta', closed: 'cerrada', published: 'publicada', annulled: 'anulada' }
@@ -53,8 +56,18 @@ function electionComplete(target: RoundRecord) {
 function runoffOf(target: RoundRecord) {
   return state.value?.rounds?.find((item) => item.runoffSourceRoundId === target.id && item.status === 'draft')
 }
+/** From the 3rd vote on, a runoff draft may take a new candidate; never the first runoff. */
+function acceptsNewCandidates(target: RoundRecord) {
+  return target.status === 'draft' && Boolean(target.runoff) && voteNumber(target) >= 3
+}
+const preparedRunoff = computed(() => {
+  const chosen = state.value?.rounds?.find((item) => item.id === preparingRunoffId.value)
+  if (chosen && acceptsNewCandidates(chosen)) return chosen
+  return currentRoundRecord.value && acceptsNewCandidates(currentRoundRecord.value) ? currentRoundRecord.value : undefined
+})
 const currentRoundComplete = computed(() => Boolean(currentRoundRecord.value && electionComplete(currentRoundRecord.value)))
 const moderatorWorkflowStep = computed(() => {
+  if (preparedRunoff.value) return 1
   if (round.value?.status === 'open') return 2
   if (round.value?.status === 'closed') return 3
   if (round.value?.status === 'published') return currentRoundComplete.value ? 5 : 4
@@ -112,7 +125,36 @@ function repeatAllOptions(target: RoundRecord | undefined) {
 
 function openRunoff(target: RoundRecord) {
   const runoff = runoffOf(target)
-  if (runoff) void moderatorAction(`/moderator/rounds/${encodeURIComponent(runoff.id)}/open`)
+  if (!runoff) return
+  // From the 3rd vote on the mesa first sees the ballot, where it may add a candidate.
+  if (acceptsNewCandidates(runoff)) { preparingRunoffId.value = runoff.id; newRunoffCandidate.value = ''; return }
+  void moderatorAction(`/moderator/rounds/${encodeURIComponent(runoff.id)}/open`)
+}
+
+async function changeRunoffCandidates(path: string, method: 'POST' | 'DELETE', body?: unknown) {
+  if (loading.value) return false
+  error.value = ''
+  loading.value = true
+  let succeeded = false
+  try {
+    await request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, moderatorToken.value)
+    succeeded = true
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  if (succeeded) await refresh(true)
+  return succeeded
+}
+
+async function addRunoffCandidate() {
+  const runoff = preparedRunoff.value
+  const label = newRunoffCandidate.value.trim()
+  if (!runoff || !label) return
+  if (await changeRunoffCandidates(`/moderator/rounds/${encodeURIComponent(runoff.id)}/candidates`, 'POST', { label })) newRunoffCandidate.value = ''
+}
+
+function removeRunoffCandidate(optionId: string) {
+  const runoff = preparedRunoff.value
+  if (runoff) void changeRunoffCandidates(`/moderator/rounds/${encodeURIComponent(runoff.id)}/candidates/${encodeURIComponent(optionId)}`, 'DELETE')
 }
 
 function addBallotCandidate() {
@@ -408,11 +450,11 @@ async function signInModerator() {
 export function useMesa() {
   return {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
-    showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate,
+    showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
-    annulRound, repeatAllOptions, openRunoff, addBallotCandidate,
+    annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
     createAssembly, editParticipant, createRound, signInModerator,

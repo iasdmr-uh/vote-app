@@ -325,6 +325,15 @@ label .hint { font-weight: 500; }
 .ranked-rows strong { color: var(--blue); white-space: nowrap; }
 .ranked-percent { min-width: 3.2rem; color: var(--muted); font-size: .9rem; text-align: right; white-space: nowrap; }
 .compact-rows li { padding: .55rem .8rem; font-size: .9rem; }
+/* M22: runoff from the 3rd vote on, where the mesa may add a candidate. */
+.runoff-candidates { margin-bottom: .6rem; }
+.runoff-candidates li { grid-template-columns: auto minmax(0, 1fr) auto; }
+.runoff-candidates .link-button { font-size: .85rem; font-weight: 700; }
+.new-candidate { display: flex; align-items: center; gap: .75rem; padding: .3rem 1rem; border: 1.5px dashed #8b96a8; border-radius: .75rem; }
+.new-candidate input { flex: 1; min-width: 0; padding: .55rem 0; border: 0; background: transparent; box-shadow: none; }
+.new-candidate input:focus { outline: none; }
+.new-candidate:focus-within { border-color: var(--blue); }
+.new-candidate .link-button { font-size: .85rem; font-weight: 700; white-space: nowrap; }
 .mesa-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); align-items: start; gap: 1.5rem; }
 .mesa-main { min-width: 0; }
 .mesa-participants { position: sticky; top: 1rem; }

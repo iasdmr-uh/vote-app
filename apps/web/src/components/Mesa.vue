@@ -10,11 +10,11 @@ const {
 } = useAssembly()
 const {
   moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
-  showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate,
+  showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
   secrecyCleanupPendingRounds, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
   moderatorWorkflowStep, otherPendingActas,
   roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, runoffOf,
-  annulRound, repeatAllOptions, openRunoff, addBallotCandidate,
+  annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
   removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
   openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
   createAssembly, editParticipant, createRound, signInModerator,
@@ -93,7 +93,16 @@ function closePersonMenu(event: Event) {
       <div v-else class="mesa-layout">
         <div class="mesa-main">
           <section class="card ballot-card">
-            <template v-if="round?.status === 'draft'">
+            <template v-if="preparedRunoff">
+              <p class="eyebrow">{{ voteLabel(preparedRunoff) }}</p>
+              <h2 class="ballot-title">{{ rootRoundOf(preparedRunoff)?.title || preparedRunoff.title }}</h2>
+              <ol class="ranked-rows runoff-candidates">
+                <li v-for="(option, index) in preparedRunoff.options" :key="option.id" :class="{ first: index === 0 }"><span class="rank-number">{{ index + 1 }}</span><span class="ranked-label">{{ option.label }}<span v-if="option.isNew" class="badge badge-info">Nuevo</span></span><button v-if="option.isNew" type="button" class="link-button" :aria-label="`Quitar ${option.label}`" :disabled="loading" @click="removeRunoffCandidate(option.id)">Quitar</button></li>
+              </ol>
+              <form class="new-candidate" @submit.prevent="addRunoffCandidate"><input v-model="newRunoffCandidate" aria-label="Nombre del candidato" maxlength="160" placeholder="Nombre del candidato" /><button class="link-button" :disabled="loading || !newRunoffCandidate.trim()">+ Agregar</button></form>
+              <div class="action-row ballot-actions"><button class="primary push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(preparedRunoff.id)}/open`)">Abrir votación</button></div>
+            </template>
+            <template v-else-if="round?.status === 'draft'">
               <div class="eyebrow-row"><p class="eyebrow">PAPELETA PREPARADA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div>
               <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2>
               <ul class="ballot-options"><li v-for="option in round.options || []" :key="option.id">{{ option.label }}</li></ul>
