@@ -927,6 +927,66 @@ export class VotingService implements OnModuleInit {
     return { id: created.id, title: created.title, status: created.status, committeeRootRoundId: created.committeeRootRoundId, electionSeats: created.electionSeats, options: created.options }
   }
 
+  /**
+   * From the 3rd vote of an election on, the mesa may add a new candidate to the runoff draft before
+   * opening it; never in the first runoff (Asamblea, Nov 2026). It is optional and marked as new.
+   */
+  async addCandidate(roundId: string, label: string) {
+    const name = label.trim()
+    if (!name) throw new UnprocessableEntityException('Escribe el nombre del candidato')
+    const added = await this.prisma.$transaction(async (tx) => {
+      const round = await this.lockCandidateDraft(tx, roundId)
+      const options = await tx.ballotOption.findMany({ where: { roundId }, select: { label: true, order: true } })
+      if (options.length >= 40) throw new UnprocessableEntityException('La papeleta admite hasta 40 candidatos')
+      const key = name.toLocaleLowerCase('es')
+      if (options.some((option) => option.label.toLocaleLowerCase('es') === key)) throw new UnprocessableEntityException('Ese candidato ya está en la papeleta')
+      // Someone elected in an earlier vote of this election already holds a seat.
+      const elected = await tx.officialResultOption.findMany({ where: { officialResult: { roundId: round.rootId } }, select: { option: { select: { label: true } } } })
+      if (elected.some(({ option }) => option.label.toLocaleLowerCase('es') === key)) throw new UnprocessableEntityException('Esa persona ya fue electa en esta elección')
+      const option = await tx.ballotOption.create({
+        data: { roundId, label: name, order: Math.max(-1, ...options.map((item) => item.order)) + 1, isNew: true },
+        select: { id: true, label: true, order: true, isNew: true },
+      })
+      await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.candidate_added', metadata: { optionId: option.id, label: option.label, voteNumber: round.voteNumber } } })
+      return option
+    })
+    await this.announceRound(roundId)
+    return { roundId, option: added }
+  }
+
+  /** Takes back a candidate the mesa added; the candidates the previous vote passed on stay. */
+  async removeCandidate(roundId: string, optionId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const round = await this.lockCandidateDraft(tx, roundId)
+      const option = await tx.ballotOption.findFirst({ where: { id: optionId, roundId }, select: { id: true, label: true, isNew: true } })
+      if (!option) throw new NotFoundException('Candidato no encontrado')
+      if (!option.isNew) throw new ConflictException('Solo se puede quitar un candidato agregado por la mesa')
+      await tx.ballotOption.delete({ where: { id: option.id } })
+      await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.candidate_removed', metadata: { optionId: option.id, label: option.label, voteNumber: round.voteNumber } } })
+    })
+    await this.announceRound(roundId)
+    return { roundId, optionId, removed: true as const }
+  }
+
+  /** Locks a runoff draft whose candidates the mesa may change: the 3rd vote of its election or later. */
+  private async lockCandidateDraft(tx: Prisma.TransactionClient, roundId: string) {
+    const rows = await tx.$queryRaw<Array<{ assembly_id: string }>>`SELECT assembly_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
+    if (!rows[0]) throw new NotFoundException('Ronda no encontrada')
+    await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${rows[0].assembly_id}::uuid FOR UPDATE`
+    const assembly = await tx.assembly.findUniqueOrThrow({ where: { id: rows[0].assembly_id }, select: { status: true } })
+    if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
+    const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, committeeRootRoundId: true, countingRule: true } })
+    if (round.status !== 'draft') throw new ConflictException('Los candidatos solo se cambian antes de abrir la votación')
+    const rootId = round.committeeRootRoundId ?? round.id
+    // Counted as chainPosition counts it, so the server agrees with the "N.ª VOTACIÓN" the mesa sees.
+    const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true } })
+    const voteNumber = chain.findIndex((item) => item.id === round.id) + 1
+    if (runoffSourceOf(round.countingRule) === null || voteNumber < 3) {
+      throw new ConflictException('Solo se puede agregar un candidato a partir de la 3.ª votación')
+    }
+    return { assemblyId: round.assemblyId, rootId, voteNumber }
+  }
+
   /** Which vote of its election a round is (1 for the first) and whether it is a runoff. */
   private async chainPosition(round: { id: string; committeeRootRoundId: string | null; countingRule: unknown }) {
     const rootId = round.committeeRootRoundId ?? round.id

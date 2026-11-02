@@ -150,6 +150,8 @@ model BallotOption {
   roundId         String                 @map("round_id") @db.Uuid
   label           String
   order           Int
+  /** Added by the mesa to a runoff from the 3rd vote on; it was not on the vote that prepared it. */
+  isNew           Boolean                @default(false) @map("is_new")
   round           Round                  @relation(fields: [roundId], references: [id], onDelete: Cascade)
   votes           AnonymousVote[]
   officialResults OfficialResultOption[]

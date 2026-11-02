@@ -17,6 +17,7 @@ import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../au
 import { VotingService } from './voting.service.js'
 import {
   AnnulRoundDto,
+  BallotOptionDto,
   CreateAssemblyDto,
   CompleteAssemblyDto,
   CreateRoundDto,
@@ -179,6 +180,16 @@ export class ModeratorController {
   @Post('rounds/:roundId/annul')
   annulRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: AnnulRoundDto) {
     return this.voting.annulRound(roundId, input.reason)
+  }
+
+  @Post('rounds/:roundId/candidates')
+  addCandidate(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: BallotOptionDto) {
+    return this.voting.addCandidate(roundId, input.label)
+  }
+
+  @Delete('rounds/:roundId/candidates/:optionId')
+  removeCandidate(@Param('roundId', ParseUUIDPipe) roundId: string, @Param('optionId', ParseUUIDPipe) optionId: string) {
+    return this.voting.removeCandidate(roundId, optionId)
   }
 
   @Post('rounds/:roundId/repeat')
