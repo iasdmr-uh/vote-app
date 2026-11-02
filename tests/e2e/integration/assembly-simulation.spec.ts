@@ -69,7 +69,7 @@ async function prepareOffice(moderator: Page, title: string, candidates: string[
 
 async function prepareCommittee(moderator: Page, title: string, members: number, candidates: string[]) {
   await moderator.getByRole('button', { name: 'Preparar otra papeleta' }).click()
-  await moderator.getByRole('radio', { name: 'Una comisión' }).click()
+  await moderator.getByRole('radio', { name: 'Comisión', exact: true }).click()
   await moderator.getByLabel('Nombre de la comisión').fill(title)
   await moderator.getByLabel('¿Cuántos integrantes quedarán en la comisión?').fill(String(members))
   for (const candidate of candidates) {
