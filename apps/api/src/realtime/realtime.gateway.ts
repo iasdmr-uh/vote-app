@@ -233,7 +233,7 @@ export class RealtimePublisher {
   }
 
   roundState(assemblyId: string, payload: RealtimeServerToClientEvents['round.state'] extends (arg: infer P) => void ? P : never): void {
-    // Phones refresh on it too: annulling a ballot or publishing/withdrawing a declaration changes what they show.
+    // Phones refresh on it too: annulling a ballot or publishing a result changes what they show.
     this.server.to([publicRoom(assemblyId), moderatorRoom(assemblyId), participantBroadcastRoom(assemblyId)]).emit('round.state', publicRoundPayload(payload))
   }
 

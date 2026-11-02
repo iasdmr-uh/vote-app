@@ -179,7 +179,7 @@ test('assembly completion reaches public, moderator, and participant viewers wit
   }])
 })
 
-test('round state reaches phones so a withdrawn declaration or an annulment refreshes them', () => {
+test('round state reaches phones so a published result or an annulment refreshes them', () => {
   const emissions: Array<{ rooms: unknown; event: string; payload: unknown }> = []
   const server = {
     to(rooms: unknown) {

@@ -73,7 +73,7 @@ export class CreateRoundDto {
   @IsOptional() @IsIn(['office', 'committee', 'decision'])
   category?: 'office' | 'committee' | 'decision'
 
-  /** Committee only: how many people stay on it; each delegate marks from one up to this many names. */
+  /** Committee only: how many people stay on it; each delegate marks exactly this many names. */
   @IsOptional() @IsInt() @Min(1) @Max(40)
   memberCount?: number
 

@@ -93,11 +93,11 @@ model Round {
   title          String
   format         String          @default("single_choice")
   category       RoundCategory   @default(office)
-  /** Committee only: how many people stay on it, and the most names a delegate may mark. */
+  /** Committee only: how many people stay on it; the first vote asks for exactly this many names. */
   memberCount    Int?            @map("member_count")
-  /** Most names a delegate may mark in this vote; a repetition may ask for fewer than the committee size. */
+  /** Exact names a delegate marks in this vote; a runoff asks for the seats still open. */
   electionSeats  Int?             @map("election_seats")
-  /** Set on a repeated vote: the original round, where the official result is declared. */
+  /** Set on a runoff or repetition: the election's first vote, where the computed official result accumulates. */
   committeeRootRoundId String?    @map("committee_root_round_id") @db.Uuid
   /** Decision only: 'boolean' (A favor / En contra) or 'options' (written by the mesa; one is chosen). */
   decisionFormat String?          @map("decision_format")

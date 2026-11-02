@@ -32,7 +32,7 @@ Las fases 2 y 3 pueden diseñarse en paralelo tras la fase 1, pero la integraci�
 - No almacenar `participant_id`, nombre, token de sesión ni un identificador correlacionable en el registro de voto. Mantener participación y voto en registros separados; revisar cuidadosamente trazas, eventos, colas y logs para que tampoco creen un enlace indirecto.
 - El secreto práctico del voto no equivale a anonimato criptográfico frente a acceso privilegiado al servidor. Esta limitación, junto con el límite de “una persona = un voto”, debe documentarse.
 - V1 atiende una Asamblea de la Unión Hondureña; asociaciones se contemplan en el modelo, pero no se habilitan como producto multi-organización en esta entrega.
-- Secretaría y autoridad institucional validan reglas por papeleta, mayoría, abstención, nulidad, empate, repetición y publicación antes de la implementación final de esos comportamientos.
+- Secretaría y autoridad institucional validan reglas por papeleta, mayoría, abstención, nulidad, empate, repetición y publicación antes de la implementación final de esos comportamientos. Las de mayoría, desempate, decisiones e inhabilitación se confirmaron el 2 de noviembre de 2026 y están implementadas (`README_DEV.md`, «Resultados automáticos»).
 
 ## Dependencias externas que pueden bloquear
 

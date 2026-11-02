@@ -78,7 +78,7 @@ Por decisión de Secretaría, los datos solo se guardan durante la Asamblea; des
 
 1. En el panel, finaliza la Asamblea.
 2. En la tarjeta «Acta y borrado de datos»:
-   1. **Imprimir o guardar PDF:** abre el diálogo de impresión con el acta (resultados por papeleta, anulaciones, declaraciones de la mesa y lista de participantes, con espacio para firmas). Elige la impresora o «Guardar como PDF».
+   1. **Imprimir o guardar PDF:** abre el diálogo de impresión con el acta (resultados por papeleta, electos y decisiones aprobadas, anulaciones y lista de participantes, con espacio para firmas). Elige la impresora o «Guardar como PDF».
    2. **Descargar hoja de cálculo** (opcional): los mismos conteos en un archivo de Excel (`.xlsx`). Los nombres van como texto, así que nada de lo que un participante haya escrito puede ejecutarse como fórmula.
    3. Entrega el acta a Secretaría.
    4. Si todavía no vas a borrar, pulsa «Cerrar el acta sin borrar». La Asamblea queda en «Asambleas finalizadas con datos guardados» para volver luego.

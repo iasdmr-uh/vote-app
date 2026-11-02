@@ -1233,7 +1233,7 @@ export class VotingService implements OnModuleInit {
       this.prisma.anonymousVote.groupBy({ by: ['optionId'], where: { roundId }, _count: { _all: true } }),
     ])
     const countByOption = new Map(counts.map((row) => [row.optionId, row._count._all]))
-    // Ranked by votes for the mesa to decide; ties keep ballot order.
+    // Ranked by votes; ties keep ballot order.
     return options
       .map((option) => ({ optionId: option.id, label: option.label, count: countByOption.get(option.id) ?? 0 }))
       .sort((a, b) => b.count - a.count)
