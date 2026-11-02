@@ -14,11 +14,26 @@ Desde la raíz del repositorio:
 
 ```sh
 npm run test:e2e:integration
+# solo algunos escenarios: los argumentos extra pasan a Playwright
+npm run test:e2e:integration -- committee inhabilitar
+# si 3300 o 4174 están ocupados
+E2E_API_PORT=3310 E2E_WEB_PORT=4184 npm run test:e2e:integration
 ```
 
-El comando intenta arrancar un contenedor PostgreSQL sin volumen persistente y con puerto local aleatorio. Si Docker no está disponible, crea un clúster PostgreSQL local aislado en una carpeta temporal y selecciona un puerto libre. En ambos casos genera el cliente Prisma, aplica las migraciones e inicia la API en `127.0.0.1:3300` y la web en `127.0.0.1:4174`. El proceso elimina el contenedor o detiene y borra el clúster al terminar, incluso si falla la prueba.
+El comando intenta arrancar un contenedor PostgreSQL sin volumen persistente y con puerto local aleatorio. Si Docker no está disponible, crea un clúster PostgreSQL local aislado en una carpeta temporal y selecciona un puerto libre. En ambos casos genera el cliente Prisma, aplica las migraciones e inicia la API en `127.0.0.1:3300` y la web en `127.0.0.1:4174` (o en `E2E_API_PORT` / `E2E_WEB_PORT`; si un puerto está ocupado, el comando falla antes de empezar e indica la variable). El clúster local corre con la configuración regional `C`, porque PostgreSQL no arranca con un `LC_CTYPE` inválido. El proceso elimina el contenedor o detiene y borra el clúster al terminar, incluso si falla la prueba.
 
-La prueba crea una asamblea y un delegado con nombres sintéticos, prepara y abre una papeleta desde Moderación, registra el voto desde la vista de Delegado, comprueba que un segundo envío se rechaza y que la participación continúa siendo una, y verifica que la vista pública solo muestra los resultados después de publicarlos.
+Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activa, porque la API admite una sola) y actúa por la interfaz real: la mesa, el proyector y varios teléfonos, cada uno en su propio contexto de navegador. La API solo se usa para leer lo guardado y para probar lo que el servidor rechaza. Las esperas son sobre el estado de la interfaz o los avisos en tiempo real, nunca pausas fijas. Los pasos comunes están en `tests/e2e/integration/helpers.ts`.
+
+| Archivo | Qué prueba |
+|---|---|
+| `full-voting-flow.spec.ts` | Ingreso, voto único, rechazo del segundo envío, resultados ocultos hasta publicar. |
+| `office-runoff.spec.ts` | A · Cargo sin mayoría: desempate automático entre los 2 primeros y empates, «Mayoría: X», «N no votaron», la 2.ª votación elige (#37, #38, #41). |
+| `committee.spec.ts` | B · Comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 puestos, selección exacta en el teléfono y en el servidor, desempates encadenados (#37, #38, #39). |
+| `new-candidate.spec.ts` | C · Candidato nuevo: ausente en la 2.ª votación, presente en la 3.ª, y resulta electo (#40). |
+| `inhabilitar.spec.ts` | D · Inhabilitar y Habilitar durante una votación, voto rechazado con 403, sigue en la base; inhabilitar desde «salió de la sala» (#43). |
+| `decisions.spec.ts` | E · Decisiones 3/4 aprobada y no aprobada, 50/50 con mayoría simple, opciones que se repiten (#42). |
+| `annul-runoff.spec.ts` | F · Anular el primer desempate y repetirlo: sigue siendo la 2.ª votación y no admite candidato nuevo. |
+| `assembly-simulation.spec.ts` | Asamblea completa con nueve teléfonos; capturas y notas de tiempo en `SIMULATION_OUTPUT_DIR`. |
 
 ## Evidencia
 
