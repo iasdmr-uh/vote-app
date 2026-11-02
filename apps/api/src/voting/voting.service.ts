@@ -376,10 +376,10 @@ export class VotingService implements OnModuleInit {
       this.eligibleCounts(assemblyId),
       this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left' }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
     ])
-    const chainIds = new Map<string, string[]>()
+    const chains = new Map<string, Array<{ id: string; status: string }>>()
     for (const round of assembly.rounds) {
       const rootId = round.committeeRootRoundId ?? round.id
-      chainIds.set(rootId, [...(chainIds.get(rootId) ?? []), round.id])
+      chains.set(rootId, [...(chains.get(rootId) ?? []), round])
     }
     const rounds = await Promise.all(assembly.rounds.map(async (round) => ({
       id: round.id,
@@ -404,8 +404,8 @@ export class VotingService implements OnModuleInit {
       ...(round.status === 'closed' || round.status === 'published'
         ? { outcome: outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length) }
         : {}),
-      voteNumber: (chainIds.get(round.committeeRootRoundId ?? round.id) ?? []).indexOf(round.id) + 1,
-      runoff: runoffSourceOf(round.countingRule) !== null,
+      voteNumber: voteNumberIn(chains.get(round.committeeRootRoundId ?? round.id) ?? [], round.id),
+      runoff: isRunoff(round.countingRule),
       runoffSourceRoundId: runoffSourceOf(round.countingRule),
       officialResult: await this.moderatorOfficialResult(round.id),
     })))
@@ -928,7 +928,8 @@ export class VotingService implements OnModuleInit {
           approvalRule: source.approvalRule,
           committeeRootRoundId: rootId,
           electionSeats: seats,
-          countingRule: { kind: 'count_only', reason: 'repeat', sourceRoundId: source.id },
+          // Repeating an annulled runoff is still that runoff: same label, same rules for new candidates.
+          countingRule: { kind: 'count_only', reason: 'repeat', sourceRoundId: source.id, ...(isRunoff(source.countingRule) ? { runoff: true } : {}) },
           options: { create: selected.map((option, order) => ({ label: option.label, order })) },
         },
         include: { options: { orderBy: { order: 'asc' } } },
@@ -987,13 +988,15 @@ export class VotingService implements OnModuleInit {
     await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${rows[0].assembly_id}::uuid FOR UPDATE`
     const assembly = await tx.assembly.findUniqueOrThrow({ where: { id: rows[0].assembly_id }, select: { status: true } })
     if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
-    const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, committeeRootRoundId: true, countingRule: true } })
+    const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, category: true, committeeRootRoundId: true, countingRule: true } })
     if (round.status !== 'draft') throw new ConflictException('Los candidatos solo se cambian antes de abrir la votación')
+    // A decision repeats between the options it already had; only an election takes a new candidate.
+    if (round.category === 'decision') throw new ConflictException('Solo se agregan candidatos en la elección de un cargo o una comisión')
     const rootId = round.committeeRootRoundId ?? round.id
     // Counted as chainPosition counts it, so the server agrees with the "N.ª VOTACIÓN" the mesa sees.
-    const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true } })
-    const voteNumber = chain.findIndex((item) => item.id === round.id) + 1
-    if (runoffSourceOf(round.countingRule) === null || voteNumber < 3) {
+    const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true } })
+    const voteNumber = voteNumberIn(chain, round.id)
+    if (!isRunoff(round.countingRule) || voteNumber < 3) {
       throw new ConflictException('Solo se puede agregar un candidato a partir de la 3.ª votación')
     }
     return { assemblyId: round.assemblyId, rootId, voteNumber }
@@ -1002,8 +1005,8 @@ export class VotingService implements OnModuleInit {
   /** Which vote of its election a round is (1 for the first) and whether it is a runoff. */
   private async chainPosition(round: { id: string; committeeRootRoundId: string | null; countingRule: unknown }) {
     const rootId = round.committeeRootRoundId ?? round.id
-    const chain = await this.prisma.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true } })
-    return { voteNumber: chain.findIndex((item) => item.id === round.id) + 1, runoff: runoffSourceOf(round.countingRule) !== null }
+    const chain = await this.prisma.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true } })
+    return { voteNumber: voteNumberIn(chain, round.id), runoff: isRunoff(round.countingRule) }
   }
 
   /**
@@ -1261,6 +1264,21 @@ const BOOLEAN_DECISION_LABELS = ['A favor', 'En contra'] as const
 /** Format and rule are only sent for decisions, so election payloads stay as they were. */
 function decisionFields(round: { category: string; decisionFormat: string | null; approvalRule: string }) {
   return round.category === 'decision' ? { decisionFormat: round.decisionFormat, approvalRule: round.approvalRule } : {}
+}
+
+/** A runoff, or the repetition of an annulled runoff. */
+function isRunoff(countingRule: unknown) {
+  const rule = countingRule as { reason?: unknown; runoff?: unknown } | null
+  return runoffSourceOf(countingRule) !== null || (rule?.reason === 'repeat' && rule.runoff === true)
+}
+
+/**
+ * Which vote of its election a round is, counting only the votes before it that were not annulled:
+ * an annulled vote and the vote that repeats it share a number.
+ */
+function voteNumberIn(chain: Array<{ id: string; status: string }>, roundId: string) {
+  const index = chain.findIndex((item) => item.id === roundId)
+  return chain.slice(0, Math.max(0, index)).filter((item) => item.status !== 'annulled').length + 1
 }
 
 /** The vote whose result prepared this runoff. */

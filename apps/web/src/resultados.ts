@@ -66,7 +66,7 @@ export function electedText(name: string) {
   return /a$/i.test(name.trim().split(/\s+/)[0] || '') ? 'Electa' : 'Electo'
 }
 
-/** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, "2.ª VOTACIÓN" for a repeated annulled vote, nothing for the first. */
+/** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, nothing for the first vote. Annulled votes are not counted in the number. */
 export function voteLabel(target?: { voteNumber?: number; runoff?: boolean } | null) {
   const number = target?.voteNumber ?? 1
   if (number <= 1) return ''

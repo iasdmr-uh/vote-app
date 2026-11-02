@@ -181,3 +181,85 @@ test('in a committee runoff from the 3rd vote on, a new candidate can fill one o
     await prisma.$disconnect()
   }
 })
+
+test('an annulled vote does not count: the repeated first runoff is still the 2nd vote and takes no new candidate; a decision never takes one', {
+  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
+}, async () => {
+  process.env.DATABASE_URL = testDatabaseUrl
+  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
+  const prisma = new PrismaService()
+  await prisma.$connect()
+  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
+  const service = new VotingService(prisma, realtime)
+  const organizationId = randomUUID()
+  let assemblyId: string | undefined
+
+  try {
+    const organization = await prisma.organization.create({ data: { id: organizationId, name: `new-candidate-annulled-${organizationId}`, type: 'union' } })
+    const joinCode = newOpaqueCredential()
+    assemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Annulled runoff', status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
+    const people: string[] = []
+    for (const name of ['Ana', 'Luis', 'Marta', 'Pedro', 'Sofía']) {
+      const joined = await service.joinAssembly(joinCode, name, 'Delegado')
+      people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
+    }
+    await service.changeLobby(assemblyId, 'lobby_closed')
+    const vote = async (roundId: string, ballot: Array<{ id: string; label: string }>, labels: string[]) => {
+      for (const [index, label] of labels.entries()) await service.castVote(people[index]!, roundId, ballot.find((option) => option.label === label)!.id)
+    }
+    const roundIn = async (roundId: string) => (await service.moderatorAssembly(assemblyId!)).rounds.find((round) => round.id === roundId)!
+    const draftAfter = async (sourceRoundId: string) => (await service.moderatorAssembly(assemblyId!)).rounds.find((round) => round.runoffSourceRoundId === sourceRoundId && round.status === 'draft')!
+
+    // 1st vote: base 5, majority 3. María and Carlos go to the runoff.
+    const first = await service.createRound(assemblyId, {
+      title: 'Presidencia', format: 'single_choice', countingRule: { kind: 'count_only' },
+      options: [{ label: 'María López' }, { label: 'Carlos Gómez' }, { label: 'Juan Mora' }],
+    })
+    await service.openRound(first.id)
+    await vote(first.id, first.options, ['María López', 'María López', 'Carlos Gómez', 'Carlos Gómez', 'Juan Mora'])
+    await service.closeRound(first.id)
+    const runoff = await draftAfter(first.id)
+
+    // The first runoff is opened, annulled and prepared again: it is still the 2nd vote and still a runoff.
+    await service.openRound(runoff.id)
+    await service.annulRound(runoff.id, 'Se abrió por error')
+    assert.equal((await roundIn(runoff.id)).voteNumber, 2, 'the annulled vote keeps its own number')
+    const again = await service.repeatRound(runoff.id, { optionIds: runoff.options.map((option) => option.id) })
+    const repeated = await roundIn(again.id)
+    assert.equal(repeated.voteNumber, 2, 'the annulled vote is not counted')
+    assert.equal(repeated.runoff, true)
+    await assert.rejects(service.addCandidate(again.id, 'Rosa Díaz'), /a partir de la 3\.ª votación/)
+    assert.equal(await prisma.ballotOption.count({ where: { roundId: again.id } }), 2)
+    await service.openRound(again.id)
+    const phone = await service.participantState(people[0]!)
+    assert.deepEqual([phone.openRound?.voteNumber, phone.openRound?.runoff], [2, true], 'the phone labels it DESEMPATE · 2.ª VOTACIÓN')
+
+    // Tied again: the next runoff is the 3rd vote and takes a new candidate.
+    await vote(again.id, again.options, ['María López', 'María López', 'Carlos Gómez', 'Carlos Gómez'])
+    await service.closeRound(again.id)
+    const third = await draftAfter(again.id)
+    assert.equal(third.voteNumber, 3)
+    assert.equal((await service.addCandidate(third.id, 'Rosa Díaz')).option.isNew, true)
+
+    // A decision with options repeats between its own options, even from its 3rd vote on.
+    const venue = await service.createRound(assemblyId, { title: 'Sede 2027', format: 'single_choice', category: 'decision', decisionFormat: 'options', options: ['Tegucigalpa', 'San Pedro Sula', 'La Ceiba'].map((label) => ({ label })) })
+    await service.openRound(venue.id)
+    await vote(venue.id, venue.options, ['Tegucigalpa', 'Tegucigalpa', 'San Pedro Sula', 'San Pedro Sula', 'La Ceiba'])
+    await service.closeRound(venue.id)
+    const venue2 = await draftAfter(venue.id)
+    await service.openRound(venue2.id)
+    await vote(venue2.id, venue2.options, ['Tegucigalpa', 'Tegucigalpa', 'San Pedro Sula', 'San Pedro Sula'])
+    await service.closeRound(venue2.id)
+    const venue3 = await draftAfter(venue2.id)
+    assert.deepEqual([venue3.category, venue3.voteNumber, venue3.runoff], ['decision', 3, true])
+    await assert.rejects(service.addCandidate(venue3.id, 'Choluteca'), /cargo o una comisión/)
+    assert.equal(await prisma.ballotOption.count({ where: { roundId: venue3.id } }), 2)
+  } finally {
+    if (assemblyId) {
+      await prisma.round.deleteMany({ where: { assemblyId } })
+      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
+    }
+    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await prisma.$disconnect()
+  }
+})

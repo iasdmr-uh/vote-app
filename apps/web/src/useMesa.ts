@@ -56,9 +56,9 @@ function electionComplete(target: RoundRecord) {
 function runoffOf(target: RoundRecord) {
   return state.value?.rounds?.find((item) => item.runoffSourceRoundId === target.id && item.status === 'draft')
 }
-/** From the 3rd vote on, a runoff draft may take a new candidate; never the first runoff. */
+/** From the 3rd vote on, an election's runoff draft may take a new candidate; never the first runoff or a decision. */
 function acceptsNewCandidates(target: RoundRecord) {
-  return target.status === 'draft' && Boolean(target.runoff) && voteNumber(target) >= 3
+  return target.status === 'draft' && target.category !== 'decision' && Boolean(target.runoff) && voteNumber(target) >= 3
 }
 const preparedRunoff = computed(() => {
   const chosen = state.value?.rounds?.find((item) => item.id === preparingRunoffId.value)
@@ -112,7 +112,9 @@ function voteNumber(target: { id: string; committeeRootRoundId?: string | null; 
   if (target.voteNumber) return target.voteNumber
   const rootId = target.committeeRootRoundId || target.id
   const chain = (state.value?.rounds || []).filter((item) => item.id === rootId || item.committeeRootRoundId === rootId)
-  return Math.max(1, chain.findIndex((item) => item.id === target.id) + 1)
+  // Annulled votes do not count: the vote that repeats one keeps its number.
+  const before = chain.slice(0, Math.max(0, chain.findIndex((item) => item.id === target.id)))
+  return before.filter((item) => item.status !== 'annulled').length + 1
 }
 function rootRoundOf(target: { id: string; committeeRootRoundId?: string | null }) {
   return state.value?.rounds?.find((item) => item.id === (target.committeeRootRoundId || target.id))
