@@ -1542,3 +1542,146 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   await expect(page.locator('.pj-elected')).toContainText('María López')
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electa')
 })
+
+test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan» sin contarlos', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  const disabled = new Set(['p3'])
+  const calls: string[] = []
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía', voted: false }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: false }]
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: people.map((person) => ({ ...person, votingDisabled: disabled.has(person.id) })),
+        participantCount: 3, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 1, eligibleCount: 3 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 1, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
+      } })
+      return
+    }
+    const toggle = url.pathname.match(/\/moderator\/participants\/(\w+)\/(disable|enable)-voting$/)
+    if (request.method() === 'POST' && toggle) {
+      calls.push(`${toggle[1]}:${toggle[2]}`)
+      if (toggle[2] === 'disable') disabled.add(toggle[1]!)
+      else disabled.delete(toggle[1]!)
+      await route.fulfill({ json: { id: toggle[1], votingDisabled: toggle[2] === 'disable' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for inhabilitar test' } })
+  })
+
+  await page.goto('/moderator')
+  const summary = page.locator('.attendance-summary')
+  await expect(summary).toContainText('1 votó')
+  await expect(summary).toContainText('1 falta')
+  await expect(summary).toContainText('1 inhabilitado')
+  const rosa = page.locator('.mesa-person-list li', { hasText: 'Rosa Paz' })
+  await expect(rosa.getByText('Inhabilitado', { exact: true })).toBeVisible()
+  await expect(rosa.getByRole('img', { name: 'Inhabilitado' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list li.person-disabled')).toHaveCount(1)
+
+  await rosa.getByRole('button', { name: 'Habilitar' }).click()
+  await expect(rosa.getByText('Inhabilitado', { exact: true })).toHaveCount(0)
+  await expect(summary).toContainText('2 faltan')
+  await expect(summary).not.toContainText('inhabilitado')
+
+  const luis = page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })
+  await luis.locator('summary').click()
+  await luis.getByRole('button', { name: 'Inhabilitar' }).click()
+  await expect(luis.getByText('Inhabilitado', { exact: true })).toBeVisible()
+  await expect(luis.getByRole('button', { name: 'Habilitar' })).toBeVisible()
+  await expect(summary).toContainText('1 falta')
+  await expect(summary).toContainText('1 inhabilitado')
+  expect(calls).toEqual(['p3:enable', 'p2:disable'])
+})
+
+test('la mesa inhabilita desde el aviso «salió de la sala» y la persona vuelve a la lista', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  let pedro: 'active' | 'left' | 'disabled' = 'active'
+  const calls: string[] = []
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: false, votingDisabled: false }, ...(pedro === 'left' ? [] : [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas', voted: false, votingDisabled: pedro === 'disabled' }])]
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: people, participantCount: people.length, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 0, eligibleCount: people.length },
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 0, options: [{ id: 'a', label: 'Alfa' }], officialResult: null }],
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/participants/p2/disable-voting')) {
+      calls.push('p2:disable')
+      pedro = 'disabled'
+      await route.fulfill({ json: { id: 'p2', votingDisabled: true } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for inhabilitar notice test' } })
+  })
+  let markConnected: (() => void) | undefined
+  const connected = new Promise<void>((resolve) => { markConnected = resolve })
+  let server: { send: (message: string) => void } | undefined
+  await page.routeWebSocket(/\/socket\.io\//, (ws) => {
+    server = ws
+    ws.send(`0${JSON.stringify({ sid: 'synthetic-engine', upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1000000 })}`)
+    ws.onMessage((message) => {
+      if (!String(message).startsWith('40/events,')) return
+      ws.send('40/events,{"sid":"synthetic-socket"}')
+      markConnected?.()
+    })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.locator('.mesa-person-list')).toContainText('Pedro Vargas')
+  await connected
+  pedro = 'left'
+  server!.send('42/events,["participant.left",{"participantId":"p2","firstName":"Pedro","lastName":"Vargas"}]')
+  const notice = page.getByRole('status').filter({ hasText: 'Pedro Vargas salió de la sala' })
+  await expect(notice).toBeVisible()
+  await expect(page.locator('.mesa-person-list')).not.toContainText('Pedro Vargas')
+  await notice.getByRole('button', { name: 'Inhabilitar' }).click()
+  await expect(notice).toHaveCount(0)
+  const row = page.locator('.mesa-person-list li', { hasText: 'Pedro Vargas' })
+  await expect(row.getByText('Inhabilitado', { exact: true })).toBeVisible()
+  await expect(page.locator('.attendance-summary')).toContainText('1 inhabilitado')
+  expect(calls).toEqual(['p2:disable'])
+})
+
+test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin opciones ni botón', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'synthetic-session-token')
+    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
+  })
+  let votingDisabled = true
+  await page.clock.install()
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      const state = participantState()
+      await route.fulfill({ json: { ...state, votingDisabled, currentRound: { ...state.currentRound, options: votingDisabled ? [] : state.currentRound.options } } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for inhabilitado phone test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toBeVisible()
+  await expect(page.locator('.phone-status-disabled')).toContainText('VOTACIÓN ABIERTA')
+  await expect(page.locator('.phone-status-disabled')).toContainText('Elección de prueba')
+  await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toHaveCount(0)
+  await expect(page.getByRole('radio')).toHaveCount(0)
+
+  // Habilitado again: the ballot comes back on the next refresh.
+  votingDisabled = false
+  await refreshByPolling(page)
+  await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toHaveCount(0)
+})

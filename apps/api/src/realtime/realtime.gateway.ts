@@ -103,6 +103,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   participantUpdated(assemblyId: string, payload: Parameters<RealtimePublisher['participantUpdated']>[1]): void { this.publisher().participantUpdated(assemblyId, payload) }
   participantRemoved(assemblyId: string, participantId: string): void { this.publisher().participantRemoved(assemblyId, participantId) }
   participantLeft(assemblyId: string, payload: Parameters<RealtimePublisher['participantLeft']>[1]): void { this.publisher().participantLeft(assemblyId, payload) }
+  participantVoting(assemblyId: string, payload: Parameters<RealtimePublisher['participantVoting']>[1]): void { this.publisher().participantVoting(assemblyId, payload) }
   participantSessionReplaced(participantId: string): void { this.publisher().participantSessionReplaced(participantId) }
   publicSessionsRevoked(assemblyId: string): void { this.publisher().publicSessionsRevoked(assemblyId) }
   assemblyDeleted(assemblyId: string): void { this.publisher().assemblyDeleted(assemblyId) }
@@ -184,6 +185,14 @@ export class RealtimePublisher {
     this.server.in(`participant:${payload.participantId}`).disconnectSockets(true)
   }
 
+  /** Inhabilitar / Habilitar: only the mesa needs the change; the delegate's phone gets its own participant.state. */
+  participantVoting(assemblyId: string, payload: RealtimeServerToClientEvents['participant.voting'] extends (arg: infer P) => void ? P : never): void {
+    this.server.to(moderatorRoom(assemblyId)).emit('participant.voting', {
+      participantId: payload.participantId,
+      votingDisabled: payload.votingDisabled,
+    })
+  }
+
   /** The previous device's token no longer authenticates, so its live sockets must not keep receiving events. */
   participantSessionReplaced(participantId: string): void {
     this.server.in(`participant:${participantId}`).disconnectSockets(true)
@@ -215,6 +224,7 @@ export class RealtimePublisher {
       lobbyStatus: payload.lobbyStatus,
       openRound,
       participationStatus: payload.participationStatus,
+      ...(payload.votingDisabled !== undefined ? { votingDisabled: payload.votingDisabled } : {}),
       ...(results ? { results } : {}),
       ...(results && payload.recordedCount !== undefined && payload.eligibleCount !== undefined
         ? { recordedCount: payload.recordedCount, eligibleCount: payload.eligibleCount }

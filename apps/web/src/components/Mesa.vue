@@ -5,7 +5,7 @@ import { useMesa } from '../useMesa'
 
 const {
   origin, loading, syncing, state, code, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies, liveAssembly,
-  assemblyStatus, lobbyStatus, round, eligibleVotes, completionTime, ballotMaxChoices, participantLeft, refresh, formatDateTime,
+  assemblyStatus, lobbyStatus, round, eligibleVotes, completionTime, ballotMaxChoices, participantLeft, participantLeftId, refresh, formatDateTime,
 } = useAssembly()
 const {
   moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount,
@@ -14,7 +14,7 @@ const {
   moderatorWorkflowStep, otherPendingActas,
   roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, runoffOf,
   annulRound, repeatAllOptions, openRunoff, addBallotCandidate,
-  removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, openCompletedAssembly,
+  removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
   openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
   createAssembly, editParticipant, createRound, signInModerator,
 } = useMesa()
@@ -148,13 +148,15 @@ function closePersonMenu(event: Event) {
         </div>
         <aside class="card mesa-participants" aria-labelledby="mesa-participants-title">
           <div class="section-heading"><h2 id="mesa-participants-title">Participantes</h2><span class="count-pill">{{ state?.participants?.length ?? 0 }}</span></div>
-          <p v-if="attendance" class="attendance-summary"><span><span class="vote-dot vote-dot-done" aria-hidden="true"></span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span><span class="vote-dot vote-dot-pending" aria-hidden="true"></span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span></p>
-          <p v-if="participantLeft" class="left-notice" role="status" aria-live="polite"><span aria-hidden="true">←</span>{{ participantLeft }} salió de la sala</p>
+          <p v-if="attendance" class="attendance-summary"><span><span class="vote-dot vote-dot-done" aria-hidden="true"></span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span><span class="vote-dot vote-dot-pending" aria-hidden="true"></span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span><span v-if="attendance.disabled"><span class="vote-dot vote-dot-disabled" aria-hidden="true"></span>{{ attendance.disabled }} {{ attendance.disabled === 1 ? 'inhabilitado' : 'inhabilitados' }}</span></p>
+          <p v-if="participantLeft" class="left-notice" role="status" aria-live="polite"><span aria-hidden="true">←</span>{{ participantLeft }} salió de la sala<button v-if="participantLeftId && assemblyStatus !== 'completed'" class="link-button push-right" :disabled="loading" @click="setVotingDisabled(participantLeftId, true)">Inhabilitar</button></p>
           <ul class="mesa-person-list">
-            <li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`">
-              <span v-if="person.voted !== undefined" :class="['vote-dot', person.voted ? 'vote-dot-done' : 'vote-dot-pending']" role="img" :aria-label="person.voted ? 'Ya votó' : 'Falta votar'" :title="person.voted ? 'Ya votó' : 'Falta votar'"></span>
-              <span class="person-name">{{ person.firstName }} {{ person.lastName }}</span>
-              <details v-if="person.id" class="person-menu">
+            <li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`" :class="{ 'person-disabled': person.votingDisabled }">
+              <span v-if="person.votingDisabled" class="vote-dot vote-dot-disabled" role="img" aria-label="Inhabilitado" title="Inhabilitado"></span>
+              <span v-else-if="person.voted !== undefined" :class="['vote-dot', person.voted ? 'vote-dot-done' : 'vote-dot-pending']" role="img" :aria-label="person.voted ? 'Ya votó' : 'Falta votar'" :title="person.voted ? 'Ya votó' : 'Falta votar'"></span>
+              <span class="person-name">{{ person.firstName }} {{ person.lastName }}<span v-if="person.votingDisabled" class="badge badge-disabled">Inhabilitado</span></span>
+              <button v-if="person.id && person.votingDisabled && assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="setVotingDisabled(person.id, false)">Habilitar</button>
+              <details v-else-if="person.id && !person.votingDisabled" class="person-menu">
                 <summary :aria-label="`Acciones para ${person.firstName} ${person.lastName}`">⋯</summary>
                 <div class="person-menu-list">
                   <template v-if="assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed'">
@@ -162,6 +164,7 @@ function closePersonMenu(event: Event) {
                     <button type="button" class="remove-link" @click="closePersonMenu($event); moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button>
                   </template>
                   <button type="button" @click="closePersonMenu($event); issueResumeCode(person)">Reconectar dispositivo</button>
+                  <button type="button" class="remove-link" :disabled="loading" @click="closePersonMenu($event); setVotingDisabled(person.id, true)">Inhabilitar</button>
                 </div>
               </details>
             </li>

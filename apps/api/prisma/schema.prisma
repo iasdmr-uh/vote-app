@@ -76,6 +76,8 @@ model ParticipantSession {
   resumeCodeHash String?           @unique @map("resume_code_hash") @db.Char(64)
   resumeExpiresAt DateTime?        @map("resume_expires_at")
   status         ParticipantStatus @default(active)
+  /** Inhabilitado by the mesa: stays in the room and in the majority base, but cannot vote. */
+  votingDisabled Boolean           @default(false) @map("voting_disabled")
   joinedAt       DateTime          @default(now()) @map("joined_at")
   assembly       Assembly          @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   participations Participation[]

@@ -35,6 +35,7 @@ const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: s
 const liveAssembly = ref<{ id: string; name: string } | null>(null)
 const browsingActas = ref(sessionStorage.getItem('browsingActas') === 'true')
 const participantLeft = ref('')
+const participantLeftId = ref('')
 let refreshTimer: number | undefined
 let realtimeSocket: Socket | null = null
 let lastRefreshAt = 0
@@ -378,12 +379,12 @@ function syncRealtime() {
   const socketUrl = import.meta.env.VITE_SOCKET_URL || `${API.replace(/\/api\/v1\/?$/, '')}/events`
   realtimeActive.value = true
   realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelayMax: 5000 })
-  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
+  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
     realtimeSocket.on(event, scheduleRefresh)
   }
-  realtimeSocket.on('participant.left', (payload: { firstName?: string; lastName?: string } | undefined) => {
+  realtimeSocket.on('participant.left', (payload: { participantId?: string; firstName?: string; lastName?: string } | undefined) => {
     const name = `${payload?.firstName || ''} ${payload?.lastName || ''}`.trim()
-    if (name) participantLeft.value = name
+    if (name) { participantLeft.value = name; participantLeftId.value = payload?.participantId || '' }
     scheduleRefresh()
   })
   realtimeSocket.on('connect', () => { realtimeConnected.value = true; void refresh() })
@@ -425,7 +426,7 @@ export function useAssembly() {
   return {
     origin, route, loading, syncing, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode,
     moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected,
-    projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas, participantLeft,
+    projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas, participantLeft, participantLeftId,
     role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, completionTime, ballotMaxChoices, projectorJoinUrl,
     go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
     setBrowsingActas, selectAssembly, loadAssemblyLists, recoverActiveAssembly, rememberJoinCode, refreshQr, formatDateTime,
