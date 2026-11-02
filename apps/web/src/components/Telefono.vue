@@ -169,7 +169,7 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
       </div>
     </template>
     <template v-else-if="votingDisabled && round">
-      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · VOTACIÓN ABIERTA</p>
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
       <h1>Voto inhabilitado</h1>
     </template>
     <template v-else-if="ballotShown && round">

@@ -1707,3 +1707,23 @@ test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin
   await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toHaveCount(0)
 })
+
+test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('participantSessionToken', 'synthetic-session-token')
+    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'GET' && url.pathname.endsWith('/participant/me')) {
+      const state = participantState()
+      await route.fulfill({ json: { ...state, votingDisabled: true, currentRound: { ...state.currentRound, voteNumber: 2, runoff: true, options: [] } } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for inhabilitado runoff test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toBeVisible()
+  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · DESEMPATE · 2.ª VOTACIÓN')
+})
