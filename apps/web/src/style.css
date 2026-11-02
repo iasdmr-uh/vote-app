@@ -290,6 +290,12 @@ label .hint { font-weight: 500; }
 .vote-dot { display: inline-block; flex: none; width: 10px; height: 10px; margin-right: .55rem; border-radius: 50%; vertical-align: middle; }
 .vote-dot-pending { background: #f5b301; }
 .vote-dot-done { background: #1e9e5a; }
+.vote-dot-disabled { background: #8a8f98; }
+.mesa-person-list li.person-disabled { color: #7c8594; }
+.badge-disabled { margin-left: .55rem; padding: .15rem .5rem; background: #f0f1f4; color: #6b7280; font-size: .68rem; font-weight: 650; letter-spacing: 0; text-transform: none; }
+.mesa-person-list .link-button { padding: 0 .4rem; font-size: .85rem; font-weight: 700; }
+.phone-status-disabled { color: #7c8594; text-transform: uppercase; }
+.phone-status-disabled .status-dot { background: #8a8f98; }
 .member-count-input { max-width: 6rem; }
 
 .push-right { margin-left: auto; }

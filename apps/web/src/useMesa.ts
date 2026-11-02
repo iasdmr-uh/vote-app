@@ -7,7 +7,7 @@ import { useAssembly } from './useAssembly'
 
 const {
   loading, error, notice, state, code, moderatorToken, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies,
-  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, participantLeft, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
+  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, participantLeft, participantLeftId, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
@@ -51,8 +51,11 @@ function isDecidable(target: RoundRecord) {
 const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
-  const pending = (state.value?.participants || []).filter((person) => !person.voted).length
-  return { ...record, pending }
+  const participants = state.value?.participants || []
+  // An inhabilitado still counts in the base, but no longer "falta".
+  const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
+  const disabled = participants.filter((person) => person.votingDisabled).length
+  return { ...record, pending, disabled }
 })
 const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
@@ -68,7 +71,7 @@ const moderatorWorkflowStep = computed(() => {
   if (round.value?.status === 'draft') return 1
   return lobbyStatus.value === 'lobby_open' ? 0 : 1
 })
-watch(assemblyId, () => { participantLeft.value = '' })
+watch(assemblyId, () => { participantLeft.value = ''; participantLeftId.value = '' })
 
 function eligibleOf(target: RoundRecord) {
   const own = (target as RoundRecord & { eligibleCount?: number }).eligibleCount
@@ -283,6 +286,22 @@ function issueResumeCode(person: { id?: string; firstName: string; lastName: str
   }
 }
 
+/** Inhabilitar / Habilitar is reversible and audited, so it applies at once without a confirmation step. */
+async function setVotingDisabled(participantId: string | undefined, disabled: boolean) {
+  if (!participantId || loading.value) return
+  error.value = ''
+  loading.value = true
+  let succeeded = false
+  try {
+    await request(`/moderator/participants/${encodeURIComponent(participantId)}/${disabled ? 'disable' : 'enable'}-voting`, { method: 'POST' }, moderatorToken.value)
+    succeeded = true
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  if (!succeeded) return
+  if (participantId === participantLeftId.value) { participantLeft.value = ''; participantLeftId.value = '' }
+  await refresh(true)
+}
+
 function openCompletedAssembly(id: string) {
   setBrowsingActas(false)
   selectAssembly(id)
@@ -474,7 +493,7 @@ export function useMesa() {
     moderatorWorkflowStep, repeatContext, repeatDialogRound, declareDialogRound, otherPendingActas,
     roundChain, isDecidable, latestCounted, voteNumber, rootRoundOf, nextVoteNumber, eligibleOf, rankedRows,
     annulRound, repeatAllOptions, openRepeatDialog, confirmRepeatDialog, openDeclareDialog, confirmDeclareDialog, addBallotCandidate,
-    removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, openCompletedAssembly,
+    removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
     createAssembly, editParticipant, createRound, formatActor, signInModerator,
   }

@@ -14,6 +14,8 @@ const leaving = ref(false)
 const reviewedOptions = computed(() => round.value?.options?.filter((option) => selectedOptions.value.includes(option.id)) || [])
 const voteRecorded = computed(() => state.value?.participationStatus === 'recorded')
 const ballotShown = computed(() => assemblyStatus.value !== 'completed' && round.value?.status === 'open' && Boolean(round.value.options?.length) && !voteRecorded.value)
+// The mesa inhabilitó this delegate: during an open vote they see the state, never the ballot.
+const votingDisabled = computed(() => Boolean(state.value?.votingDisabled) && assemblyStatus.value !== 'completed' && round.value?.status === 'open' && !voteRecorded.value)
 const resultBase = computed(() => state.value?.eligibleCount ?? 0)
 const resultVoters = computed(() => state.value?.recordedCount ?? round.value?.participationCount ?? 0)
 const resultRows = computed(() => {
@@ -161,6 +163,10 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
         <button class="secondary" :disabled="loading" @click="reviewingVote = false">Volver</button>
         <button class="primary" :disabled="loading || !reviewedOptions.length" @click="submitVote">{{ voteSubmitting ? 'Enviando…' : 'Confirmar voto' }}</button>
       </div>
+    </template>
+    <template v-else-if="votingDisabled && round">
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · VOTACIÓN ABIERTA</p>
+      <h1>Voto inhabilitado</h1>
     </template>
     <template v-else-if="ballotShown && round">
       <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p>

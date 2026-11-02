@@ -65,7 +65,7 @@ test('inhabilitar during an open vote rejects the vote, keeps the base and a vot
     // Repeating it changes nothing and records nothing twice.
     events.length = 0
     await service.setVotingDisabled(people.Luis!.id, true)
-    assert.deepEqual(events, [])
+    assert.equal(events.length, 0)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.voting_disabled' } }), 2)
 
     // Still in the room, the list and the base.
