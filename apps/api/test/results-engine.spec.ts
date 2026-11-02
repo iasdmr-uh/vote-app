@@ -148,3 +148,45 @@ test('decision with options: anyone tied with the 2nd also goes to the repeat', 
   const tiedFirst = decisionOutcome(tallies({ A: 12, B: 12, C: 12 }), 'options', 36)
   assert.deepEqual(tiedFirst.runoff, ['A', 'B', 'C'], 'a tie for first repeats among only the tied')
 })
+
+// Edge cases (PR #45): ties at the cut among candidates who all have a majority, and runoffs with
+// nobody left to add.
+
+test('committee of 2, base 10: A 8, B 6, C 6 → A elected; B and C both have majority but tie for the last seat → runoff B and C for 1', () => {
+  const outcome = electionOutcome(tallies({ A: 8, B: 6, C: 6 }), 2, 10)
+  assert.deepEqual(outcome, { seats: 2, base: 10, threshold: 6, elected: ['A'], runoff: ['B', 'C'], openSeats: 1 })
+})
+
+test('committee of 2: three candidates tied with majority for both seats → nobody elected, runoff among the three for 2', () => {
+  const outcome = electionOutcome(tallies({ A: 6, B: 6, C: 6, D: 2 }), 2, 10)
+  assert.deepEqual(outcome.elected, [])
+  assert.deepEqual(outcome.runoff, ['A', 'B', 'C'])
+  assert.equal(outcome.openSeats, 2)
+})
+
+test('office: two candidates can never tie with majority, because each delegate marks exactly one name', () => {
+  // With one mark per voter the votes add up to at most the base, and two majorities would add up to
+  // 2 × (⌊base/2⌋ + 1) > base. Checked exhaustively for small bases: the case cannot reach the engine.
+  for (let base = 1; base <= 40; base += 1) {
+    const threshold = thresholdVotes(base)
+    assert.ok(2 * threshold > base, `base ${base}: two majorities need ${2 * threshold} marks`)
+  }
+  // The most an office can give two candidates is a tie just below the threshold: a runoff between both.
+  const outcome = electionOutcome(tallies({ A: 5, B: 5 }), 1, 10)
+  assert.deepEqual(outcome.elected, [])
+  assert.deepEqual(outcome.runoff, ['A', 'B'])
+})
+
+test('nobody left to add: a committee of 2 with only 2 candidates and no majority repeats the same runoff for 2', () => {
+  const first = electionOutcome(tallies({ A: 4, B: 3 }), 2, 10)
+  assert.deepEqual(first, { seats: 2, base: 10, threshold: 6, elected: [], runoff: ['A', 'B'], openSeats: 2 })
+  // In that runoff the exact-N rule makes every voter mark both names, so both get one vote per voter:
+  // with 5 of 10 voting nobody reaches 6 and the same runoff comes back; with 6 voting both are elected.
+  assert.deepEqual(electionOutcome(tallies({ A: 5, B: 5 }), 2, 10).runoff, ['A', 'B'])
+  assert.deepEqual(electionOutcome(tallies({ A: 6, B: 6 }), 2, 10).elected, ['A', 'B'])
+})
+
+test('nobody left to add: an office with a single candidate without majority repeats with that candidate alone', () => {
+  const outcome = electionOutcome(tallies({ A: 4 }), 1, 10)
+  assert.deepEqual(outcome, { seats: 1, base: 10, threshold: 6, elected: [], runoff: ['A'], openSeats: 1 })
+})
