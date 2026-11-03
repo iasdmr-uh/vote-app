@@ -40,6 +40,11 @@ enum RoundCategory {
   decision
 }
 
+enum PositionGroup {
+  board
+  department
+}
+
 model Organization {
   id         String           @id @default(uuid()) @db.Uuid
   name       String
@@ -54,6 +59,8 @@ model Assembly {
   id             String               @id @default(uuid()) @db.Uuid
   organizationId String               @map("organization_id") @db.Uuid
   name           String
+  /** Term the elected serve, e.g. "2027–2029"; shown on the acta and the projector. */
+  period         String?
   status         AssemblyStatus       @default(preparing)
   joinCodeHash   String               @unique @map("join_code_hash") @db.Char(64)
   createdAt      DateTime             @default(now()) @map("created_at")
@@ -62,6 +69,7 @@ model Assembly {
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   participants   ParticipantSession[]
   rounds         Round[]
+  positions      Position[]
   auditEvents    AuditEvent[]
 
   @@index([organizationId, status])
@@ -113,8 +121,11 @@ model Round {
   annulReason    String?         @map("annul_reason")
   /** Percentage base frozen when the ballot stops taking votes, so later arrivals cannot change it. */
   eligibleCount  Int?            @map("eligible_count")
+  /** Office only, on the election's first vote: the org-chart box its elected fills. Runoffs inherit it from the root. */
+  positionId     String?         @map("position_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
   assembly       Assembly        @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  position       Position?       @relation(fields: [positionId], references: [id], onDelete: SetNull)
   options        BallotOption[]
   participations Participation[]
   votes          AnonymousVote[]
@@ -125,6 +136,24 @@ model Round {
 
   @@index([assemblyId, status])
   @@map("rounds")
+}
+
+/** A box of the Unión Hondureña org chart: the junta directiva and the departamentos. */
+model Position {
+  id         String        @id @default(uuid()) @db.Uuid
+  assemblyId String        @map("assembly_id") @db.Uuid
+  group      PositionGroup
+  label      String
+  sortOrder  Int           @map("sort_order")
+  /** Added by the mesa during the Asamblea, not one of the defaults. */
+  custom     Boolean       @default(false)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  assembly   Assembly      @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  rounds     Round[]
+
+  @@unique([assemblyId, label])
+  @@index([assemblyId, group, sortOrder])
+  @@map("positions")
 }
 
 model OfficialResult {

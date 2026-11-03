@@ -26,6 +26,12 @@ const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
 const PARTICIPANT_ACTOR = 'participant_session'
 /** The official result is computed, never declared by hand (Asamblea, Nov 2026). */
 const RESULTS_ENGINE_ACTOR = 'results_engine'
+/** The Unión Hondureña org chart, seeded in this order on every new Asamblea (Asamblea, Nov 2026). */
+export const DEFAULT_BOARD_POSITIONS = ['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3'] as const
+export const DEFAULT_DEPARTMENT_POSITIONS = [
+  'Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia',
+  'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción',
+] as const
 const SECRECY_CLEANUP_PENDING = 'No se completó la limpieza que protege el secreto del voto. La operación no se realizó; usa «Reintentar limpieza» en unos segundos.'
 
 @Injectable()
@@ -57,7 +63,7 @@ export class VotingService implements OnModuleInit {
     return { assemblyId, secrecyCleanupPending: false }
   }
 
-  async createAssembly(name: string) {
+  async createAssembly(name: string, period?: string) {
     const joinCode = newOpaqueCredential()
     const joinCodeHash = hashCredential(joinCode)
     await this.prisma.organization.upsert({
@@ -73,9 +79,13 @@ export class VotingService implements OnModuleInit {
       })
       if (liveAssembly) throw new ConflictException('Ya existe una Asamblea activa')
       const created = await tx.assembly.create({
-        data: { organizationId: ORGANIZATION_ID, name: name.trim(), status: 'lobby_open', joinCodeHash },
-        select: { id: true, name: true, status: true },
+        data: { organizationId: ORGANIZATION_ID, name: name.trim(), period: period?.trim() || null, status: 'lobby_open', joinCodeHash },
+        select: { id: true, name: true, period: true, status: true },
       })
+      await tx.position.createMany({ data: [
+        ...DEFAULT_BOARD_POSITIONS.map((label, sortOrder) => ({ assemblyId: created.id, group: 'board' as const, label, sortOrder })),
+        ...DEFAULT_DEPARTMENT_POSITIONS.map((label, sortOrder) => ({ assemblyId: created.id, group: 'department' as const, label, sortOrder })),
+      ] })
       await tx.auditEvent.create({
         data: { assemblyId: created.id, actorRef: MODERATOR_ACTOR, action: 'assembly.created_and_lobby_opened' },
       })
@@ -83,7 +93,62 @@ export class VotingService implements OnModuleInit {
     })
     this.realtime.assemblyState(assembly.id, { status: assembly.status })
     this.realtime.lobbyState(assembly.id, { status: 'open', participantCount: 0 })
-    return { assemblyId: assembly.id, name: assembly.name, status: assembly.status, joinCode, joinUrl: this.appUrl({ join: joinCode }) }
+    return { assemblyId: assembly.id, name: assembly.name, period: assembly.period, status: assembly.status, joinCode, joinUrl: this.appUrl({ join: joinCode }) }
+  }
+
+  /** The mesa adds a departamento the default org chart lacks; it goes last among the departamentos. */
+  async addPosition(assemblyId: string, label: string) {
+    const name = label.trim()
+    if (!name) throw new UnprocessableEntityException('Escribe el nombre del departamento')
+    const position = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE
+      `
+      if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
+      if (rows[0].status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      const existing = await tx.position.findMany({ where: { assemblyId }, select: { label: true, group: true, sortOrder: true } })
+      const key = name.toLocaleLowerCase('es')
+      if (existing.some((item) => item.label.toLocaleLowerCase('es') === key)) throw new UnprocessableEntityException('Ese puesto ya está en la lista')
+      const sortOrder = Math.max(-1, ...existing.filter((item) => item.group === 'department').map((item) => item.sortOrder)) + 1
+      const created = await tx.position.create({
+        data: { assemblyId, group: 'department', label: name, sortOrder, custom: true },
+        select: { id: true, group: true, label: true, sortOrder: true, custom: true },
+      })
+      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'position.added', metadata: { positionId: created.id, label: created.label } } })
+      return { ...created, status: rows[0].status as AssemblyStatus }
+    })
+    // Mesa and projector refetch their state on assembly.state, so the new box shows on the org chart.
+    this.realtime.assemblyState(assemblyId, { status: position.status })
+    return { id: position.id, group: position.group, label: position.label, sortOrder: position.sortOrder, custom: position.custom, elected: null }
+  }
+
+  /**
+   * The org chart with whoever each puesto elected. The elected live on the official result of the
+   * election's first vote, the round that carries the puesto, even when a runoff elected them. The mesa
+   * sees a closed vote's elected; phones and projector only what was published.
+   */
+  private async positionsOf(assemblyId: string, electedStatuses: readonly RoundStatus[]) {
+    const positions = await this.prisma.position.findMany({
+      where: { assemblyId },
+      orderBy: [{ group: 'asc' }, { sortOrder: 'asc' }],
+      include: {
+        rounds: {
+          where: { category: 'office', committeeRootRoundId: null },
+          orderBy: { createdAt: 'asc' },
+          select: { officialResult: { select: { options: { select: { option: { select: { label: true, roundId: true, round: { select: { status: true } } } } } } } } },
+        },
+      },
+    })
+    return positions.map((position) => {
+      const elected = position.rounds
+        .flatMap((round) => round.officialResult?.options ?? [])
+        .filter(({ option }) => electedStatuses.includes(option.round.status))
+        .at(-1)
+      return {
+        id: position.id, group: position.group, label: position.label, sortOrder: position.sortOrder, custom: position.custom,
+        elected: elected ? { label: elected.option.label, roundId: elected.option.roundId } : null,
+      }
+    })
   }
 
   private appUrl(params: Record<string, string>) {
@@ -341,14 +406,18 @@ export class VotingService implements OnModuleInit {
       ? await Promise.all([this.chainPosition(round), this.prisma.ballotOption.findMany({ where: { roundId: round.id }, orderBy: { order: 'asc' }, select: { id: true } })])
       : [null, []]
     const outcome = result && round ? outcomeOf({ ...round, options: ballot }, result, eligibleCounts.get(round.id) ?? participantCount) : undefined
+    const positions = await this.positionsOf(assembly.id, ['published'])
     return {
       assembly: { id: assembly.id, name: assembly.name, status: assembly.status, completedAt: assembly.completedAt?.toISOString() ?? null },
+      assemblyName: assembly.name,
+      period: assembly.period,
+      positions,
       // The projector runs on the server laptop, whose own address is not the one phones can reach.
       joinUrl: this.appUrl({ join: assemblyCode }),
       participantCount,
       ...(participants ? { participants } : {}),
       ...(recordedCount !== undefined ? { recordedCount, eligibleCount: eligibleCounts.get(round!.id) ?? participantCount } : {}),
-      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...decisionFields(round), ...chain } : null,
+      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, positionId: await this.positionIdOf(round), ...decisionFields(round), ...chain } : null,
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
       ...(officialResult ? { officialResult } : {}),
@@ -381,9 +450,12 @@ export class VotingService implements OnModuleInit {
       const rootId = round.committeeRootRoundId ?? round.id
       chains.set(rootId, [...(chains.get(rootId) ?? []), round])
     }
+    const positionOfRound = new Map(assembly.rounds.map((round) => [round.id, round.positionId]))
     const rounds = await Promise.all(assembly.rounds.map(async (round) => ({
       id: round.id,
       title: round.title,
+      // A runoff fills its root's puesto.
+      positionId: round.committeeRootRoundId ? positionOfRound.get(round.committeeRootRoundId) ?? null : round.positionId,
       format: round.format,
       category: round.category,
       memberCount: round.memberCount,
@@ -418,6 +490,8 @@ export class VotingService implements OnModuleInit {
     return {
       id: assembly.id,
       name: assembly.name,
+      period: assembly.period,
+      positions: await this.positionsOf(assemblyId, ['closed', 'published']),
       status: assembly.status,
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants.map((person) => ({ ...person, ...(attendanceRound ? { voted: voted.has(person.id) } : {}) })),
@@ -671,6 +745,8 @@ export class VotingService implements OnModuleInit {
       throw new UnprocessableEntityException('El formato y la regla de aprobación solo aplican a decisiones')
     }
     if (category === 'decision' && !input.decisionFormat) throw new UnprocessableEntityException('Indica el formato de la decisión')
+    if (category !== 'office' && input.positionId !== undefined) throw new UnprocessableEntityException('El puesto solo aplica a cargos')
+    if (!input.positionId && !input.title?.trim()) throw new UnprocessableEntityException('Escribe el título de la papeleta')
     // Results are computed on close (Asamblea, Nov 2026): the rule is the server's, whatever the client sends.
     const approvalRule: ThresholdRule = input.approvalRule ?? 'simple'
     const boolean = category === 'decision' && input.decisionFormat === 'boolean'
@@ -693,10 +769,17 @@ export class VotingService implements OnModuleInit {
       if (!assembly) throw new NotFoundException('Asamblea no encontrada')
       if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten nuevas papeletas')
       if (!['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('Cierra el ingreso antes de preparar una papeleta')
+      const position = input.positionId ? await tx.position.findFirst({ where: { id: input.positionId, assemblyId }, select: { id: true, label: true } }) : null
+      if (input.positionId && !position) throw new UnprocessableEntityException('Ese puesto no está en la lista de esta Asamblea')
+      if (position) {
+        const elected = await tx.officialResultOption.count({ where: { officialResult: { round: { positionId: position.id, committeeRootRoundId: null } } } })
+        if (elected) throw new ConflictException('Ese puesto ya tiene electo')
+      }
       const created = await tx.round.create({
         data: {
           assemblyId,
-          title: input.title.trim(),
+          title: input.title?.trim() || position!.label,
+          positionId: position?.id ?? null,
           format: category === 'committee' ? 'multiple_choice' : category === 'decision' ? 'single_choice' : (input.format ?? 'single_choice'),
           category,
           memberCount: category === 'committee' ? input.memberCount : null,
@@ -712,7 +795,13 @@ export class VotingService implements OnModuleInit {
       return created
     })
     await this.announceRound(round.id)
-    return { id: round.id, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...decisionFields(round), countingRule: round.countingRule, status: round.status, options: round.options }
+    return { id: round.id, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, positionId: round.positionId, ...decisionFields(round), countingRule: round.countingRule, status: round.status, options: round.options }
+  }
+
+  /** The puesto a vote fills: its own, or its root's for a runoff or repetition. */
+  private async positionIdOf(round: { positionId: string | null; committeeRootRoundId: string | null }) {
+    if (!round.committeeRootRoundId) return round.positionId
+    return (await this.prisma.round.findUnique({ where: { id: round.committeeRootRoundId }, select: { positionId: true } }))?.positionId ?? null
   }
 
   /** Phones and projector refetch on round.state. */

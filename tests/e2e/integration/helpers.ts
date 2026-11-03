@@ -129,7 +129,17 @@ export async function prepareBallot(mesa: Page, ballot: Ballot) {
   await mesa.getByRole('radio', { name: kind, exact: true }).click()
   let names: string[] = []
   if (ballot.kind === 'office') {
-    await mesa.getByLabel('Nombre del cargo').fill(ballot.title)
+    // A cargo fills a puesto; a title outside the default org chart is added as a departamento.
+    await mesa.getByRole('button', { name: 'Puesto' }).click()
+    const option = mesa.getByRole('option', { name: ballot.title, exact: true })
+    if (await option.count()) await option.click()
+    else {
+      await mesa.getByLabel('Nombre del departamento').fill(ballot.title)
+      await mesa.getByRole('button', { name: '+ Agregar' }).click()
+      await expect(mesa.getByRole('option', { name: ballot.title, exact: true })).toHaveAttribute('aria-selected', 'true')
+      await mesa.getByRole('button', { name: 'Puesto' }).click()
+    }
+    await expect(mesa.getByRole('button', { name: 'Puesto' })).toContainText(ballot.title)
     names = ballot.candidates
   } else if (ballot.kind === 'committee') {
     await mesa.getByLabel('Nombre de la comisión').fill(ballot.title)

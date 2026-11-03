@@ -9,7 +9,8 @@ const {
   assemblyStatus, lobbyStatus, round, eligibleVotes, completionTime, ballotMaxChoices, participantLeft, participantLeftId, refresh, formatDateTime,
 } = useAssembly()
 const {
-  moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
+  moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
+  roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
   showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
   secrecyCleanupPendingRounds, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
   moderatorWorkflowStep, otherPendingActas,
@@ -72,7 +73,7 @@ function closePersonMenu(event: Event) {
   <template v-else-if="moderatorAuthState === 'authenticated'">
     <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><h2>Asambleas finalizadas con datos guardados</h2><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta y borrado</button></li></ul></section>
     <section v-if="!assemblyId && liveAssembly" class="card"><p class="eyebrow">ASAMBLEA ACTIVA</p><h2>{{ liveAssembly.name }}</h2><button class="primary" @click="openLiveAssembly">Volver a la Asamblea activa</button></section>
-    <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea</button></form></section>
+    <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><div class="assembly-fields"><label>Nombre<input v-model="assemblyName" required /></label><label>Periodo<input v-model="assemblyPeriod" maxlength="60" placeholder="2027–2029" /></label></div><button class="primary" :disabled="loading">Crear Asamblea</button></form></section>
     <template v-else>
       <ol class="workflow-steps" aria-label="Pasos de la mesa">
         <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep && assemblyStatus !== 'completed' }" :aria-current="index === moderatorWorkflowStep && assemblyStatus !== 'completed' ? 'step' : undefined">
@@ -154,7 +155,18 @@ function closePersonMenu(event: Event) {
                 <div class="field-group"><span class="field-label" id="ballot-kind-label">¿Qué se vota?</span>
                   <div class="segmented" role="radiogroup" aria-labelledby="ballot-kind-label"><button type="button" role="radio" :aria-checked="roundCategory === 'office'" :class="{ active: roundCategory === 'office' }" @click="chooseRoundCategory('office')">Cargo</button><button type="button" role="radio" :aria-checked="roundCategory === 'committee'" :class="{ active: roundCategory === 'committee' }" @click="chooseRoundCategory('committee')">Comisión</button><button type="button" role="radio" :aria-checked="roundCategory === 'decision'" :class="{ active: roundCategory === 'decision' }" @click="chooseRoundCategory('decision')">Decisión</button></div>
                 </div>
-                <label v-if="roundCategory === 'office'">Nombre del cargo<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Presidencia" /></label>
+                <div v-if="roundCategory === 'office'" class="field-group position-picker"><span class="field-label" id="position-label">Puesto</span>
+                  <button type="button" class="position-trigger" aria-labelledby="position-label" :aria-expanded="positionMenuOpen" aria-haspopup="listbox" @click="positionMenuOpen = !positionMenuOpen"><span :class="{ placeholder: !selectedPosition }">{{ selectedPosition?.label ?? 'Elige el puesto' }}</span><span class="chevron" aria-hidden="true">{{ positionMenuOpen ? '⌃' : '⌄' }}</span></button>
+                  <div v-if="positionMenuOpen" class="position-menu">
+                    <ul role="listbox" aria-labelledby="position-label">
+                      <template v-for="group in positionGroups" :key="group.group">
+                        <li class="position-group" role="presentation">{{ group.label }}</li>
+                        <li v-for="position in group.items" :key="position.id" role="option" class="position-option" :class="{ elected: position.elected, selected: position.id === roundPositionId }" :aria-selected="position.id === roundPositionId" :aria-disabled="Boolean(position.elected)" @click="choosePosition(position)"><span>{{ position.label }}</span><span v-if="position.elected" class="position-elected">{{ position.elected.label }}</span><span v-else-if="position.id === roundPositionId" class="position-check" aria-hidden="true">✓</span></li>
+                      </template>
+                    </ul>
+                    <div class="new-department"><input v-model="newDepartment" aria-label="Nombre del departamento" maxlength="160" placeholder="Nombre del departamento" @keydown.enter.prevent="addDepartment" /><button type="button" class="secondary" :disabled="loading || !newDepartment.trim()" @click="addDepartment">+ Agregar</button></div>
+                  </div>
+                </div>
                 <template v-else-if="roundCategory === 'committee'">
                   <label>Nombre de la comisión<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Comisión de Finanzas" /></label>
                   <label>¿Cuántos integrantes quedarán en la comisión?<input v-model.number="committeeMemberCount" class="member-count-input" type="number" min="1" max="40" required /></label>

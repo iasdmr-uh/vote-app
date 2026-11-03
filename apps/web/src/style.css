@@ -334,6 +334,25 @@ label .hint { font-weight: 500; }
 .new-candidate input:focus { outline: none; }
 .new-candidate:focus-within { border-color: var(--blue); }
 .new-candidate .link-button { font-size: .85rem; font-weight: 700; white-space: nowrap; }
+.assembly-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: .75rem; }
+@media (max-width: 650px) { .assembly-fields { grid-template-columns: 1fr; } }
+/* M25: Puesto picker, grouped by junta directiva and departamentos. */
+.position-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; padding: .75rem .85rem; border: 1px solid #8b96a8; border-radius: .6rem; background: #fff; color: #18243a; font-weight: 500; text-align: left; }
+.position-trigger .placeholder { color: #667085; }
+.position-trigger .chevron { color: var(--muted); }
+.position-menu { border: 1px solid var(--line); border-radius: .6rem; background: #fff; box-shadow: 0 4px 14px rgb(15 30 60 / 8%); overflow: hidden; }
+.position-menu ul { margin: 0; padding: .35rem 0; list-style: none; }
+.position-group { padding: .7rem .85rem .3rem; color: #a5813e; font-size: .7rem; font-weight: 700; letter-spacing: .06em; }
+.position-option { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .45rem .85rem; color: #18243a; font-size: .9rem; cursor: pointer; }
+.position-option:hover { background: #f4f6fa; }
+.position-option.selected { background: #e8eefb; }
+.position-option.elected { color: #8a93a3; cursor: default; }
+.position-option.elected:hover { background: transparent; }
+.position-elected { color: #8a93a3; font-size: .8rem; }
+.position-check { color: var(--blue); font-weight: 700; }
+.new-department { display: flex; gap: .5rem; padding: .6rem .85rem .8rem; }
+.new-department input { flex: 1; min-width: 0; min-height: 40px; padding: .5rem .75rem; border: 1.5px dashed #b8c1cf; border-radius: .5rem; }
+.new-department button { min-height: 40px; padding: .5rem .8rem; font-size: .85rem; white-space: nowrap; }
 .mesa-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); align-items: start; gap: 1.5rem; }
 .mesa-main { min-width: 0; }
 .mesa-participants { position: sticky; top: 1rem; }
