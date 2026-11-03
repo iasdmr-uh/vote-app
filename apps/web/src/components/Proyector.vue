@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { decisionVerdict, displayOrder, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, voteLabel, winnerText } from '../resultados'
+import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
+import Diapositiva from './Diapositiva.vue'
 
 const LOBBY_SLOTS = 21
 
@@ -16,9 +18,17 @@ const recorded = computed(() => state.value?.recordedCount ?? 0)
 const progressPercent = computed(() => eligible.value > 0 ? Math.min(100, Math.round((recorded.value / eligible.value) * 100)) : 0)
 const isCommittee = computed(() => round.value?.category === 'committee')
 
+// «Presentar oficiales» (P1, P4, P5): the mesa drives it and it covers every other screen while on.
+const presentationSlide = computed(() => state.value?.presentation?.active ? state.value.presentation.slide : null)
+// A settled published result is shown as its slide (P2, P3, P6); the detailed count stays one click away.
+const publishedSlide = computed(() => resultSlide(state.value))
+const showCount = ref(false)
+watch(() => round.value?.id, () => { showCount.value = false })
+
 const view = computed(() => {
+  if (presentationSlide.value !== null) return 'presentation'
   if (lobbyStatus.value === 'lobby_open') return 'lobby'
-  if (round.value?.status === 'published') return 'results'
+  if (round.value?.status === 'published') return publishedSlide.value && !showCount.value ? 'slide' : 'results'
   if (assemblyStatus.value === 'completed') return 'completed'
   if (round.value?.status === 'annulled') return 'annulled'
   if (round.value?.status === 'open' || round.value?.status === 'closed') return 'voting'
@@ -34,6 +44,8 @@ const statusLabel = computed(() => ({
   completed: 'Asamblea finalizada',
   lobby: '',
   idle: '',
+  slide: '',
+  presentation: '',
 }[view.value]))
 
 const assemblyName = computed(() => state.value?.assembly?.name || 'Asamblea')
@@ -93,7 +105,13 @@ async function toggleProjectorFullscreen() {
 
 <template>
   <button v-if="code" class="pj-fullscreen secondary" @click="toggleProjectorFullscreen">{{ projectorFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa' }}</button>
+  <button v-if="code && publishedSlide && (view === 'slide' || view === 'results')" class="pj-count-toggle secondary" @click="showCount = !showCount">{{ showCount ? 'Ver resultado' : 'Ver conteo' }}</button>
   <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
+  <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
+    <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
+    <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
+    <Diapositiva v-else :presentation="presentationSlide ?? 0" />
+  </section>
   <section v-else class="pj">
     <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
 
@@ -178,6 +196,7 @@ async function toggleProjectorFullscreen() {
   text-align: left;
 }
 .pj :where(h1, h2, p, ol, ul) { margin: 0; }
+.pj-stage { --u: min(100vw / 1920, 100vh / 1080); display: grid; height: 100vh; place-items: center; overflow: hidden; background: #fff; }
 .pj-card { border-radius: calc(var(--u) * 22); background: #fff; }
 .pj-title { color: var(--ink); font-size: calc(var(--u) * 96); text-wrap: balance; font-weight: 800; letter-spacing: -.02em; line-height: 1.08; }
 .pj-title-lobby { font-size: calc(var(--u) * 96); }
@@ -249,6 +268,10 @@ async function toggleProjectorFullscreen() {
 
 .pj-fullscreen { position: fixed; z-index: 5; right: .75rem; bottom: .75rem; min-height: 38px; padding: .45rem .7rem; font-size: .82rem; opacity: .35; transition: opacity .2s ease; }
 .pj-fullscreen:hover, .pj-fullscreen:focus-visible { opacity: 1; }
+.pj-count-toggle { position: fixed; z-index: 5; right: calc(.75rem + 12.5rem); bottom: .75rem; min-height: 38px; padding: .45rem .7rem; font-size: .82rem; opacity: .35; transition: opacity .2s ease; }
+.pj-count-toggle:hover, .pj-count-toggle:focus-visible { opacity: 1; }
 :global(.projector-page:fullscreen) .pj-fullscreen { display: none; }
+:global(.projector-page:fullscreen) .pj-count-toggle { right: .75rem; opacity: 0; }
+:global(.projector-page:fullscreen) .pj-count-toggle:hover, :global(.projector-page:fullscreen) .pj-count-toggle:focus-visible { opacity: 1; }
 :global(.projector-page > .sync) { display: none; }
 </style>

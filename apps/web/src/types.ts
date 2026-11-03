@@ -7,8 +7,29 @@ export type ApprovalRule = 'simple' | 'three_quarters'
 /** Computed by the API's results engine; ids are the round's ballot options. Decisions add `rule` and `approved`. */
 export type Outcome = { seats: number; base: number; threshold: number; elected: string[]; runoff: string[]; openSeats: number; rule?: ApprovalRule; approved?: boolean }
 
+/** A puesto of the org chart "OFICIALES DE UNIÓN HONDUREÑA" (#46). `elected` is null while it has not been voted. */
+export type Position = {
+  id: string
+  group: 'board' | 'department'
+  label: string
+  sortOrder: number
+  custom: boolean
+  elected: { label: string; roundId: string } | null
+}
+
+/** «Presentar oficiales» on the projector: 0 cover, 1 Junta directiva, 2 Departamentos. */
+export type PresentationSlide = 0 | 1 | 2
+export type Presentation = { active: boolean; slide: PresentationSlide }
+
 export type PublicState = {
   assembly?: { id?: string; name?: string; status?: string; completedAt?: string | null; lobbyStatus?: string }
+  /** Public and projector state (#46). */
+  assemblyName?: string
+  /** E.g. "2027–2029" (#46). */
+  period?: string | null
+  /** Junta directiva and Departamentos, in order (#46). */
+  positions?: Position[]
+  presentation?: Presentation
   assemblyCompletedAt?: string | null
   status?: string
   lobbyStatus?: string
@@ -27,7 +48,7 @@ export type PublicState = {
   joinUrl?: string
   publicAppUrl?: string
   rounds?: Array<{
-    id: string; title: string; status: string; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string; isNew?: boolean }>
+    id: string; title: string; status: string; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; committeeRootRoundId?: string | null; positionId?: string | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string; isNew?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number }>
     privateResults?: Array<{ optionId: string; label: string; count: number }>
     outcome?: Outcome

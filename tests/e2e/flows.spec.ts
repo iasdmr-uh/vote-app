@@ -1559,6 +1559,9 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
+  // The settled office opens on its slide (P2, #48); the detailed count is behind «Ver conteo».
+  await expect(page.locator('.slide-office .office-name')).toHaveText('María López')
+  await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
   await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
   await expect(page.locator('.pj-elected')).toContainText('María López')

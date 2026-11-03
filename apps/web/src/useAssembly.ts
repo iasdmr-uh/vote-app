@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
-import type { PublicState } from './types'
+import type { Presentation, PublicState } from './types'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 const origin = window.location.origin
@@ -386,6 +386,11 @@ function syncRealtime() {
   realtimeSocket.on('participant.left', (payload: { participantId?: string; firstName?: string; lastName?: string } | undefined) => {
     const name = `${payload?.firstName || ''} ${payload?.lastName || ''}`.trim()
     if (name) { participantLeft.value = name; participantLeftId.value = payload?.participantId || '' }
+    scheduleRefresh()
+  })
+  // The projector follows the mesa's slide at once, without waiting for the refresh.
+  realtimeSocket.on('presentation.state', (payload: Presentation | undefined) => {
+    if (state.value && payload) state.value = { ...state.value, presentation: { active: payload.active, slide: payload.slide } }
     scheduleRefresh()
   })
   realtimeSocket.on('connect', () => { realtimeConnected.value = true; void refresh() })
