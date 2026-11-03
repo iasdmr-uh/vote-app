@@ -2,7 +2,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { actaSheetRows, isTied, percentOf } from './resultados'
-import type { ApprovalRule, DecisionFormat, RoundCategory, RoundRecord } from './types'
+import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
 const {
@@ -15,6 +15,17 @@ const moderationConfirmation = ref<{ title: string; consequence: string; label: 
 const moderationReason = ref('')
 const moderatorCredential = ref('')
 const assemblyName = ref('Asamblea de Delegados')
+const assemblyPeriod = ref('')
+/** M25: a cargo fills a puesto of the org chart; its name is the ballot's title. */
+const roundPositionId = ref('')
+const positionMenuOpen = ref(false)
+const newDepartment = ref('')
+const positions = computed<Position[]>(() => state.value?.positions || [])
+const positionGroups = computed(() => [
+  { group: 'board' as const, label: 'JUNTA DIRECTIVA', items: positions.value.filter((item) => item.group === 'board') },
+  { group: 'department' as const, label: 'DEPARTAMENTOS', items: positions.value.filter((item) => item.group === 'department') },
+])
+const selectedPosition = computed(() => positions.value.find((item) => item.id === roundPositionId.value))
 const roundTitle = ref('')
 const roundCategory = ref<RoundCategory>('office')
 const committeeMemberCount = ref<number | null>(null)
@@ -145,6 +156,28 @@ async function changeRunoffCandidates(path: string, method: 'POST' | 'DELETE', b
   finally { loading.value = false }
   if (succeeded) await refresh(true)
   return succeeded
+}
+
+function choosePosition(position: Position) {
+  if (position.elected) return
+  roundPositionId.value = position.id
+  positionMenuOpen.value = false
+}
+
+async function addDepartment() {
+  const label = newDepartment.value.trim()
+  if (!label || !assemblyId.value || loading.value) return
+  error.value = ''
+  loading.value = true
+  let added: Position | null = null
+  try {
+    added = await request<Position>('/moderator/positions', { method: 'POST', body: JSON.stringify({ assemblyId: assemblyId.value, label }) }, moderatorToken.value)
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  if (!added) return
+  newDepartment.value = ''
+  roundPositionId.value = added.id
+  await refresh(true)
 }
 
 async function addRunoffCandidate() {
@@ -365,7 +398,7 @@ async function createAssembly() {
   let created = false
   try {
     const result = await request<{ assemblyId: string; joinCode: string; joinUrl?: string }>('/moderator/assemblies', {
-      method: 'POST', body: JSON.stringify({ name: assemblyName.value }),
+      method: 'POST', body: JSON.stringify({ name: assemblyName.value, ...(assemblyPeriod.value.trim() ? { period: assemblyPeriod.value.trim() } : {}) }),
     }, moderatorToken.value)
     setBrowsingActas(false)
     assemblyId.value = result.assemblyId
@@ -392,6 +425,9 @@ function editParticipant(person: { id?: string; firstName: string; lastName: str
 
 function resetBallotForm() {
   roundTitle.value = ''
+  roundPositionId.value = ''
+  positionMenuOpen.value = false
+  newDepartment.value = ''
   ballotCandidates.value = []
   newBallotCandidate.value = ''
   committeeMemberCount.value = null
@@ -404,7 +440,8 @@ async function createRound() {
   const category = roundCategory.value
   const options = ballotCandidates.value.map((label) => ({ label }))
   const seats = committeeMemberCount.value
-  if (!roundTitle.value.trim()) { error.value = { office: 'Escribe el cargo que se vota.', committee: 'Escribe el nombre de la comisión.', decision: 'Escribe la decisión que se vota.' }[category]; return }
+  if (category === 'office' && !selectedPosition.value) { error.value = 'Elige el puesto que se vota.'; return }
+  if (category !== 'office' && !roundTitle.value.trim()) { error.value = { committee: 'Escribe el nombre de la comisión.', decision: 'Escribe la decisión que se vota.' }[category]; return }
   if (category === 'office' && options.length < 2) { error.value = 'Agrega al menos dos candidatos.'; return }
   if (category === 'committee' && (!seats || seats < 1)) { error.value = 'Indica cuántos integrantes quedarán en la comisión.'; return }
   if (category === 'committee' && options.length < seats!) { error.value = `Agrega al menos ${seats} candidatos: pueden ser más que los integrantes, pero no menos.`; return }
@@ -412,7 +449,8 @@ async function createRound() {
   showNextBallotForm.value = false
   // The server computes every result; a decision also carries its format and the rule that approves it.
   await moderatorAction(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/rounds`, 'POST', {
-    title: roundTitle.value.trim(), format: category === 'committee' ? 'multiple_choice' : 'single_choice', category,
+    ...(category === 'office' ? { positionId: roundPositionId.value } : { title: roundTitle.value.trim() }),
+    format: category === 'committee' ? 'multiple_choice' : 'single_choice', category,
     ...(category === 'decision'
       ? { decisionFormat: decisionFormat.value, approvalRule: approvalRule.value, ...(decisionFormat.value === 'options' ? { options } : {}) }
       : { options }),
@@ -451,7 +489,8 @@ async function signInModerator() {
 
 export function useMesa() {
   return {
-    moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
+    moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
+    roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
     showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
