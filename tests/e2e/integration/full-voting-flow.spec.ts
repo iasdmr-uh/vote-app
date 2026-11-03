@@ -38,6 +38,10 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   await expect(projector.getByText('Opción Ámbar')).toHaveCount(0)
 
   await confirm(mesa, 'Publicar conteo')
+  // The elected office opens on its slide (P2, #48); the detailed count is behind «Ver conteo».
+  await expect(projector.locator('.slide-office .office-name')).toHaveText('Opción Ámbar')
+  await expect(projector.locator('.slide-office .office-votes')).toHaveText('1 de 1 votos · 100 %')
+  await projector.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(projector.locator('.pj-status')).toHaveText('Conteo publicado')
   await expect(projector.locator('.pj-results .pj-label')).toHaveText(['Opción Ámbar', 'Opción Índigo'])
   // One vote of one habilitado is a majority: elected on the projector and on the phone.
