@@ -828,7 +828,7 @@ export class VotingService implements OnModuleInit {
       if (round.status === 'open') return { roundId: round.id, assemblyId: round.assembly_id, status: 'open' as const, changed: false }
       if (round.status !== 'draft') throw new ConflictException('La ronda no se puede abrir desde su estado actual')
       await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${round.assembly_id}::uuid FOR UPDATE`
-      const assembly = await tx.assembly.findUnique({ where: { id: round.assembly_id }, select: { status: true } })
+      const assembly = await tx.assembly.findUnique({ where: { id: round.assembly_id }, select: { status: true, presentationActive: true, presentationSlide: true } })
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden abrir papeletas')
       if (!assembly || !['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('El ingreso debe estar cerrado antes de abrir una papeleta')
       const otherOpen = await tx.round.findFirst({ where: { assemblyId: round.assembly_id, status: 'open' }, select: { id: true } })
@@ -839,7 +839,13 @@ export class VotingService implements OnModuleInit {
       const updated = await tx.round.update({ where: { id: round.id }, data: { status: 'open', openedAt: new Date() }, select: { id: true, assemblyId: true, title: true } })
       if (assembly.status === 'lobby_closed') await tx.assembly.update({ where: { id: round.assembly_id }, data: { status: 'in_progress' } })
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId: round.id, actorRef: MODERATOR_ACTOR, action: 'round.opened' } })
-      return { roundId: updated.id, assemblyId: updated.assemblyId, title: updated.title, status: 'open' as const, changed: true }
+      // A forgotten «Presentar oficiales» never covers a live vote: opening one ends it.
+      const presentationEnded = assembly.presentationActive
+      if (presentationEnded) {
+        await tx.assembly.update({ where: { id: round.assembly_id }, data: { presentationActive: false } })
+        await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId: round.id, actorRef: MODERATOR_ACTOR, action: 'presentation.changed', metadata: { active: false, slide: assembly.presentationSlide, reason: 'round.opened' } } })
+      }
+      return { roundId: updated.id, assemblyId: updated.assemblyId, title: updated.title, status: 'open' as const, changed: true, presentationEnded, presentationSlide: assembly.presentationSlide }
     })
     const round = await this.prisma.round.findUnique({ where: { id: roundId }, include: { options: { orderBy: { order: 'asc' } } } })
     const payload = { roundId, status: 'open' as const, title: round!.title }
@@ -847,6 +853,7 @@ export class VotingService implements OnModuleInit {
       this.realtime.roundState(result.assemblyId, payload)
       this.realtime.roundOpened(result.assemblyId, { ...payload, options: round!.options.map((option) => ({ optionId: option.id, label: option.label })) })
       this.realtime.assemblyState(result.assemblyId, { status: 'in_progress' })
+      if (result.presentationEnded) this.realtime.presentationState(result.assemblyId, presentationOf({ presentationActive: false, presentationSlide: result.presentationSlide }))
     }
     return payload
   }
