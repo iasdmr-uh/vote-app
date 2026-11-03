@@ -40,9 +40,9 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   note(`Ingreso de 9 delegados: ${Math.round((Date.now() - started) / 1000)} s`)
   await snap(mesa, 'mesa-ingreso-cerrado')
 
-  // 2. Presidencia: 4 – 4 – 1 over 9 habilitados (majority 5) goes to a runoff of the top 2; it elects.
+  // 2. Presidente: 4 – 4 – 1 over 9 habilitados (majority 5) goes to a runoff of the top 2; it elects.
   started = Date.now()
-  await prepareBallot(mesa, { kind: 'office', title: 'Presidencia', candidates: ['María López', 'Carlos Gómez', 'Rosa Díaz'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Presidente', candidates: ['María López', 'Carlos Gómez', 'Rosa Díaz'] })
   await snap(mesa, 'mesa-presidencia-preparada')
   await runVote(room, phones.map((_, index) => [index < 4 ? 'María López' : index < 8 ? 'Carlos Gómez' : 'Rosa Díaz']))
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 5')
@@ -62,11 +62,11 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await expect(phones[3].page.locator('.official-card strong')).toHaveText('María López')
   await snap(projector, 'proyector-presidencia-electa')
   await snap(phones[3].page, 'telefono-presidencia-electa')
-  note(`Presidencia (1.ª votación + desempate): ${Math.round((Date.now() - started) / 1000)} s`)
+  note(`Presidente (1.ª votación + desempate): ${Math.round((Date.now() - started) / 1000)} s`)
 
-  // 3. Secretaría: annulled with a reason while open, then prepared again with a third candidate.
+  // 3. Secretario: annulled with a reason while open, then prepared again with a third candidate.
   started = Date.now()
-  await prepareBallot(mesa, { kind: 'office', title: 'Secretaría', candidates: ['Ana Ruiz', 'Juan Mora'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Juan Mora'] })
   await confirm(mesa, 'Abrir votación')
   await vote(phones[0], ['Ana Ruiz'])
   await vote(phones[1], ['Juan Mora'])
@@ -78,11 +78,11 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await expect(projector.locator('.pj-status')).toHaveText('Votación anulada')
   await snap(mesa, 'mesa-secretaria-anulada')
   await snap(projector, 'proyector-secretaria-anulada')
-  await prepareBallot(mesa, { kind: 'office', title: 'Secretaría', candidates: ['Ana Ruiz', 'Juan Mora', 'Elena Castro'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Juan Mora', 'Elena Castro'] })
   await runVote(room, phones.map((_, index) => [index < 5 ? 'Ana Ruiz' : index < 7 ? 'Elena Castro' : 'Juan Mora']))
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
-  note(`Secretaría (anulada + nueva papeleta): ${Math.round((Date.now() - started) / 1000)} s`)
+  note(`Secretario (anulada + nueva papeleta): ${Math.round((Date.now() - started) / 1000)} s`)
 
   // 4. Comisión de Nombramiento: 5 integrantes among 7 typed names; each delegate marks exactly 5.
   started = Date.now()
@@ -139,8 +139,8 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   const final = await moderatorState(request, assemblyId)
   const electedOf = (title: string) => final.rounds.find((round: { title: string; committeeRootRoundId: string | null; officialResult: unknown }) => round.title === title && !round.committeeRootRoundId && round.officialResult)
     ?.officialResult.elected.map((person: { label: string }) => person.label).sort()
-  expect(electedOf('Presidencia')).toEqual(['María López'])
-  expect(electedOf('Secretaría')).toEqual(['Ana Ruiz'])
+  expect(electedOf('Presidente')).toEqual(['María López'])
+  expect(electedOf('Secretario')).toEqual(['Ana Ruiz'])
   expect(electedOf('Comisión de Nombramiento')).toEqual(['Elena Castro', 'Juan Mora', 'Luis Pérez', 'Pedro Vargas', 'Sofía Méndez'])
   expect(electedOf('Comisión de Finanzas')).toEqual(['Ana Ruiz', 'María López', 'Pedro Vargas'])
   const summaryRows = final.rounds.map((round: { title: string; status: string; voteNumber: number; officialResult?: { elected: Array<{ label: string }> } | null }) =>

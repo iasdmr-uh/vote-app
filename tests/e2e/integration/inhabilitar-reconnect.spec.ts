@@ -18,7 +18,7 @@ test('H · un inhabilitado que salió se reconecta con el QR de la mesa y sigue 
   const [maria, , rosa] = phones
   const oldToken = rosa.token
 
-  await prepareBallot(mesa, { kind: 'office', title: 'Tesorería', candidates: ['Ana Ruiz', 'Juan Mora'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Tesorero', candidates: ['Ana Ruiz', 'Juan Mora'] })
   await confirm(mesa, 'Abrir votación')
   await vote(maria, ['Ana Ruiz'])
 

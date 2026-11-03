@@ -13,7 +13,7 @@ test('G · quitar un candidato nuevo: sale del borrador y ningún teléfono lo r
   const { mesa, phones, assemblyId } = room
   const candidateInput = mesa.getByLabel('Nombre del candidato')
 
-  await prepareBallot(mesa, { kind: 'office', title: 'Vicepresidencia', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Vicepresidente', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz'] })
   await runVote(room, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez'], ['Rosa Díaz']])
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()

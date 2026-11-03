@@ -12,7 +12,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
   const room = await openRoom(browser, request, 'Asamblea A · cargo sin mayoría', ['María López', 'Carlos Gómez', 'Rosa Díaz', 'Juan Mora', 'Elena Castro'])
   const { mesa, projector, phones } = room
 
-  await prepareBallot(mesa, { kind: 'office', title: 'Presidencia', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz', 'Luis Pérez'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Presidente', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz', 'Luis Pérez'] })
   // 4 of 5 vote: Ana 2, Carlos 1, Rosa 1, Luis 0. The majority of 5 is 3, so nobody is elected.
   await runVote(room, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Rosa Díaz'], null])
 

@@ -17,7 +17,7 @@ test('D · inhabilitar durante una votación: el teléfono no recibe la papeleta
   const [maria, carlos, rosa, juan, elena] = phones
   const summary = mesa.locator('.attendance-summary')
 
-  await prepareBallot(mesa, { kind: 'office', title: 'Tesorería', candidates: ['Ana Ruiz', 'Juan Mora'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Tesorero', candidates: ['Ana Ruiz', 'Juan Mora'] })
   await confirm(mesa, 'Abrir votación')
   await vote(maria, ['Ana Ruiz'])
   await expect(summary.locator(':scope > span')).toHaveText(['1 votó', '5 faltan'])

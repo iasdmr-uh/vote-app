@@ -11,12 +11,12 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
 
   await confirm(mesa, 'Cerrar ingreso')
   await expect(mesa.getByRole('button', { name: 'Reabrir ingreso' })).toBeVisible()
-  await prepareBallot(mesa, { kind: 'office', title: 'Votación E2E', candidates: ['Opción Ámbar', 'Opción Índigo'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Vocal 1', candidates: ['Opción Ámbar', 'Opción Índigo'] })
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByRole('button', { name: 'Cerrar votación' })).toBeVisible()
 
   // Arrives through the realtime event, without a manual reload.
-  await expect(delegate.page.getByRole('heading', { name: 'Votación E2E' })).toBeVisible()
+  await expect(delegate.page.getByRole('heading', { name: 'Vocal 1' })).toBeVisible()
   await vote(delegate, ['Opción Ámbar'])
 
   const persisted = await moderatorState(request, assemblyId)
@@ -33,7 +33,7 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   expect(await hidden.json()).not.toHaveProperty('results')
 
   const projector = await openProjector(browser, joinCode)
-  await expect(projector.getByRole('heading', { name: 'Votación E2E' })).toBeVisible()
+  await expect(projector.getByRole('heading', { name: 'Vocal 1' })).toBeVisible()
   await expect(projector.locator('.pj-status')).toHaveText('Votación cerrada')
   await expect(projector.getByText('Opción Ámbar')).toHaveCount(0)
 

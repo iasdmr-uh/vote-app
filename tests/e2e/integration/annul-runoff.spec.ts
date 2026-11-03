@@ -11,7 +11,7 @@ test('F · anular el primer desempate y repetirlo: sigue siendo la 2.ª votació
   const room = await openRoom(browser, request, 'Asamblea F · anular desempate', ['María López', 'Carlos Gómez', 'Rosa Díaz', 'Juan Mora', 'Pedro Vargas'])
   const { mesa, projector, phones, assemblyId } = room
 
-  await prepareBallot(mesa, { kind: 'office', title: 'Vicepresidencia', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Vicepresidente', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz'] })
   await runVote(room, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez'], ['Rosa Díaz']])
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
   await expect(phones[0].page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')

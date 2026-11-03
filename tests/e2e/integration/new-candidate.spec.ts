@@ -13,7 +13,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   const { mesa, projector, phones, assemblyId } = room
   const candidateInput = mesa.getByLabel('Nombre del candidato')
 
-  await prepareBallot(mesa, { kind: 'office', title: 'Secretaría', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz'] })
+  await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz'] })
   await expect(candidateInput).toHaveCount(0)
   // 1st vote: Ana 2, Carlos 2, Rosa 1; majority of 5 is 3.
   await runVote(room, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez'], ['Rosa Díaz']])
