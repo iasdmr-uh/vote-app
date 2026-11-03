@@ -16,6 +16,7 @@ import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
 import {
+  AddPositionDto,
   AnnulRoundDto,
   BallotOptionDto,
   CreateAssemblyDto,
@@ -96,7 +97,12 @@ export class ModeratorController {
 
   @Post('assemblies')
   createAssembly(@Body() input: CreateAssemblyDto) {
-    return this.voting.createAssembly(input.name)
+    return this.voting.createAssembly(input.name, input.period)
+  }
+
+  @Post('positions')
+  addPosition(@Body() input: AddPositionDto) {
+    return this.voting.addPosition(input.assemblyId, input.label)
   }
 
   // Declared before 'assemblies/:assemblyId' so that route does not capture "active".

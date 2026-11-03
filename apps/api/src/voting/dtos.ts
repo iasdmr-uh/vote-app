@@ -22,6 +22,19 @@ import {
 export class CreateAssemblyDto {
   @IsString() @Matches(/\S/) @MinLength(2) @MaxLength(160)
   name!: string
+
+  /** Term the elected serve, e.g. "2027–2029". */
+  @IsOptional() @IsString() @MaxLength(60)
+  period?: string
+}
+
+export class AddPositionDto {
+  @IsUUID()
+  assemblyId!: string
+
+  /** Checked by the service, so an empty name answers 422 like a duplicate. */
+  @IsString() @MaxLength(160)
+  label!: string
 }
 
 export class JoinAssemblyDto {
@@ -64,8 +77,13 @@ export class BallotOptionDto {
 }
 
 export class CreateRoundDto {
-  @IsString() @Matches(/\S/) @MinLength(1) @MaxLength(200)
-  title!: string
+  /** Optional only for a cargo with a puesto, which takes the puesto's name. */
+  @IsOptional() @IsString() @Matches(/\S/) @MinLength(1) @MaxLength(200)
+  title?: string
+
+  /** Office only: the org-chart puesto this election fills. */
+  @IsOptional() @IsUUID()
+  positionId?: string
 
   @IsOptional() @IsIn(['single_choice', 'multiple_choice'])
   format: 'single_choice' | 'multiple_choice' = 'single_choice'

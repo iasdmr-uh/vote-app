@@ -109,6 +109,7 @@ test('the mesa sees who voted in the latest opened ballot, never what they chose
     }, findMany: async () => [{ id: 'closed-round', committeeRootRoundId: null }] },
     participation: { findMany: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? [{ participantSessionId: 'ana' }] : [] },
     participantSession: { count: async () => 2, findMany: async () => [] },
+    position: { findMany: async () => [] },
   }
   const voting = new VotingService(database as never, {} as never)
   const state = await voting.moderatorAssembly('assembly')
@@ -122,6 +123,7 @@ test('before any ballot opens, nobody carries a voted flag', async () => {
     round: { findFirst: async () => null, findMany: async () => [] },
     participation: { findMany: async () => assert.fail('no receipts to read') },
     participantSession: { count: async () => 1, findMany: async () => [] },
+    position: { findMany: async () => [] },
   }
   const state = await new VotingService(database as never, {} as never).moderatorAssembly('assembly')
   assert.equal('voted' in state.participants[0]!, false)
