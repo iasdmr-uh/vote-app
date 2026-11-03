@@ -54,12 +54,13 @@ export async function castVoteByApi(request: APIRequestContext, token: string, r
   })
 }
 
-export async function openMesa(browser: Browser, assemblyName: string) {
+export async function openMesa(browser: Browser, assemblyName: string, period?: string) {
   const mesa = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage()
   await mesa.goto('/moderator')
   await mesa.getByLabel('Credencial de moderación').fill(moderatorToken)
   await mesa.getByRole('button', { name: 'Continuar' }).click()
   await mesa.getByLabel('Nombre', { exact: true }).fill(assemblyName)
+  if (period) await mesa.getByLabel('Periodo').fill(period)
   await mesa.getByRole('button', { name: 'Crear Asamblea', exact: true }).click()
   const created = mesa.locator('.notice.success')
   await expect(created).toContainText('Código de ingreso:')
@@ -94,9 +95,9 @@ export async function joinPhone(browser: Browser, joinCode: string, name: string
  * A fresh Asamblea with its projector and delegates in the room; the mesa sees all of them before it
  * closes the ingreso.
  */
-export async function openRoom(browser: Browser, request: APIRequestContext, assemblyName: string, delegates: string[]): Promise<Room> {
+export async function openRoom(browser: Browser, request: APIRequestContext, assemblyName: string, delegates: string[], period?: string): Promise<Room> {
   await finishLiveAssembly(request)
-  const { mesa, joinCode, assemblyId } = await openMesa(browser, assemblyName)
+  const { mesa, joinCode, assemblyId } = await openMesa(browser, assemblyName, period)
   const projector = await openProjector(browser, joinCode)
   const phones: Phone[] = []
   for (const name of delegates) phones.push(await joinPhone(browser, joinCode, name))
