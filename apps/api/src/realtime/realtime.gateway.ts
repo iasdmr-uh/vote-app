@@ -113,6 +113,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   roundClosed(assemblyId: string, roundId: string): void { this.publisher().roundClosed(assemblyId, roundId) }
   participationCount(assemblyId: string, payload: Parameters<RealtimePublisher['participationCount']>[1]): void { this.publisher().participationCount(assemblyId, payload) }
   resultsPublished(assemblyId: string, payload: Parameters<RealtimePublisher['resultsPublished']>[1]): void { this.publisher().resultsPublished(assemblyId, payload) }
+  presentationState(assemblyId: string, payload: Parameters<RealtimePublisher['presentationState']>[1]): void { this.publisher().presentationState(assemblyId, payload) }
 }
 
 function isValidIdentity(identity: RealtimeIdentity): boolean {
@@ -263,6 +264,11 @@ export class RealtimePublisher {
     }
     this.server.to([publicRoom(assemblyId), participantBroadcastRoom(assemblyId)]).emit('results.published', sanitized)
     this.server.to(moderatorRoom(assemblyId)).emit('results.published', sanitized)
+  }
+
+  /** «Presentar oficiales»: the projector follows the mesa's slide; other mesa tabs stay in sync. */
+  presentationState(assemblyId: string, payload: RealtimeServerToClientEvents['presentation.state'] extends (arg: infer P) => void ? P : never): void {
+    this.server.to([publicRoom(assemblyId), moderatorRoom(assemblyId)]).emit('presentation.state', { active: payload.active, slide: payload.slide })
   }
 }
 

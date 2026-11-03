@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   Equals,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -118,6 +119,19 @@ export class RepeatRoundDto {
 
   @IsOptional() @IsString() @Matches(/\S/) @MaxLength(200)
   title?: string
+}
+
+/** «Presentar oficiales» (#48): on or off, and the slide the projector shows. */
+export class PresentationDto {
+  @IsBoolean()
+  active!: boolean
+
+  @IsInt() @IsIn([0, 1, 2])
+  slide!: 0 | 1 | 2
+
+  /** The mesa's assembly; without it, the live one. */
+  @IsOptional() @IsUUID()
+  assemblyId?: string
 }
 
 export class RouteIdDto {

@@ -4,10 +4,11 @@ import { PrismaModule } from '../prisma/prisma.module.js'
 import { RealtimeModule } from '../realtime/realtime.module.js'
 import { ModeratorController, ParticipantController, ParticipantLeaveController, PublicAssemblyController } from './voting.controller.js'
 import { VotingService } from './voting.service.js'
+import { PresentationService } from './presentation.service.js'
 
 @Module({
   imports: [PrismaModule, AuthModule, RealtimeModule],
   controllers: [PublicAssemblyController, ParticipantController, ParticipantLeaveController, ModeratorController],
-  providers: [VotingService],
+  providers: [VotingService, PresentationService],
 })
 export class VotingModule {}
