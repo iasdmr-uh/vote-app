@@ -789,9 +789,10 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await expect(acta).toBeHidden()
   await page.emulateMedia({ media: 'print' })
   await expect(acta).toBeVisible()
-  await expect(acta.getByRole('heading', { name: 'Acta de resultados' })).toBeVisible()
-  await expect(acta.getByText('Electos:')).toBeVisible()
-  await expect(acta.getByText('Anulada por la mesa: Nombre mal escrito. Sus votos no se contaron.')).toBeVisible()
+  await expect(acta.getByRole('heading', { name: 'ACTA DE VOTACIONES' })).toBeVisible()
+  await expect(acta.locator('.acta-round').nth(0).locator('.acta-meta')).toHaveText('3 de 4 votaron · 1 no votó')
+  await expect(acta.locator('.acta-round').nth(1)).toContainText('ANULADA')
+  await expect(acta.locator('.acta-round').nth(1).locator('.acta-meta')).toHaveText('Nombre mal escrito')
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeHidden()
   await page.emulateMedia({ media: 'screen' })
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')))
@@ -1401,7 +1402,7 @@ test('la mesa cuenta a quien votó y salió en la base, y solo marca como pendie
   await expect(page.locator('li', { hasText: 'Rosa Paz' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
 })
 
-test('el acta incluye a quienes salieron en la lista y en el total de registrados', async ({ page }) => {
+test('sin una votación contada, los habilitados del acta incluyen a quienes salieron', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -1413,7 +1414,7 @@ test('el acta incluye a quienes salieron en la lista y en el total de registrado
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
         participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }], leftParticipants: [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }], participantCount: 1,
-        rounds: [{ id: 'r1', title: 'Presidencia', status: 'published', participationCount: 2, eligibleCount: 2, options: [{ id: 'a', label: 'Alfa' }], results: [{ optionId: 'a', label: 'Alfa', count: 2 }], officialResult: null }],
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'annulled', annulReason: 'Error', participationCount: 2, eligibleCount: 2, options: [{ id: 'a', label: 'Alfa' }], officialResult: null }],
       } })
       return
     }
@@ -1425,8 +1426,7 @@ test('el acta incluye a quienes salieron en la lista y en el total de registrado
   await page.goto('/moderator')
   await page.getByRole('button', { name: 'Imprimir o guardar PDF' }).click()
   const acta = page.locator('.acta-print')
-  await expect(acta).toContainText('Participantes registrados: 2.')
-  await expect(acta.locator('ol li')).toHaveText(['Ana Reyes', 'Pedro Vargas (salió)'])
+  await expect(acta.locator('.acta-summary')).toHaveText('2 habilitados · 1 votación · 1 anulada')
 })
 
 for (const roundStatus of ['published', 'closed'] as const) {

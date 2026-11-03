@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { approvalText, countsOf, decisionVerdict, electedText, isDecision, majorityText, notVotedText, outcomeTag, rankedResults, turnoutOf, votedText, voteLabel, winnerText } from '../resultados'
+import { approvalText, countsOf, decisionVerdict, electedText, isDecision, majorityText, notVotedText, outcomeTag, voteLabel, winnerText } from '../resultados'
 import type { RoundRecord } from '../types'
+import ActaImpresa from './ActaImpresa.vue'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
 
@@ -233,23 +234,8 @@ function closePersonMenu(event: Event) {
       </section>
     </template>
   </template>
-  <section v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" class="acta-print">
-    <h1>Acta de resultados</h1>
-    <p><strong>{{ state.assembly?.name }}</strong><template v-if="completionTime"> · finalizada {{ completionTime }}</template> · impresa {{ formatDateTime(new Date().toISOString()) }}</p>
-    <p>Participantes registrados: {{ (state.participants?.length ?? 0) + (state.leftParticipants?.length ?? 0) }}. Los votos son secretos: el sistema no guarda quién votó por quién.</p>
-    <article v-for="item in state.rounds" :key="`acta-${item.id}`">
-      <h2>{{ rootRoundOf(item)?.title || item.title }}</h2>
-      <p>{{ isDecision(item) ? categoryText(item) : item.category === 'committee' ? 'Comisión' : 'Cargo' }} · papeleta {{ roundStatusLabels[item.status] || item.status }}<template v-if="item.participationCount !== undefined"> · {{ votedText(turnoutOf(item).recorded, turnoutOf(item).eligible) }}<template v-if="turnoutOf(item).eligible"> · {{ notVotedText(turnoutOf(item).recorded, turnoutOf(item).eligible) }}</template></template><template v-if="voteLabel(item)"> · {{ voteLabel(item).toLowerCase() }}</template><template v-if="item.outcome && !isDecision(item)"> · mayoría: {{ item.outcome.threshold }}</template></p>
-      <p v-if="item.results?.length && item.decisionFormat === 'boolean' && verdictOf(item)"><strong>{{ verdictOf(item) }}</strong></p>
-      <p v-if="item.status === 'annulled'">Anulada por la mesa<template v-if="item.annulReason">: {{ item.annulReason }}</template>. Sus votos no se contaron.</p>
-      <table v-if="item.results?.length"><thead><tr><th>Lugar</th><th>Opción</th><th>Votos</th><th>%</th></tr></thead><tbody><tr v-for="result in rankedResults(item.results, turnoutOf(item).eligible)" :key="result.optionId"><td>{{ result.rank }}<template v-if="outcomeTag(item.outcome, result.optionId) === 'elected'"> ({{ winnerText(item, result.label).toLowerCase() }})</template><template v-else-if="outcomeTag(item.outcome, result.optionId) === 'runoff'"> (desempate)</template><template v-else-if="!item.outcome && result.tied"> (empate)</template></td><td>{{ result.label }}</td><td>{{ result.count }}</td><td>{{ turnoutOf(item).eligible ? `${result.percent} %` : '' }}</td></tr></tbody></table>
-      <p v-else-if="item.status !== 'annulled'">Conteo no publicado.</p>
-      <p v-if="item.officialResult"><strong>{{ isDecision(item) ? 'Aprobada' : 'Electos' }}:</strong> {{ item.officialResult.elected.map((person) => person.label).join(', ') }}</p>
-    </article>
-    <h2>Participantes</h2>
-    <ol><li v-for="person in state.participants || []" :key="`acta-person-${person.id}`">{{ person.firstName }} {{ person.lastName }}</li><li v-for="person in state.leftParticipants || []" :key="`acta-left-${person.id}`">{{ person.firstName }} {{ person.lastName }} (salió)</li></ol>
-    <p class="acta-signatures"><span>Moderación</span><span>Secretaría</span></p>
-  </section></template>
+  <ActaImpresa v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" :state="state" />
+</template>
 
 <style scoped>
 .majority-chip { display: inline-block; margin: .35rem 0 0; padding: .2rem .6rem; border-radius: 999px; background: #e8efff; color: var(--blue-dark); font-size: .75rem; font-weight: 700; }
