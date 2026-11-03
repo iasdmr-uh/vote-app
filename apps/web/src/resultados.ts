@@ -1,4 +1,4 @@
-import type { Outcome, RoundRecord } from './types'
+import type { Outcome, Position, RoundRecord } from './types'
 import type { Cell } from './xlsx'
 
 type Counted = { count: number }
@@ -152,4 +152,79 @@ export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string
     }
   }
   return rows
+}
+
+export function votesText(count: number) {
+  return `${count} ${count === 1 ? 'voto' : 'votos'}`
+}
+
+export type ActaTone = 'vote' | 'annulled' | 'approved' | 'rejected'
+
+/** Header tag of a vote in the printed acta: "1.ª VOTACIÓN", "DESEMPATE · 2.ª VOTACIÓN", "ANULADA" or "DECISIÓN · APROBADA". */
+export function actaKind(target: RoundRecord, voteNumber = target.voteNumber ?? 1): { text: string; tone: ActaTone } {
+  if (target.status === 'annulled') return { text: 'ANULADA', tone: 'annulled' }
+  if (isDecision(target)) {
+    if (!target.outcome) return { text: 'DECISIÓN', tone: 'vote' }
+    return target.outcome.approved ? { text: 'DECISIÓN · APROBADA', tone: 'approved' } : { text: 'DECISIÓN · NO APROBADA', tone: 'rejected' }
+  }
+  return { text: voteLabel({ voteNumber, runoff: target.runoff }) || '1.ª VOTACIÓN', tone: 'vote' }
+}
+
+/**
+ * The line under a vote's title: "3 integrantes · 36 de 38 votaron · 2 no votaron · Mayoría: 20",
+ * "Se aprueba con 3/4 · 29 votos · …", or the reason of an annulled vote.
+ */
+export function actaMetaText(target: RoundRecord) {
+  if (target.status === 'annulled') return target.annulReason || ''
+  const parts: string[] = []
+  if (isDecision(target)) parts.push(approvalText(target, target.outcome))
+  else if (target.category === 'committee') {
+    const seats = target.outcome?.seats ?? (target.runoff ? target.electionSeats : target.memberCount) ?? 1
+    parts.push(target.runoff ? `${seats} ${seats === 1 ? 'puesto' : 'puestos'}` : `${seats} ${seats === 1 ? 'integrante' : 'integrantes'}`)
+  }
+  if (target.participationCount !== undefined || target.recordedCount !== undefined) {
+    const { recorded, eligible } = turnoutOf(target)
+    parts.push(votedText(recorded, eligible))
+    if (eligible) parts.push(notVotedText(recorded, eligible))
+  }
+  if (target.outcome && !isDecision(target)) parts.push(`Mayoría: ${target.outcome.threshold}`)
+  return parts.filter(Boolean).join(' · ')
+}
+
+export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: 'Electo/a' | 'Aprobada' | 'Desempate' | 'Empate' | null; winner: boolean }
+
+/** Counted options of a vote, in acta order, with votes, % of the habilitados and their tag. */
+export function actaRows(target: RoundRecord): ActaRow[] {
+  const results = target.results || []
+  const { eligible } = turnoutOf(target)
+  const ranked = displayOrder(target, results)
+  const byVotes = [...results].sort((a, b) => b.count - a.count)
+  const booleanApproved = isDecision(target) && target.decisionFormat === 'boolean' && target.outcome?.approved
+  return ranked.map((result, index) => {
+    const outcome = outcomeTag(target.outcome, result.optionId)
+    const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === 'A favor')
+    const tied = !target.outcome && isTied(byVotes, byVotes.indexOf(result))
+    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' ? 'Desempate' : tied ? 'Empate' : null
+    return { key: result.optionId || result.label, rank: index + 1, label: result.label, count: result.count, percent: eligible ? percentOf(result.count, eligible) : null, tag, winner }
+  })
+}
+
+/** "38 habilitados · 8 votaciones · 1 anulada" at the top of the acta. */
+export function actaSummary(rounds: RoundRecord[], habilitados: number) {
+  const annulled = rounds.filter((item) => item.status === 'annulled').length
+  return [
+    `${habilitados} ${habilitados === 1 ? 'habilitado' : 'habilitados'}`,
+    `${rounds.length} ${rounds.length === 1 ? 'votación' : 'votaciones'}`,
+    annulled ? `${annulled} ${annulled === 1 ? 'anulada' : 'anuladas'}` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+/** Org chart of the officers: board with its first two on top, departments in rows of two. */
+export function orgChart(positions: Position[]) {
+  const sorted = [...positions].sort((a, b) => a.sortOrder - b.sortOrder)
+  const board = sorted.filter((position) => position.group === 'board')
+  const departments = sorted.filter((position) => position.group === 'department')
+  const rows: Position[][] = []
+  for (let index = 0; index < departments.length; index += 2) rows.push(departments.slice(index, index + 2))
+  return { boardTop: board.slice(0, 2), boardBottom: board.slice(2), departmentRows: rows }
 }
