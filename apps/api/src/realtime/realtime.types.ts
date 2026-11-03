@@ -71,6 +71,12 @@ export interface PublishedResultsEvent {
   options: PublishedResultOption[]
 }
 
+/** «Presentar oficiales» (#48): 0 cover, 1 Junta directiva, 2 Departamentos. */
+export interface PresentationStateEvent {
+  active: boolean
+  slide: 0 | 1 | 2
+}
+
 export interface RealtimeServerToClientEvents {
   'assembly.state': (payload: AssemblyStateEvent) => void
   'lobby.state': (payload: LobbyStateEvent) => void
@@ -85,6 +91,7 @@ export interface RealtimeServerToClientEvents {
   'round.closed': (payload: { roundId: string }) => void
   'participation.count': (payload: ParticipationCountEvent) => void
   'results.published': (payload: PublishedResultsEvent) => void
+  'presentation.state': (payload: PresentationStateEvent) => void
 }
 
 export interface RealtimeClientToServerEvents {

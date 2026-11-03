@@ -196,6 +196,9 @@ export async function closeAndPublish(room: Room) {
   await expect(projector.locator('.pj-results')).toHaveCount(0)
   await confirm(mesa, 'Publicar conteo')
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
+  // A settled result opens on its slide (#48); the scenarios then check the detailed count behind it.
+  await expect(projector.locator('.pj-results, .slide').first()).toBeVisible()
+  if (await projector.locator('.slide').isVisible()) await projector.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(projector.locator('.pj-results')).toBeVisible()
 }
 

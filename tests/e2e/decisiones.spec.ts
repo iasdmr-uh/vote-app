@@ -240,6 +240,9 @@ for (const approved of [true, false]) {
     })
 
     await page.goto('/projector?code=DEMO-ROOM')
+    // The settled decision opens on its slide (P3, #48); the detailed count is behind «Ver conteo».
+    await expect(page.locator('.decision-pill')).toHaveText(approved ? '✓ Aprobada' : 'No aprobada')
+    await page.getByRole('button', { name: 'Ver conteo' }).click()
     await expect(page.getByRole('heading', { name: 'Presupuesto 2027' })).toBeVisible()
     await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con 3/4 · 29 votos')
     await expect(page.locator('.pj-elected h2')).toHaveText(approved ? '✓ Aprobada' : 'No aprobada')
@@ -268,6 +271,8 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
+  await expect(page.locator('.decision-pill')).toHaveText('✓ San Pedro Sula')
+  await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con mayoría simple · 20 votos')
   await expect(page.locator('.pj-elected')).toContainText('San Pedro Sula')
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Aprobada')

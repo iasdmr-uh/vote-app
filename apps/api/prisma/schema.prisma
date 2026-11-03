@@ -66,6 +66,9 @@ model Assembly {
   createdAt      DateTime             @default(now()) @map("created_at")
   completedAt    DateTime?            @map("completed_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
+  /** «Presentar oficiales» on the projector (#48): whether it is on, and its slide (0 cover, 1 board, 2 departments). */
+  presentationActive Boolean          @default(false) @map("presentation_active")
+  presentationSlide  Int              @default(0) @map("presentation_slide")
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   participants   ParticipantSession[]
   rounds         Round[]

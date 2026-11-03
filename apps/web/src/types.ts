@@ -11,12 +11,17 @@ export type PositionGroup = 'board' | 'department'
 /** A box of the org chart. `elected`: the mesa sees closed or published results; phones and projector only published. */
 export type Position = { id: string; group: PositionGroup; label: string; sortOrder: number; custom: boolean; elected: { label: string; roundId: string } | null }
 
+/** «Presentar oficiales» on the projector: 0 cover, 1 Junta directiva, 2 Departamentos. */
+export type PresentationSlide = 0 | 1 | 2
+export type Presentation = { active: boolean; slide: PresentationSlide }
+
 export type PublicState = {
   /** Public and projector state. */
   assemblyName?: string
   period?: string | null
   positions?: Position[]
   assembly?: { id?: string; name?: string; status?: string; completedAt?: string | null; lobbyStatus?: string }
+  presentation?: Presentation
   assemblyCompletedAt?: string | null
   status?: string
   lobbyStatus?: string

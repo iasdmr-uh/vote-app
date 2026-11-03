@@ -4,6 +4,7 @@ import type { RoundRecord } from '../types'
 import ActaImpresa from './ActaImpresa.vue'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
+import { usePresentacion } from '../usePresentacion'
 
 const {
   origin, loading, syncing, state, code, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies, liveAssembly,
@@ -21,6 +22,7 @@ const {
   openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
   createAssembly, editParticipant, createRound, signInModerator,
 } = useMesa()
+const { presentation, slideName, startPresentation, stopPresentation, previousSlide, nextSlide } = usePresentacion()
 
 function runoffButtonText(target: NonNullable<typeof currentRoundRecord.value>) {
   const runoff = runoffOf(target)
@@ -76,6 +78,16 @@ function closePersonMenu(event: Event) {
     <section v-if="!assemblyId && liveAssembly" class="card"><p class="eyebrow">ASAMBLEA ACTIVA</p><h2>{{ liveAssembly.name }}</h2><button class="primary" @click="openLiveAssembly">Volver a la Asamblea activa</button></section>
     <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><div class="assembly-fields"><label>Nombre<input v-model="assemblyName" required /></label><label>Periodo<input v-model="assemblyPeriod" maxlength="60" placeholder="2027–2029" /></label></div><button class="primary" :disabled="loading">Crear Asamblea</button></form></section>
     <template v-else>
+      <section class="presentation-bar" :class="{ presenting: presentation.active }" aria-label="Presentar oficiales">
+        <button v-if="!presentation.active" class="secondary" :disabled="loading" @click="startPresentation">Presentar oficiales</button>
+        <template v-else>
+          <span class="badge badge-info">PRESENTANDO</span>
+          <button class="secondary presentation-arrow" aria-label="Diapositiva anterior" :disabled="loading || presentation.slide === 0" @click="previousSlide">←</button>
+          <strong class="presentation-slide" aria-live="polite">{{ slideName }} · {{ presentation.slide + 1 }}/3</strong>
+          <button class="secondary presentation-arrow" aria-label="Diapositiva siguiente" :disabled="loading || presentation.slide === 2" @click="nextSlide">→</button>
+          <button class="link-button push-right" :disabled="loading" @click="stopPresentation">Terminar presentación</button>
+        </template>
+      </section>
       <ol class="workflow-steps" aria-label="Pasos de la mesa">
         <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep && assemblyStatus !== 'completed' }" :aria-current="index === moderatorWorkflowStep && assemblyStatus !== 'completed' ? 'step' : undefined">
           <span class="workflow-step-number">{{ index < moderatorWorkflowStep ? '✓' : index + 1 }}</span><span>{{ step }}</span>
@@ -238,6 +250,11 @@ function closePersonMenu(event: Event) {
 </template>
 
 <style scoped>
+.presentation-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem; margin-bottom: 1rem; }
+.presentation-bar.presenting { justify-content: flex-start; padding: .55rem .75rem; border: 1px solid #c7d3e7; border-radius: .75rem; background: #fff; }
+.presentation-arrow { min-width: 46px; font-size: 1.15rem; }
+.presentation-slide { color: var(--blue-dark); text-align: center; }
+@media (min-width: 720px) { .presentation-slide { min-width: 12rem; } }
 .majority-chip { display: inline-block; margin: .35rem 0 0; padding: .2rem .6rem; border-radius: 999px; background: #e8efff; color: var(--blue-dark); font-size: .75rem; font-weight: 700; }
 .official-round h3 .badge { margin-left: .5rem; vertical-align: middle; }
 .decision-verdict { margin: .75rem 0 0; padding: .7rem 1rem; border-radius: 10px; background: var(--blue-dark); color: #fff; font-size: 1.25rem; font-weight: 800; }

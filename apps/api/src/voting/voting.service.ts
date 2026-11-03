@@ -16,6 +16,7 @@ import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CreateRoundDto, RepeatRoundDto } from './dtos.js'
+import { presentationOf } from './presentation.service.js'
 import { decisionOutcome, electionOutcome, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
@@ -421,6 +422,7 @@ export class VotingService implements OnModuleInit {
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
       ...(officialResult ? { officialResult } : {}),
+      presentation: presentationOf(assembly),
     }
   }
 
@@ -503,6 +505,7 @@ export class VotingService implements OnModuleInit {
       publicAppUrl: process.env.PUBLIC_APP_URL,
       rounds,
       currentRound: currentRound ?? null,
+      presentation: presentationOf(assembly),
     }
   }
 

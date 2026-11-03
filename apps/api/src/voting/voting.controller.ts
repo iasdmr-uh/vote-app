@@ -15,6 +15,7 @@ import type { Request } from 'express'
 import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
+import { PresentationService } from './presentation.service.js'
 import {
   AddPositionDto,
   AnnulRoundDto,
@@ -25,6 +26,7 @@ import {
   JoinAssemblyDto,
   LobbyPatchDto,
   ParticipantPatchDto,
+  PresentationDto,
   RepeatRoundDto,
   ResumeSessionDto,
   VoteDto,
@@ -88,7 +90,7 @@ export class ParticipantLeaveController {
 @Controller('moderator')
 @UseGuards(ModeratorGuard)
 export class ModeratorController {
-  constructor(private readonly voting: VotingService) {}
+  constructor(private readonly voting: VotingService, private readonly presentation: PresentationService) {}
 
   @Get('session')
   session() {
@@ -114,6 +116,12 @@ export class ModeratorController {
   @Post('assemblies/:assemblyId/join-code')
   rotateJoinCode(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
     return this.voting.rotateJoinCode(assemblyId)
+  }
+
+  @Post('presentation')
+  @HttpCode(200)
+  setPresentation(@Body() input: PresentationDto) {
+    return this.presentation.setPresentation(input)
   }
 
   @Get('assemblies/:assemblyId')
