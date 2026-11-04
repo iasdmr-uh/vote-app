@@ -205,12 +205,10 @@ function closePersonMenu(event: Event) {
         </div>
         <aside class="card mesa-participants" aria-labelledby="mesa-participants-title">
           <div class="section-heading"><h2 id="mesa-participants-title">Participantes</h2><span class="count-pill">{{ state?.participants?.length ?? 0 }}</span></div>
-          <p v-if="attendance" class="attendance-summary"><span><span class="vote-dot vote-dot-done" aria-hidden="true"></span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span><span class="vote-dot vote-dot-pending" aria-hidden="true"></span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span><span v-if="attendance.disabled"><span class="vote-dot vote-dot-disabled" aria-hidden="true"></span>{{ attendance.disabled }} {{ attendance.disabled === 1 ? 'inhabilitado' : 'inhabilitados' }}</span></p>
+          <p v-if="attendance" class="attendance-summary"><span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span><span v-if="attendance.disabled">{{ attendance.disabled }} {{ attendance.disabled === 1 ? 'inhabilitado' : 'inhabilitados' }}</span></p>
           <p v-if="participantLeft" class="left-notice" role="status" aria-live="polite"><span aria-hidden="true">←</span>{{ participantLeft }} salió de la sala<button v-if="participantLeftId && assemblyStatus !== 'completed'" class="link-button push-right" :disabled="loading" @click="setVotingDisabled(participantLeftId, true)">Inhabilitar</button></p>
           <ul class="mesa-person-list">
             <li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`" :class="{ 'person-disabled': person.votingDisabled }">
-              <span v-if="person.votingDisabled" class="vote-dot vote-dot-disabled" role="img" aria-label="Inhabilitado" title="Inhabilitado"></span>
-              <span v-else-if="person.voted !== undefined" :class="['vote-dot', person.voted ? 'vote-dot-done' : 'vote-dot-pending']" role="img" :aria-label="person.voted ? 'Ya votó' : 'Falta votar'" :title="person.voted ? 'Ya votó' : 'Falta votar'"></span>
               <span class="person-name">{{ person.firstName }} {{ person.lastName }}<span v-if="person.votingDisabled" class="badge badge-disabled">Inhabilitado</span></span>
               <button v-if="person.id && person.votingDisabled && assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="setVotingDisabled(person.id, false)">Habilitar</button>
               <details v-if="person.id && !(person.votingDisabled && assemblyStatus === 'completed')" class="person-menu">

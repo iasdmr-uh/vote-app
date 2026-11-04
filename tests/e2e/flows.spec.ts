@@ -326,7 +326,7 @@ test('la mesa prepara una comisión escribiendo los candidatos y cuántos integr
   for (const removed of ['committeeType', 'committeeConfiguration', 'decisionNote']) expect(createBody).not.toHaveProperty(removed)
 })
 
-test('la mesa ve quién ya votó (amarillo/verde) y los puntos se quedan tras cerrar', async ({ page }) => {
+test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también tras cerrar', async ({ page }) => {
   let status: 'open' | 'closed' = 'open'
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
@@ -350,21 +350,19 @@ test('la mesa ve quién ya votó (amarillo/verde) y los puntos se quedan tras ce
       await route.fulfill({ status: 201, json: { roundId: 'r1', status: 'closed' } })
       return
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for voted dots test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route for attendance test' } })
   })
 
   await page.goto('/moderator')
   const summary = page.locator('.attendance-summary')
   await expect(summary).toContainText('2 votaron')
   await expect(summary).toContainText('1 falta')
-  await expect(page.getByRole('img', { name: 'Ya votó' })).toHaveCount(2)
-  await expect(page.getByRole('img', { name: 'Falta votar' })).toHaveCount(1)
-  await expect(page.locator('li', { hasText: 'Luis Mejía' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
-  await expect(page.getByRole('img', { name: 'Ya votó' })).toHaveCount(2)
-  await expect(page.getByRole('img', { name: 'Falta votar' })).toHaveCount(1)
+  await expect(page.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
   await expect(summary).toContainText('2 votaron')
   await expect(summary).toContainText('1 falta')
 })
@@ -1399,7 +1397,7 @@ test('la mesa cuenta a quien votó y salió en la base, y solo marca como pendie
   const summary = page.locator('.attendance-summary')
   await expect(summary).toContainText('2 votaron')
   await expect(summary).toContainText('1 falta')
-  await expect(page.locator('li', { hasText: 'Rosa Paz' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Rosa Paz' })).toBeVisible()
 })
 
 test('sin una votación contada, los habilitados del acta incluyen a quienes salieron', async ({ page }) => {
@@ -1606,7 +1604,7 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
   await expect(summary).toContainText('1 inhabilitado')
   const rosa = page.locator('.mesa-person-list li', { hasText: 'Rosa Paz' })
   await expect(rosa.getByText('Inhabilitado', { exact: true })).toBeVisible()
-  await expect(rosa.getByRole('img', { name: 'Inhabilitado' })).toBeVisible()
+  await expect(rosa.getByRole('img')).toHaveCount(0)
   await expect(page.locator('.mesa-person-list li.person-disabled')).toHaveCount(1)
 
   await rosa.getByRole('button', { name: 'Habilitar' }).click()

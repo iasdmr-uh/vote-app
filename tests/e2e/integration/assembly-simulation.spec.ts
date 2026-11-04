@@ -98,8 +98,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
     await vote(phone, index < 7 ? ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora'] : ['Rosa Díaz', 'Carlos Gómez', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez'])
     if (index === 4) {
       await expect(summary).toHaveText(['5 votaron', '4 faltan'])
-      await expect(mesa.locator('.mesa-person-list li', { hasText: 'Ana Ruiz' }).getByRole('img', { name: 'Ya votó' })).toBeVisible()
-      await expect(mesa.locator('.mesa-person-list li', { hasText: 'Luis Pérez' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
+      await expect(mesa.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
       await snap(mesa, 'mesa-quien-voto')
     }
   }

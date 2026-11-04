@@ -26,7 +26,7 @@ test('D · inhabilitar durante una votación: el teléfono no recibe la papeleta
   await person(mesa, 'Carlos Gómez').getByLabel('Acciones para Carlos Gómez').click()
   await person(mesa, 'Carlos Gómez').getByRole('button', { name: 'Inhabilitar' }).click()
   await expect(person(mesa, 'Carlos Gómez').locator('.badge-disabled')).toHaveText('Inhabilitado')
-  await expect(person(mesa, 'Carlos Gómez').getByRole('img', { name: 'Inhabilitado' })).toBeVisible()
+  await expect(person(mesa, 'Carlos Gómez').getByText('Inhabilitado', { exact: true })).toBeVisible()
   await expect(summary.locator(':scope > span')).toHaveText(['1 votó', '4 faltan', '1 inhabilitado'])
   // T05: the phone shows the state, with no options and no button.
   await expect(carlos.page.getByRole('heading', { name: 'Voto inhabilitado' })).toBeVisible()

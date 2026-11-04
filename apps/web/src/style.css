@@ -283,10 +283,6 @@ button:not(:disabled):active { transform: translateY(1px); }
 label .hint { font-weight: 500; }
 .ballot-form + *, .eyebrow-row + h2 + .ballot-form { margin-top: .9rem; }
 
-.vote-dot { display: inline-block; flex: none; width: 10px; height: 10px; margin-right: .55rem; border-radius: 50%; vertical-align: middle; }
-.vote-dot-pending { background: #f5b301; }
-.vote-dot-done { background: #1e9e5a; }
-.vote-dot-disabled { background: #8a8f98; }
 .mesa-person-list li.person-disabled { color: #7c8594; }
 .badge-disabled { margin-left: .55rem; padding: .15rem .5rem; background: #f0f1f4; color: #6b7280; font-size: .68rem; font-weight: 650; letter-spacing: 0; text-transform: none; }
 .mesa-person-list .link-button { padding: 0 .4rem; font-size: .85rem; font-weight: 700; }
@@ -353,7 +349,6 @@ label .hint { font-weight: 500; }
 .count-pill { display: inline-grid; min-width: 2.25rem; height: 1.8rem; place-items: center; padding: 0 .55rem; border-radius: 999px; background: #eaf0fc; color: var(--blue-dark); font-weight: 800; }
 .attendance-summary { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin: .75rem 0 0; color: var(--blue-dark); font-size: .88rem; font-weight: 600; }
 .attendance-summary > span { display: inline-flex; align-items: center; }
-.attendance-summary .vote-dot { margin-right: .4rem; }
 .left-notice { display: flex; align-items: center; gap: .6rem; margin: .9rem 0 0; padding: .6rem .8rem; border-radius: .6rem; background: #f4f7fc; color: var(--blue-dark); font-size: .88rem; }
 .left-notice span { color: var(--blue-light); font-weight: 800; }
 .mesa-person-list { display: grid; max-height: 60vh; margin: .9rem 0 0; padding: 0; overflow: auto; list-style: none; }
