@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue'
+import AppHeader from './components/AppHeader.vue'
+import AppNotices from './components/AppNotices.vue'
 import Mesa from './components/Mesa.vue'
 import Proyector from './components/Proyector.vue'
 import Telefono from './components/Telefono.vue'
 import { useAssembly } from './useAssembly'
 
 const {
-  route, loading, syncing, error, notice, state, code, sessionToken, moderatorToken, moderatorAuthState, realtimeActive, realtimeConnected,
-  role, projectorJoinUrl, go, openProjectorWindow, refreshQr, syncRealtime, startAssembly, stopAssembly,
+  route, code, sessionToken, moderatorToken,
+  role, projectorJoinUrl, refreshQr, syncRealtime, startAssembly, stopAssembly,
 } = useAssembly()
 
 onMounted(startAssembly)
@@ -17,19 +19,10 @@ onUnmounted(stopAssembly)
 </script>
 
 <template>
-  <header v-if="role !== 'projector'" class="topbar" :class="{ 'topbar-session': role === 'participant' && !!sessionToken }">
-    <a class="brand" href="/" @click.prevent="go('/')"><span class="brand-mark">A</span><span v-if="role === 'moderator' && state?.assembly?.name">{{ state.assembly.name }}</span><span v-else>ASDMR <small>Unión Hondureña</small></span></a>
-    <nav v-if="role === 'moderator'" aria-label="Vistas de mesa">
-      <a href="/" @click.prevent="go('/')">Delegado</a>
-      <a :href="`/projector${code ? `?code=${encodeURIComponent(code)}` : ''}`" @click.prevent="openProjectorWindow">Abrir proyector</a>
-    </nav>
-  </header>
+  <AppHeader v-if="role !== 'projector'" />
 
   <main :class="['page', `${role}-page`, { 'projector-page': role === 'projector', 'participant-session-page': role === 'participant' && !!sessionToken }]">
-    <p v-if="role !== 'projector' && realtimeActive && !realtimeConnected && !(role === 'moderator' && moderatorAuthState === 'validation_error')" class="connection-warning" role="status" aria-live="polite">Conexión interrumpida · Intentando reconectar. Los datos mostrados son los últimos confirmados.</p>
-    <div v-if="error && !(role === 'moderator' && moderatorAuthState === 'validation_error')" class="notice error" role="alert"><strong v-if="!(role === 'participant' && !sessionToken && error.startsWith('El código no corresponde'))">Ocurrió un problema.</strong>{{ error }}</div>
-    <div v-if="notice" class="notice success" role="status">{{ notice }}</div>
-    <p v-if="loading || syncing" class="sync" aria-live="polite">Actualizando estado…</p>
+    <AppNotices />
     <Telefono v-if="role === 'participant'" />
     <Mesa v-else-if="role === 'moderator'" />
     <Proyector v-else />
