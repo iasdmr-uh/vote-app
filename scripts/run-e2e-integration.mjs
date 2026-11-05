@@ -13,6 +13,9 @@ let testProcess
 let stopping = false
 let localClusterDir
 let localClusterStarted = false
+// PostgreSQL refuses to start under an invalid locale (macOS shells often export LC_CTYPE=UTF-8), so the
+// temporary cluster always runs under the C locale.
+const localPgEnv = { ...process.env, LC_ALL: 'C' }
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', ...options })
@@ -47,7 +50,7 @@ async function waitForPostgres() {
 
 async function cleanup() {
   if (localClusterStarted) {
-    spawnSync('pg_ctl', ['-D', join(localClusterDir, 'data'), '-m', 'fast', '-w', 'stop'], { cwd: root, stdio: 'ignore' })
+    spawnSync('pg_ctl', ['-D', join(localClusterDir, 'data'), '-m', 'fast', '-w', 'stop'], { cwd: root, stdio: 'ignore', env: localPgEnv })
     localClusterStarted = false
   }
   if (localClusterDir) {
@@ -76,6 +79,21 @@ async function unusedPort() {
   return address.port
 }
 
+async function portIsFree(port) {
+  const server = createServer()
+  return new Promise((resolveCheck) => {
+    server.once('error', () => resolveCheck(false))
+    server.listen(port, '127.0.0.1', () => server.close(() => resolveCheck(true)))
+  })
+}
+
+/** The API and web ports default to 3300 / 4174; E2E_API_PORT and E2E_WEB_PORT move them when they are busy. */
+async function ensurePortsFree() {
+  for (const [name, port] of [['E2E_API_PORT', process.env.E2E_API_PORT ?? '3300'], ['E2E_WEB_PORT', process.env.E2E_WEB_PORT ?? '4174']]) {
+    if (!(await portIsFree(Number(port)))) throw new Error(`Port ${port} is already in use; set ${name} to a free port`)
+  }
+}
+
 async function startLocalPostgres() {
   if (!['initdb', 'pg_ctl', 'createdb'].every(hasCommand)) {
     throw new Error('Docker is unavailable and local PostgreSQL tools (initdb, pg_ctl, createdb) are not installed')
@@ -86,10 +104,10 @@ async function startLocalPostgres() {
   const user = process.env.USER
   if (!user) throw new Error('Could not determine the local PostgreSQL user')
   const port = await unusedPort()
-  run('initdb', ['-D', dataDir, '--username', user, '--auth-local=trust', '--auth-host=trust', '--no-instructions'])
-  run('pg_ctl', ['-D', dataDir, '-l', join(localClusterDir, 'postgres.log'), '-o', `-h 127.0.0.1 -p ${port}`, '-w', 'start'])
+  run('initdb', ['-D', dataDir, '--username', user, '--auth-local=trust', '--auth-host=trust', '--no-instructions', '--locale=C', '--encoding=UTF8'], { env: localPgEnv })
+  run('pg_ctl', ['-D', dataDir, '-l', join(localClusterDir, 'postgres.log'), '-o', `-h 127.0.0.1 -p ${port}`, '-w', 'start'], { env: localPgEnv })
   localClusterStarted = true
-  run('createdb', ['-h', '127.0.0.1', '-p', String(port), database])
+  run('createdb', ['-h', '127.0.0.1', '-p', String(port), database], { env: localPgEnv })
   return `postgresql://${encodeURIComponent(user)}@127.0.0.1:${port}/${database}`
 }
 
@@ -102,6 +120,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 try {
+  await ensurePortsFree()
   const commit = run('git', ['rev-parse', '--verify', 'HEAD'])
   const branch = run('git', ['branch', '--show-current'])
   const dirty = Boolean(run('git', ['status', '--porcelain']))
@@ -146,7 +165,8 @@ try {
   run('npm', ['run', 'db:deploy', '--workspace', '@asdmr/api'], { env })
 
   console.log(`Running real API + PostgreSQL browser flow for ${commit.slice(0, 12)} (${branch || 'detached HEAD'}${dirty ? ', working tree dirty' : ''}).`)
-  const code = await start('npx', ['playwright', 'test', '--config=playwright.integration.config.ts'], { env })
+  // Extra arguments go to Playwright, e.g. `npm run test:e2e:integration -- office-runoff`.
+  const code = await start('npx', ['playwright', 'test', '--config=playwright.integration.config.ts', ...process.argv.slice(2)], { env })
   if (code !== 0) process.exitCode = code
   console.log(`Integration evidence: ${resolve(resultDir, 'metadata.json')} and ${resolve(resultDir, 'results.json')}`)
 } catch (error) {

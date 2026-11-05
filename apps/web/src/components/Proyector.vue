@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { isTied as tiedAt, percentOf } from '../resultados'
+import { decisionVerdict, displayOrder, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, voteLabel, winnerText } from '../resultados'
+import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
+import Diapositiva from './Diapositiva.vue'
 
 const LOBBY_SLOTS = 21
 
@@ -16,9 +18,17 @@ const recorded = computed(() => state.value?.recordedCount ?? 0)
 const progressPercent = computed(() => eligible.value > 0 ? Math.min(100, Math.round((recorded.value / eligible.value) * 100)) : 0)
 const isCommittee = computed(() => round.value?.category === 'committee')
 
+// «Presentar oficiales» (P1, P4, P5): the mesa drives it and it covers every other screen while on.
+const presentationSlide = computed(() => state.value?.presentation?.active ? state.value.presentation.slide : null)
+// A settled published result is shown as its slide (P2, P3, P6); the detailed count stays one click away.
+const publishedSlide = computed(() => resultSlide(state.value))
+const showCount = ref(false)
+watch(() => round.value?.id, () => { showCount.value = false })
+
 const view = computed(() => {
+  if (presentationSlide.value !== null) return 'presentation'
   if (lobbyStatus.value === 'lobby_open') return 'lobby'
-  if (round.value?.status === 'published') return 'results'
+  if (round.value?.status === 'published') return publishedSlide.value && !showCount.value ? 'slide' : 'results'
   if (assemblyStatus.value === 'completed') return 'completed'
   if (round.value?.status === 'annulled') return 'annulled'
   if (round.value?.status === 'open' || round.value?.status === 'closed') return 'voting'
@@ -26,13 +36,16 @@ const view = computed(() => {
   return 'idle'
 })
 
+const roundLabel = computed(() => voteLabel(round.value))
 const statusLabel = computed(() => ({
-  voting: round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta',
-  results: assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado',
+  voting: [round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
+  results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),
   annulled: 'Votación anulada',
   completed: 'Asamblea finalizada',
   lobby: '',
   idle: '',
+  slide: '',
+  presentation: '',
 }[view.value]))
 
 const assemblyName = computed(() => state.value?.assembly?.name || 'Asamblea')
@@ -42,9 +55,18 @@ const lobbyTotal = computed(() => state.value?.participantCount ?? participants.
 const lobbyNames = computed(() => participants.value.slice(0, lobbyTotal.value > LOBBY_SLOTS ? LOBBY_SLOTS - 1 : LOBBY_SLOTS))
 const lobbyMore = computed(() => lobbyTotal.value > LOBBY_SLOTS ? lobbyTotal.value - lobbyNames.value.length : 0)
 
-const results = computed(() => [...(state.value?.results || [])].sort((a, b) => b.count - a.count))
-const electedLabels = computed(() => new Set((state.value?.officialResult?.elected || []).map((person) => person.label)))
-const officeElected = computed(() => !isCommittee.value ? state.value?.officialResult?.elected || [] : [])
+const results = computed(() => displayOrder(round.value, state.value?.results || []))
+const outcome = computed(() => state.value?.outcome)
+const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
+// A favor / En contra: "Aprobada" or "No aprobada" in the banner, and its two rows without a rank (P21).
+const booleanDecision = computed(() => round.value?.category === 'decision' && round.value.decisionFormat === 'boolean')
+const verdict = computed(() => booleanDecision.value && round.value ? decisionVerdict(round.value, outcome.value) : '')
+// The badges show this vote; the banner adds who earlier votes of the same election elected.
+const officeElected = computed(() => !isCommittee.value || (round.value?.voteNumber ?? 1) > 1 ? state.value?.officialResult?.elected || [] : [])
+
+function tagOf(result: { optionId?: string }) {
+  return outcomeTag(outcome.value, result.optionId)
+}
 
 function isTied(index: number) {
   return tiedAt(results.value, index)
@@ -56,7 +78,7 @@ const resultsList = ref<HTMLElement | null>(null)
 const density = ref(1)
 
 async function fitResults() {
-  const rows = rowsPerColumn.value + (officeElected.value.length ? 1.2 : 0)
+  const rows = rowsPerColumn.value + (officeElected.value.length || verdict.value ? 1.2 : 0)
   density.value = Math.max(0.45, Math.min(1, 4.2 / rows))
   await nextTick()
   const list = resultsList.value
@@ -83,7 +105,13 @@ async function toggleProjectorFullscreen() {
 
 <template>
   <button v-if="code" class="pj-fullscreen secondary" @click="toggleProjectorFullscreen">{{ projectorFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa' }}</button>
+  <button v-if="code && publishedSlide && (view === 'slide' || view === 'results')" class="pj-count-toggle secondary" @click="showCount = !showCount">{{ showCount ? 'Ver resultado' : 'Ver conteo' }}</button>
   <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
+  <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
+    <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
+    <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
+    <Diapositiva v-else :presentation="presentationSlide ?? 0" />
+  </section>
   <section v-else class="pj">
     <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
 
@@ -118,15 +146,17 @@ async function toggleProjectorFullscreen() {
         <div>
           <p class="pj-status">{{ statusLabel }}</p>
           <h1 class="pj-title">{{ round?.title }}</h1>
-          <p v-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
+          <p v-if="majority" class="pj-subtitle">{{ majority }}</p>
+          <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
         </div>
-        <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron</small></p>
+        <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
       </header>
-      <div v-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
-      <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
+      <div v-if="verdict" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
+      <div v-else-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
+      <ol ref="resultsList" class="pj-results" :class="{ 'pj-unranked': booleanDecision }" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
         <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
-          <span class="pj-rank">{{ index + 1 }}</span>
-          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="isTied(index)" class="pj-tie">Empate</em><em v-if="isCommittee && electedLabels.has(result.label)" class="pj-elected-tag" aria-label="Electo">✓</em></span>
+          <span v-if="!booleanDecision" class="pj-rank">{{ index + 1 }}</span>
+          <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, result.label) : '' }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">Empate</em></span>
           <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
           <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
           <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
@@ -166,6 +196,7 @@ async function toggleProjectorFullscreen() {
   text-align: left;
 }
 .pj :where(h1, h2, p, ol, ul) { margin: 0; }
+.pj-stage { --u: min(100vw / 1920, 100vh / 1080); display: grid; height: 100vh; place-items: center; overflow: hidden; background: #fff; }
 .pj-card { border-radius: calc(var(--u) * 22); background: #fff; }
 .pj-title { color: var(--ink); font-size: calc(var(--u) * 96); text-wrap: balance; font-weight: 800; letter-spacing: -.02em; line-height: 1.08; }
 .pj-title-lobby { font-size: calc(var(--u) * 96); }
@@ -205,6 +236,8 @@ async function toggleProjectorFullscreen() {
 .pj-elected { margin-top: calc(var(--u) * 28); padding: calc(var(--u) * 28) calc(var(--u) * 48); border-radius: calc(var(--u) * 22); background: var(--blue-dark); color: #fff; }
 .pj-check { color: var(--cream); }
 .pj-elected h2 { color: #fff; font-size: calc(var(--u) * 76); font-weight: 800; line-height: 1.15; }
+.pj-rejected { background: #fff2f0; }
+.pj-rejected h2 { color: #b42318; }
 .pj-results {
   display: grid;
   min-height: 0;
@@ -220,13 +253,14 @@ async function toggleProjectorFullscreen() {
   list-style: none;
 }
 .pj-results li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); align-items: center; column-gap: calc(var(--u) * 30 * var(--k)); row-gap: calc(var(--u) * 16 * var(--k)); padding: calc(var(--u) * 26 * var(--k)) calc(var(--u) * 40); }
+.pj-unranked li { grid-template-columns: minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); }
 .pj-rank { display: grid; width: calc(var(--u) * 76 * var(--k)); height: calc(var(--u) * 76 * var(--k)); place-items: center; border-radius: 50%; background: var(--soft); color: var(--ink); font-size: calc(var(--u) * 32 * var(--k)); font-weight: 800; }
 .pj-first .pj-rank { background: var(--blue); color: #fff; }
 .pj-name { display: flex; min-width: 0; align-items: center; gap: calc(var(--u) * 20 * var(--k)); overflow: hidden; font-size: calc(var(--u) * 48 * var(--k)); font-weight: 600; white-space: nowrap; }
 .pj-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pj-name em { flex: none; padding: calc(var(--u) * 6 * var(--k)) calc(var(--u) * 18 * var(--k)); border-radius: 999px; font-size: calc(var(--u) * 26 * var(--k)); font-style: normal; font-weight: 700; }
 .pj-tie { background: #f3d9a4; color: #8a5a14; }
-.pj-elected-tag { background: var(--blue-dark); color: var(--cream); letter-spacing: .06em; text-transform: uppercase; }
+.pj-elected-tag { background: #1f7a4d; color: #fff; }
 .pj-votes { color: var(--blue); font-size: calc(var(--u) * 48 * var(--k)); font-weight: 800; white-space: nowrap; }
 .pj-percent { color: var(--muted); font-size: calc(var(--u) * 40 * var(--k)); font-weight: 600; text-align: right; white-space: nowrap; }
 .pj-bar { grid-column: 1 / -1; height: calc(var(--u) * 16 * var(--k)); overflow: hidden; border-radius: 999px; background: var(--soft); }
@@ -234,6 +268,10 @@ async function toggleProjectorFullscreen() {
 
 .pj-fullscreen { position: fixed; z-index: 5; right: .75rem; bottom: .75rem; min-height: 38px; padding: .45rem .7rem; font-size: .82rem; opacity: .35; transition: opacity .2s ease; }
 .pj-fullscreen:hover, .pj-fullscreen:focus-visible { opacity: 1; }
+.pj-count-toggle { position: fixed; z-index: 5; right: calc(.75rem + 12.5rem); bottom: .75rem; min-height: 38px; padding: .45rem .7rem; font-size: .82rem; opacity: .35; transition: opacity .2s ease; }
+.pj-count-toggle:hover, .pj-count-toggle:focus-visible { opacity: 1; }
 :global(.projector-page:fullscreen) .pj-fullscreen { display: none; }
+:global(.projector-page:fullscreen) .pj-count-toggle { right: .75rem; opacity: 0; }
+:global(.projector-page:fullscreen) .pj-count-toggle:hover, :global(.projector-page:fullscreen) .pj-count-toggle:focus-visible { opacity: 1; }
 :global(.projector-page > .sync) { display: none; }
 </style>

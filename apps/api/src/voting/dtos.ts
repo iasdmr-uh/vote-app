@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   Equals,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsObject,
@@ -22,6 +23,19 @@ import {
 export class CreateAssemblyDto {
   @IsString() @Matches(/\S/) @MinLength(2) @MaxLength(160)
   name!: string
+
+  /** Term the elected serve, e.g. "2027–2029". */
+  @IsOptional() @IsString() @MaxLength(60)
+  period?: string
+}
+
+export class AddPositionDto {
+  @IsUUID()
+  assemblyId!: string
+
+  /** Checked by the service, so an empty name answers 422 like a duplicate. */
+  @IsString() @MaxLength(160)
+  label!: string
 }
 
 export class JoinAssemblyDto {
@@ -64,24 +78,38 @@ export class BallotOptionDto {
 }
 
 export class CreateRoundDto {
-  @IsString() @Matches(/\S/) @MinLength(1) @MaxLength(200)
-  title!: string
+  /** Optional only for a cargo with a puesto, which takes the puesto's name. */
+  @IsOptional() @IsString() @Matches(/\S/) @MinLength(1) @MaxLength(200)
+  title?: string
+
+  /** Office only: the org-chart puesto this election fills. */
+  @IsOptional() @IsUUID()
+  positionId?: string
 
   @IsOptional() @IsIn(['single_choice', 'multiple_choice'])
   format: 'single_choice' | 'multiple_choice' = 'single_choice'
 
-  @IsOptional() @IsIn(['office', 'committee'])
-  category?: 'office' | 'committee'
+  @IsOptional() @IsIn(['office', 'committee', 'decision'])
+  category?: 'office' | 'committee' | 'decision'
 
-  /** Committee only: how many people stay on it; each delegate marks from one up to this many names. */
+  /** Committee only: how many people stay on it; each delegate marks exactly this many names. */
   @IsOptional() @IsInt() @Min(1) @Max(40)
   memberCount?: number
+
+  /** Decision only: A favor / En contra (the server writes both options) or options written by the mesa. */
+  @IsOptional() @IsIn(['boolean', 'options'])
+  decisionFormat?: 'boolean' | 'options'
+
+  /** Decision only: mayoría simple (> 1/2) or 3/4 of the habilitados. Elections always use mayoría simple. */
+  @IsOptional() @IsIn(['simple', 'three_quarters'])
+  approvalRule?: 'simple' | 'three_quarters'
 
   @IsOptional() @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => BallotOptionDto)
   options?: BallotOptionDto[]
 
-  @IsObject()
-  countingRule!: Record<string, unknown>
+  /** Kept for older clients; the result is always computed by the server, so its content is not used. */
+  @IsOptional() @IsObject()
+  countingRule?: Record<string, unknown>
 }
 
 export class VoteDto {
@@ -93,14 +121,6 @@ export class VoteDto {
 
   @Equals(true)
   confirmation!: true
-}
-
-export class OfficialResultDto {
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(40) @IsUUID('all', { each: true })
-  optionIds!: string[]
-
-  @IsOptional() @IsString() @MaxLength(1000)
-  note?: string
 }
 
 export class AnnulRoundDto {
@@ -117,6 +137,19 @@ export class RepeatRoundDto {
 
   @IsOptional() @IsString() @Matches(/\S/) @MaxLength(200)
   title?: string
+}
+
+/** «Presentar oficiales» (#48): on or off, and the slide the projector shows. */
+export class PresentationDto {
+  @IsBoolean()
+  active!: boolean
+
+  @IsInt() @IsIn([0, 1, 2])
+  slide!: 0 | 1 | 2
+
+  /** The mesa's assembly; without it, the live one. */
+  @IsOptional() @IsUUID()
+  assemblyId?: string
 }
 
 export class RouteIdDto {

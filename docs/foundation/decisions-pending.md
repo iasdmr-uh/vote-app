@@ -5,7 +5,8 @@
 - Una Asamblea presencial de la Unión Hondureña, aproximadamente 50–70 asistentes.
 - Ingreso por QR común, sin cuenta, con nombre y apellido. El nombre no acredita elegibilidad.
 - Moderador prepara, abre y cierra papeletas y publica resultados explícitamente.
-- No hay temporizador, resultados parciales, edición de voto emitido ni proclamación/quórum automático.
+- No hay temporizador, resultados parciales, edición de voto emitido ni quórum automático. El resultado se calcula solo (ver punto siguiente).
+- Resultados automáticos (2 de noviembre de 2026): mayoría sobre participantes habilitados al cierre, desempates encadenados, selección exacta en comisiones, candidato nuevo desde la 3.ª votación, decisiones (mayoría simple o 3/4), inhabilitación y «no votaron». La mesa no elige ganadores; puede anular. Detalle en `sistema-votaciones-asdmr.md`, sección 8, reglas 11–16.
 - Una respuesta por sesión participante y ronda; la opción no debe tener vínculo consultable a la identidad.
 - Durante el ingreso abierto, el proyector muestra tanto los nombres de quienes ya ingresaron como el total de participantes; al iniciar una papeleta, los nombres se ocultan y solo se muestra progreso agregado.
 - Asociación queda contemplada para evolución futura; iglesias y producto multi-organización activo quedan fuera de V1.
@@ -14,9 +15,6 @@
 
 | Decisión | Validador indicado | Consecuencia hasta resolver |
 |---|---|---|
-| Regla de conteo/mayoría por tipo de papeleta, abstenciones y votos nulos | Secretaría/mesa y autoridad institucional; contrastar Estatutos y Reglamento | Guardar regla como configuración explícita; no asumir “más votos gana” ni una regla universal. No activar cómputo final definitivo. |
-| Empates y repetición de rondas | Secretaría/mesa y autoridad institucional | No resolver automáticamente ni proclamar ganador. |
-| Anulación/cancelación de una ronda abierta o cerrada | Secretaría/mesa | No habilitar una semántica de anulación hasta que quede definida; conservar auditoría de acciones aprobadas. |
 | Quién puede operar moderación y cómo se acredita/entrega su acceso | Secretaría/mesa | No desplegar panel protegido hasta validar mecanismo y responsables. No incluir secretos en URL ni cliente delegado. |
 | Retención y eliminación de nombres, participación, votos y bitácoras | Responsable institucional de privacidad/retención por determinar | No automatizar borrado ni respaldos de retención definitiva antes de tener plazos y alcance aprobados. |
 | Reapertura del ingreso y condiciones antes de una votación | Secretaría/mesa | El scope contempla reapertura explícita antes de votar, con auditoría; Fase 01 pide confirmar el permiso. No asumirlo habilitado hasta confirmar. |

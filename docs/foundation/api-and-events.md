@@ -10,7 +10,7 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 |---|---|---|
 | `POST /assemblies/:assemblyCode/join` | Delegado | Entrada `{firstName,lastName}`; crea sesión y devuelve `participantSessionToken` una sola vez y estado de sala. No eco de datos innecesarios. |
 | `GET /participant/me` | Sesión participante | Estado propio, papeleta actual/última y participación propia; resultados agregados solo si esa ronda ya fue publicada. Nunca lista ajena ni selección. |
-| `POST /participant/rounds/:roundId/vote` | Sesión participante | `{optionId, confirmation:true}`; respuesta genérica `{accepted:true, participationStatus:"recorded"}`. No devuelve conteos. |
+| `POST /participant/rounds/:roundId/vote` | Sesión participante | `{optionId, confirmation:true}` u `{optionIds}` con exactamente los puestos abiertos en comisiones; `403` si está inhabilitado; respuesta genérica `{accepted:true, participationStatus:"recorded"}`. No devuelve conteos. |
 | `GET /assemblies/:assemblyCode/public-state` | Público/proyector | Estado, QR/URL de sala y datos públicos permitidos por etapa; sin credenciales ni selecciones. Lista de nombres sujeta a decisión pendiente. |
 | `GET /moderator/assemblies/:assemblyId` | Moderador autorizado | Estado administrativo, lista operativa e indicadores agregados permitidos; sin selecciones/conteos por opción antes de publicar. |
 | `POST /moderator/assemblies` | Moderador autorizado | Crear/abrir Asamblea; devuelve identificador y código aleatorio de ingreso. |
@@ -18,8 +18,11 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 | `PATCH /moderator/participants/:participantId` | Moderador autorizado | Corregir o retirar nombre/sesión según política aprobada; auditar acción mínima. |
 | `POST /moderator/assemblies/:assemblyId/rounds` | Moderador autorizado | Crear borrador con título, formato, opciones y regla configurada explícitamente. |
 | `POST /moderator/rounds/:roundId/open` | Moderador autorizado | Congelar opciones y abrir papeleta. |
-| `POST /moderator/rounds/:roundId/close` | Moderador autorizado | Cerrar de forma idempotente y calcular internamente; no publica. |
+| `POST /moderator/rounds/:roundId/close` | Moderador autorizado | Cerrar de forma idempotente; congela la base, calcula electos o aprobación y, si quedan puestos, prepara el desempate como borrador. No publica. |
 | `POST /moderator/rounds/:roundId/publish` | Moderador autorizado | Publicación explícita, autorizada y auditada de los resultados agregados permitidos. |
+| `POST /moderator/rounds/:roundId/annul` · `POST .../repeat` | Moderador autorizado | Anular la última votación de una elección (`{reason}`); repetir solo una votación anulada. |
+| `POST /moderator/rounds/:roundId/candidates` · `DELETE .../candidates/:optionId` | Moderador autorizado | Agregar (`{label}`) o quitar un candidato nuevo en el borrador de un desempate, desde la 3.ª votación. |
+| `POST /moderator/participants/:participantId/disable-voting` · `.../enable-voting` | Moderador autorizado | Inhabilitar o habilitar el voto; sigue en la base de mayoría. Auditado. |
 
 Errores previsibles: `400` validación, `401` sesión no autenticada, `403` rol/acción no autorizada, `404` recurso desconocido, `409` estado incompatible o participación duplicada, `429` límite de frecuencia. Respuestas de error no deben incluir payloads de voto ni secretos. Las acciones administrativas requieren autorización en cada llamada; el QR público no concede privilegios.
 

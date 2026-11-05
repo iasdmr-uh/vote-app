@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { isTied, percentOf } from '../resultados'
+import { decisionVerdict, displayOrder, isDecision, isTied, outcomeTag, percentOf, voteLabel, winnerText } from '../resultados'
 import { ApiRequestError, useAssembly } from '../useAssembly'
 
 const {
@@ -12,20 +12,30 @@ const {
 const reviewHeading = ref<HTMLElement | null>(null)
 const leaving = ref(false)
 const reviewedOptions = computed(() => round.value?.options?.filter((option) => selectedOptions.value.includes(option.id)) || [])
+// Committees and runoffs take exactly the open seats; any other ballot takes one choice.
+const seatsToFill = computed(() => round.value?.format === 'multiple_choice' ? ballotMaxChoices.value : null)
+const selectionComplete = computed(() => seatsToFill.value ? selectedOptions.value.length === seatsToFill.value : selectedOptions.value.length > 0)
 const voteRecorded = computed(() => state.value?.participationStatus === 'recorded')
 const ballotShown = computed(() => assemblyStatus.value !== 'completed' && round.value?.status === 'open' && Boolean(round.value.options?.length) && !voteRecorded.value)
+// The mesa inhabilitó this delegate: during an open vote they see the state, never the ballot.
+const votingDisabled = computed(() => Boolean(state.value?.votingDisabled) && assemblyStatus.value !== 'completed' && round.value?.status === 'open' && !voteRecorded.value)
 const resultBase = computed(() => state.value?.eligibleCount ?? 0)
 const resultVoters = computed(() => state.value?.recordedCount ?? round.value?.participationCount ?? 0)
 const resultRows = computed(() => {
-  const results = [...(state.value?.results || [])].sort((a, b) => b.count - a.count)
+  const results = displayOrder(round.value, state.value?.results || [])
+  const outcome = state.value?.outcome
   return results.map((result, index) => ({
     label: result.label,
     count: result.count,
     rank: index + 1,
-    tied: isTied(results, index),
+    // The computed result marks the elected and the runoff, as on the mesa and the projector.
+    tag: outcomeTag(outcome, result.optionId),
+    // A decision's result is its verdict, so a tie needs no badge.
+    tied: !outcome && !isDecision(round.value) && isTied(results, index),
     percent: percentOf(result.count, resultBase.value),
   }))
 })
+const verdict = computed(() => round.value ? decisionVerdict(round.value, state.value?.outcome, state.value?.results) : '')
 
 watch(reviewingVote, (reviewing) => {
   if (reviewing) void nextTick(() => reviewHeading.value?.focus())
@@ -86,14 +96,14 @@ async function switchToIncomingAssembly() {
 }
 
 function reviewVote() {
-  if (!round.value || !selectedOptions.value.length || !reviewedOptions.value.length || loading.value || voteSubmitting.value) return
+  if (!round.value || !selectionComplete.value || !reviewedOptions.value.length || loading.value || voteSubmitting.value) return
   error.value = ''
   notice.value = ''
   reviewingVote.value = true
 }
 
 async function submitVote() {
-  if (!round.value || !selectedOptions.value.length || !reviewedOptions.value.length || !reviewingVote.value || loading.value || voteSubmitting.value) return
+  if (!round.value || !selectionComplete.value || !reviewedOptions.value.length || !reviewingVote.value || loading.value || voteSubmitting.value) return
   error.value = ''
   notice.value = ''
   voteSubmitting.value = true
@@ -122,9 +132,8 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
     return
   }
   if (checked) {
-    const maxChoices = ballotMaxChoices.value
-    if (maxChoices && selectedOptions.value.length >= maxChoices) {
-      error.value = `Máximo ${maxChoices} ${maxChoices === 1 ? 'candidato' : 'candidatos'}.`
+    // Once every seat is marked, another box does not tick.
+    if (seatsToFill.value && selectedOptions.value.length >= seatsToFill.value) {
       input.checked = false
       return
     }
@@ -162,28 +171,33 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
         <button class="primary" :disabled="loading || !reviewedOptions.length" @click="submitVote">{{ voteSubmitting ? 'Enviando…' : 'Confirmar voto' }}</button>
       </div>
     </template>
+    <template v-else-if="votingDisabled && round">
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
+      <h1>Voto inhabilitado</h1>
+    </template>
     <template v-else-if="ballotShown && round">
-      <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p>
-      <h1>{{ round.title }}</h1>
-      <fieldset class="options">
-        <legend v-if="round.format === 'multiple_choice' && ballotMaxChoices">{{ selectedOptions.length }} de {{ ballotMaxChoices }}</legend>
+      <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>{{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
+      <div v-if="seatsToFill" class="phone-ballot-heading"><h1>{{ round.title }}</h1><span class="count-pill">{{ selectedOptions.length }} de {{ seatsToFill }}</span></div>
+      <h1 v-else>{{ round.title }}</h1>
+      <fieldset class="options" :aria-label="seatsToFill ? `${selectedOptions.length} de ${seatsToFill}` : undefined">
         <label v-for="option in round.options" :key="option.id" class="option"><input :type="round.format === 'multiple_choice' ? 'checkbox' : 'radio'" name="option" :value="option.id" :checked="selectedOptions.includes(option.id)" @change="toggleBallotOption(option.id, $event.target as HTMLInputElement)" /><span>{{ option.label }}</span></label>
       </fieldset>
-      <button class="primary phone-action" :disabled="loading || voteSubmitting || !selectedOptions.length" @click="reviewVote">Revisar mi voto</button>
+      <button class="primary phone-action phone-ballot-submit" :disabled="loading || voteSubmitting || !selectionComplete" @click="reviewVote">Revisar mi voto</button>
     </template>
     <template v-else>
       <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
       <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
-      <section v-if="resultRows.length || state?.officialResult" class="phone-results" aria-labelledby="phone-results-title">
+      <section v-if="resultRows.length || state?.officialResult || verdict" class="phone-results" aria-labelledby="phone-results-title">
         <div class="phone-results-heading">
           <div><p class="eyebrow">RESULTADOS</p><h2 id="phone-results-title">{{ round?.title }}</h2></div>
           <p v-if="resultBase" class="voters-total"><strong>{{ resultVoters }} de {{ resultBase }}</strong><span>votaron</span></p>
         </div>
-        <div v-if="state?.officialResult" class="official-card"><p class="eyebrow">RESULTADO OFICIAL</p><strong>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div>
+        <div v-if="verdict" class="official-card"><p class="eyebrow">RESULTADO</p><strong>{{ verdict }}</strong></div>
+        <div v-else-if="state?.officialResult" class="official-card"><p class="eyebrow">RESULTADO OFICIAL</p><strong>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div>
         <ol v-if="resultRows.length" class="ranked-rows">
           <li v-for="row in resultRows" :key="row.label" :class="{ first: row.rank === 1 }">
             <span class="rank-number">{{ row.rank }}</span>
-            <span class="ranked-label">{{ row.label }}<span v-if="row.tied" class="badge badge-warning">Empate</span></span>
+            <span class="ranked-label">{{ row.label }}<span v-if="row.tag === 'elected'" class="badge badge-success">{{ round ? winnerText(round, row.label) : '' }}</span><span v-else-if="row.tag === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="row.tied" class="badge badge-warning">Empate</span></span>
             <strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong>
             <span class="ranked-percent">{{ row.percent }} %</span>
             <span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span>

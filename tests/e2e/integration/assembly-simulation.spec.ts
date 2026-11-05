@@ -1,21 +1,19 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, test, type Browser, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+import { closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
 
 /**
  * Simulates a whole Asamblea against the real API and PostgreSQL: nine delegate phones, the projector
- * and the mesa. Union Committee offices (with a tie, a repetition and an annulment) and two committees,
- * where each delegate marks from one up to the committee size among typed candidate names.
- * Screenshots and timing notes go to SIMULATION_OUTPUT_DIR for the moderator review.
+ * and the mesa. Union Committee offices (one without majority that goes to a runoff, one annulled and
+ * prepared again) and two committees where each delegate marks exactly the committee size. Results are
+ * automatic: the mesa only opens, closes, publishes and annuls. Screenshots and timing notes go to
+ * SIMULATION_OUTPUT_DIR for the moderator review.
  */
-const moderatorToken = process.env.MODERATOR_ACCESS_TOKEN!
-const api = 'http://127.0.0.1:3300/api/v1'
 const outDir = process.env.SIMULATION_OUTPUT_DIR ?? 'test-results/assembly-simulation'
 const delegateNames = ['María López', 'Carlos Gómez', 'Rosa Díaz', 'Juan Mora', 'Ana Ruiz', 'Luis Pérez', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez']
 const notes: string[] = []
 let shot = 0
-
-type Delegate = { name: string; page: Page }
 
 function note(message: string) {
   notes.push(`[${new Date().toISOString().slice(11, 19)}] ${message}`)
@@ -26,254 +24,125 @@ async function snap(page: Page, name: string) {
   await page.screenshot({ path: join(outDir, `${String(shot).padStart(2, '0')}-${name}.png`), fullPage: true })
 }
 
-/** Waits for a realtime update; if it does not arrive, notes it and syncs by hand like a delegate would. */
-async function arrives(page: Page, locator: Locator, what: string) {
-  const started = Date.now()
-  try {
-    await expect(locator).toBeVisible({ timeout: 8_000 })
-    const elapsed = Date.now() - started
-    if (elapsed > 3_000) note(`Lento: "${what}" tardó ${elapsed} ms en llegar por tiempo real`)
-  } catch {
-    note(`Sin tiempo real: "${what}" no llegó en 8 s; se pulsó «Sincronizar estado»`)
-    await page.getByRole('button', { name: 'Sincronizar estado' }).click()
-    await expect(locator).toBeVisible({ timeout: 8_000 })
-  }
-}
-
-async function confirm(moderator: Page, button: string, dialogButton = button) {
-  await moderator.getByRole('button', { name: button, exact: true }).first().click()
-  await moderator.getByRole('dialog').getByRole('button', { name: dialogButton, exact: true }).click()
-  await expect(moderator.getByRole('dialog')).toHaveCount(0)
-}
-
-async function vote(delegate: Delegate, choices: string[]) {
-  const { page } = delegate
-  await arrives(page, page.getByRole('button', { name: 'Revisar y confirmar voto' }), `papeleta abierta en el teléfono de ${delegate.name}`)
-  for (const choice of choices) await page.getByLabel(choice, { exact: true }).check()
-  await page.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
-  await page.getByRole('button', { name: 'Confirmar voto' }).click()
-  await expect(page.getByText('Tu participación está registrada')).toBeVisible()
-}
-
-async function prepareOffice(moderator: Page, title: string, candidates: string[]) {
-  const another = moderator.getByRole('button', { name: 'Preparar otra papeleta' })
-  if (await another.isVisible()) await another.click()
-  await moderator.getByLabel('Nombre del cargo').fill(title)
-  for (const candidate of candidates) {
-    await moderator.getByLabel('Agregar candidato').fill(candidate)
-    await moderator.getByLabel('Agregar candidato').press('Enter')
-  }
-  await confirm(moderator, 'Preparar papeleta')
-  await expect(moderator.getByText('PAPELETA PREPARADA', { exact: true })).toBeVisible()
-}
-
-async function prepareCommittee(moderator: Page, title: string, members: number, candidates: string[]) {
-  await moderator.getByRole('button', { name: 'Preparar otra papeleta' }).click()
-  await moderator.getByRole('radio', { name: 'Una comisión' }).click()
-  await moderator.getByLabel('Nombre de la comisión').fill(title)
-  await moderator.getByLabel('¿Cuántos integrantes quedarán en la comisión?').fill(String(members))
-  for (const candidate of candidates) {
-    await moderator.getByLabel('Agregar candidato').fill(candidate)
-    await moderator.getByLabel('Agregar candidato').press('Enter')
-  }
-  await expect(moderator.getByText(`Cada persona podrá marcar de 1 a ${members} candidatos.`, { exact: false })).toBeVisible()
-}
-
-async function declare(moderator: Page, elected: string[], observation: string) {
-  await moderator.getByRole('button', { name: 'Declarar resultado oficial…' }).click()
-  const dialog = moderator.getByRole('dialog')
-  for (const name of elected) await dialog.getByLabel(name).check()
-  await dialog.getByLabel('Observación (opcional)').fill(observation)
-  await dialog.getByRole('button', { name: 'Declarar resultado oficial' }).click()
-  await expect(moderator.getByText(/Resultado oficial declarado:/)).toBeVisible()
-}
-
-async function moderatorState(request: import('@playwright/test').APIRequestContext, assemblyId: string) {
-  const response = await request.get(`${api}/moderator/assemblies/${assemblyId}`, { headers: { Authorization: `Bearer ${moderatorToken}` } })
-  expect(response.ok()).toBeTruthy()
-  return response.json()
-}
-
-async function newPhone(browser: Browser) {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
-  return context.newPage()
-}
-
 test.describe.configure({ timeout: 600_000 })
 
 test('simulación completa: Comité de la Unión y comisiones', async ({ browser, request }) => {
   mkdirSync(outDir, { recursive: true })
   const consoleErrors: string[] = []
-  const moderatorContext = await browser.newContext({ viewport: { width: 1280, height: 900 } })
-  const moderator = await moderatorContext.newPage()
-  moderator.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(`mesa: ${message.text()}`) })
-
-  // 1. La mesa entra y crea la Asamblea.
-  await moderator.goto('/moderator')
-  await moderator.getByLabel('Credencial de moderación').fill(moderatorToken)
-  await moderator.getByRole('button', { name: 'Continuar' }).click()
-  await moderator.getByLabel('Nombre', { exact: true }).fill('Asamblea Ordinaria Unión Hondureña 2026')
-  await moderator.getByRole('button', { name: 'Crear Asamblea y generar código' }).click()
-  const creationNotice = moderator.locator('.notice.success')
-  await expect(creationNotice).toContainText('Código de ingreso:')
-  const joinCode = (await creationNotice.innerText()).match(/Código de ingreso:\s*(\S+)/)![1]
-  const assemblyId = (await moderator.evaluate(() => sessionStorage.getItem('assemblyId')))!
-  await snap(moderator, 'mesa-asamblea-creada')
-
-  const projector = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage()
-  await projector.goto(`/projector?code=${encodeURIComponent(joinCode)}`)
-
-  // 2. Nueve delegados se unen desde sus teléfonos.
-  const delegates: Delegate[] = []
-  for (const name of delegateNames) {
-    const page = await newPhone(browser)
-    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(`${name}: ${message.text()}`) })
-    await page.goto(`/?join=${encodeURIComponent(joinCode)}`)
-    const [firstName, lastName] = name.split(' ')
-    await page.getByLabel('Nombre').fill(firstName)
-    await page.getByLabel('Apellido').fill(lastName)
-    await page.getByRole('button', { name: 'Unirme a la sala' }).click()
-    await expect(page.getByText('Tu teléfono queda en espera.')).toBeVisible()
-    delegates.push({ name, page })
-  }
-  await arrives(moderator, moderator.locator('.participant-list').getByText('Sofía Méndez'), 'lista de participantes en la mesa')
-  await snap(projector, 'proyector-ingreso')
-  await confirm(moderator, 'Cerrar ingreso')
-  await expect(moderator.locator('.metric').first()).toContainText('Ingreso cerrado')
-  await snap(moderator, 'mesa-ingreso-cerrado')
-
-  // 3. Comité de la Unión · Presidencia: empate, repetición y declaración.
   let started = Date.now()
-  await prepareOffice(moderator, 'Presidencia', ['María López', 'Carlos Gómez', 'Rosa Díaz'])
-  await snap(moderator, 'mesa-presidencia-preparada')
-  await confirm(moderator, 'Abrir votación')
-  for (const [index, delegate] of delegates.entries()) await vote(delegate, [index < 4 ? 'María López' : index < 8 ? 'Carlos Gómez' : 'Rosa Díaz'])
-  await snap(delegates[0].page, 'telefono-voto-registrado')
-  await arrives(moderator, moderator.getByText('9 / 9'), 'participación 9/9 en la mesa')
-  await confirm(moderator, 'Cerrar votación')
-  await expect(moderator.getByRole('region', { name: 'Conteo para revisión de la mesa' })).toBeVisible()
-  await snap(moderator, 'mesa-presidencia-conteo-privado')
-  await expect(projector.getByText('María López')).toHaveCount(0)
-  await confirm(moderator, 'Publicar conteo')
-  await expect(moderator.getByText('Empate en el primer lugar: María López y Carlos Gómez, 4 votos cada uno.')).toBeVisible()
-  await snap(moderator, 'mesa-presidencia-empate-M07b')
-  await arrives(projector, projector.getByRole('heading', { name: 'Resultados publicados' }), 'conteo publicado en el proyector')
-  await snap(projector, 'proyector-presidencia-empate')
 
-  await moderator.locator('.decision-card').getByRole('button', { name: 'Repetir votación…' }).click()
-  const repeatDialog = moderator.getByRole('dialog')
-  await expect(repeatDialog.getByLabel('María López')).toBeChecked()
-  await expect(repeatDialog.getByLabel('Carlos Gómez')).toBeChecked()
-  await expect(repeatDialog.getByLabel('Rosa Díaz')).not.toBeChecked()
-  await snap(moderator, 'mesa-repetir-S05')
-  await repeatDialog.getByRole('button', { name: 'Preparar 2.ª votación' }).click()
-  await expect(moderator.getByText('2.ª VOTACIÓN', { exact: true })).toBeVisible()
-  await expect(moderator.getByText('Se repite por empate en la 1.ª votación (4 – 4).')).toBeVisible()
-  await snap(moderator, 'mesa-repeticion-preparada-M13')
-  await confirm(moderator, 'Abrir votación')
-  for (const [index, delegate] of delegates.entries()) await vote(delegate, [index < 6 ? 'María López' : 'Carlos Gómez'])
-  await confirm(moderator, 'Cerrar votación')
-  await confirm(moderator, 'Publicar conteo')
-  await declare(moderator, ['María López'], 'Electa en la 2.ª votación')
-  await arrives(projector, projector.getByText('RESULTADO DECLARADO POR LA MESA'), 'declaración en el proyector')
-  await expect(projector.getByRole('heading', { name: 'María López' })).toBeVisible()
-  await snap(projector, 'proyector-presidencia-declarada')
-  await arrives(delegates[3].page, delegates[3].page.getByText('RESULTADO OFICIAL DE LA MESA'), 'declaración en el teléfono')
-  await snap(delegates[3].page, 'telefono-presidencia-declarada')
-  note(`Presidencia (2 votaciones + declaración): ${Math.round((Date.now() - started) / 1000)} s`)
+  // 1. The mesa creates the Asamblea, the projector shows the QR and nine delegates join from their phones.
+  const room = await openRoom(browser, request, 'Asamblea Ordinaria Unión Hondureña 2026', delegateNames)
+  const { mesa, projector, phones, assemblyId, joinCode } = room
+  for (const [name, page] of [['mesa', mesa], ['proyector', projector], ...phones.map((phone) => [phone.name, phone.page] as const)] as const) {
+    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(`${name}: ${message.text()}`) })
+  }
+  note(`Ingreso de 9 delegados: ${Math.round((Date.now() - started) / 1000)} s`)
+  await snap(mesa, 'mesa-ingreso-cerrado')
 
-  // 4. Comité de la Unión · Secretaría: anulación con motivo y repetición.
+  // 2. Presidente: 4 – 4 – 1 over 9 habilitados (majority 5) goes to a runoff of the top 2; it elects.
   started = Date.now()
-  await prepareOffice(moderator, 'Secretaría', ['Ana Ruiz', 'Juan Mora'])
-  await confirm(moderator, 'Abrir votación')
-  await vote(delegates[0], ['Ana Ruiz'])
-  await vote(delegates[1], ['Juan Mora'])
-  await moderator.getByRole('button', { name: 'Anular votación' }).click()
-  await moderator.getByRole('dialog').getByLabel('Motivo (obligatorio, queda en el registro)').fill('Faltó incluir a un candidato propuesto por la Asamblea')
-  await moderator.getByRole('dialog').getByRole('button', { name: 'Anular papeleta' }).click()
-  await expect(moderator.getByText('PAPELETA ANULADA', { exact: true })).toBeVisible()
-  await arrives(delegates[5].page, delegates[5].page.getByText('La mesa anuló esta votación'), 'anulación en el teléfono')
-  await snap(moderator, 'mesa-secretaria-anulada')
-  await snap(projector, 'proyector-secretaria-anulada')
-  // The Asamblea asks to add a third candidate, so the mesa prepares a new ballot instead of repeating.
-  await prepareOffice(moderator, 'Secretaría', ['Ana Ruiz', 'Juan Mora', 'Elena Castro'])
-  await confirm(moderator, 'Abrir votación')
-  for (const [index, delegate] of delegates.entries()) await vote(delegate, [index < 5 ? 'Ana Ruiz' : index < 7 ? 'Elena Castro' : 'Juan Mora'])
-  await confirm(moderator, 'Cerrar votación')
-  await confirm(moderator, 'Publicar conteo')
-  await declare(moderator, ['Ana Ruiz'], '')
-  note(`Secretaría (anulada + nueva papeleta + declaración): ${Math.round((Date.now() - started) / 1000)} s`)
+  await prepareBallot(mesa, { kind: 'office', title: 'Presidente', candidates: ['María López', 'Carlos Gómez', 'Rosa Díaz'] })
+  await snap(mesa, 'mesa-presidencia-preparada')
+  await runVote(room, phones.map((_, index) => [index < 4 ? 'María López' : index < 8 ? 'Carlos Gómez' : 'Rosa Díaz']))
+  await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 5')
+  await expectBadge(mesaRow(mesa, 'María López'), 'Desempate')
+  await expectBadge(mesaRow(mesa, 'Carlos Gómez'), 'Desempate')
+  await expectBadge(mesaRow(mesa, 'Rosa Díaz'), null)
+  await snap(mesa, 'mesa-presidencia-sin-mayoria-M20')
+  await snap(projector, 'proyector-presidencia-sin-mayoria')
+  await confirm(mesa, 'Abrir desempate', 'Abrir votación')
+  await expect(phones[0].page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await snap(phones[0].page, 'telefono-desempate-T02')
+  await voteAll(phones, phones.map((_, index) => [index < 6 ? 'María López' : 'Carlos Gómez']))
+  await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
+  await closeAndPublish(room)
+  await expectBadge(mesaRow(mesa, 'María López'), 'Electo/a')
+  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ María López')
+  await expect(phones[3].page.locator('.official-card strong')).toHaveText('María López')
+  await snap(projector, 'proyector-presidencia-electa')
+  await snap(phones[3].page, 'telefono-presidencia-electa')
+  note(`Presidente (1.ª votación + desempate): ${Math.round((Date.now() - started) / 1000)} s`)
 
-  // 5. Comisión de Nombramiento: 5 integrantes entre 7 nombres escritos; cada persona marca de 1 a 5.
+  // 3. Secretario: annulled with a reason while open, then prepared again with a third candidate.
+  started = Date.now()
+  await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Juan Mora'] })
+  await confirm(mesa, 'Abrir votación')
+  await vote(phones[0], ['Ana Ruiz'])
+  await vote(phones[1], ['Juan Mora'])
+  await mesa.getByRole('button', { name: 'Anular votación' }).click()
+  await mesa.getByRole('dialog').getByLabel('Motivo (obligatorio, queda en el registro)').fill('Faltó incluir a un candidato propuesto por la Asamblea')
+  await mesa.getByRole('dialog').getByRole('button', { name: 'Anular papeleta' }).click()
+  await expect(mesa.getByText('PAPELETA ANULADA', { exact: true })).toBeVisible()
+  await expect(phones[5].page.getByRole('heading', { name: 'Votación anulada' })).toBeVisible()
+  await expect(projector.locator('.pj-status')).toHaveText('Votación anulada')
+  await snap(mesa, 'mesa-secretaria-anulada')
+  await snap(projector, 'proyector-secretaria-anulada')
+  await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Juan Mora', 'Elena Castro'] })
+  await runVote(room, phones.map((_, index) => [index < 5 ? 'Ana Ruiz' : index < 7 ? 'Elena Castro' : 'Juan Mora']))
+  await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
+  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
+  note(`Secretario (anulada + nueva papeleta): ${Math.round((Date.now() - started) / 1000)} s`)
+
+  // 4. Comisión de Nombramiento: 5 integrantes among 7 typed names; each delegate marks exactly 5.
   started = Date.now()
   const nominees = ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora', 'Rosa Díaz', 'Carlos Gómez']
-  await prepareCommittee(moderator, 'Comisión de Nombramiento', 5, nominees)
-  await snap(moderator, 'mesa-nombramiento-formulario-N01')
-  await confirm(moderator, 'Preparar papeleta')
-  await expect(moderator.getByText('PAPELETA PREPARADA', { exact: true })).toBeVisible()
-  await expect(moderator.getByText('Cada persona marca de 1 a 5 candidatos.')).toBeVisible()
-  await confirm(moderator, 'Abrir votación')
-  await arrives(moderator, moderator.getByText('9 personas · 0 ya votaron · 9 faltan'), 'puntos amarillos al abrir la votación')
-  for (const [index, delegate] of delegates.entries()) {
-    // Not everyone marks five names: fewer is allowed, more is not.
-    await vote(delegate, index < 4
-      ? ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora']
-      : index < 7 ? ['Elena Castro', 'Pedro Vargas', 'Rosa Díaz'] : ['Sofía Méndez'])
+  await prepareBallot(mesa, { kind: 'committee', title: 'Comisión de Nombramiento', seats: 5, candidates: nominees })
+  await expect(mesa.getByText('Hasta 5 por persona')).toBeVisible()
+  await confirm(mesa, 'Abrir votación')
+  await expect(phones[0].page.locator('.phone-ballot-heading .count-pill')).toHaveText('0 de 5')
+  await snap(phones[0].page, 'telefono-nombramiento-T01')
+  const summary = mesa.locator('.attendance-summary > span')
+  await expect(summary).toHaveText(['0 votaron', '9 faltan'])
+  for (const [index, phone] of phones.entries()) {
+    await vote(phone, index < 7 ? ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora'] : ['Rosa Díaz', 'Carlos Gómez', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez'])
     if (index === 4) {
-      await arrives(moderator, moderator.getByText('9 personas · 5 ya votaron · 4 faltan'), 'puntos verdes de quienes ya votaron')
-      await expect(moderator.locator('.participant-list li', { hasText: 'Ana Ruiz' }).getByRole('img', { name: 'Ya votó' })).toBeVisible()
-      await expect(moderator.locator('.participant-list li', { hasText: 'Luis Pérez' }).getByRole('img', { name: 'Falta votar' })).toBeVisible()
-      await snap(moderator, 'mesa-quien-voto-N05')
+      await expect(summary).toHaveText(['5 votaron', '4 faltan'])
+      await expect(mesa.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
+      await snap(mesa, 'mesa-quien-voto')
     }
   }
-  await snap(delegates[8].page, 'telefono-nombramiento-votado')
-  await confirm(moderator, 'Cerrar votación')
-  await expect(moderator.getByRole('img', { name: 'Ya votó' })).toHaveCount(9)
-  await snap(moderator, 'mesa-nombramiento-cerrada-N06')
-  await confirm(moderator, 'Publicar conteo')
-  await arrives(projector, projector.getByText('se eligen 5 integrantes', { exact: false }), 'conteo de la comisión en el proyector')
-  const projected = projector.locator('.projector-results > div')
+  await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
+  await closeAndPublish(room)
+  await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('5 integrantes · Mayoría: 5')
+  for (const name of ['Elena Castro', 'Sofía Méndez']) await expectBadge(mesaRow(mesa, name), 'Electo/a')
+  for (const name of ['Pedro Vargas', 'Luis Pérez', 'Juan Mora']) await expectBadge(mesaRow(mesa, name), 'Electo/a')
+  for (const name of ['Rosa Díaz', 'Carlos Gómez']) await expectBadge(mesaRow(mesa, name), null)
+  await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
+  const projected = projector.locator('.pj-results li')
   await expect(projected).toHaveCount(7)
-  // Elena and Pedro got 7 of 9 voters: shares are over the people who voted.
-  await expect(projected.first()).toContainText('Elena Castro')
-  await expect(projected.first()).toContainText('78 %')
-  await expect(projected.last()).toContainText('Carlos Gómez')
-  await expect(projector.getByText('9 de 9 participantes votaron', { exact: false })).toBeVisible()
-  await expect(projector.getByText(/voto nulo/i)).toHaveCount(0)
-  await snap(projector, 'proyector-nombramiento-P10')
-  await declare(moderator, ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora'], 'Integrantes electos de la Comisión de Nombramiento')
-  await arrives(projector, projector.getByText('RESULTADO DECLARADO POR LA MESA'), 'declaración de la comisión en el proyector')
-  await snap(projector, 'proyector-nombramiento-declarada')
+  // Shares are over the 9 habilitados.
+  await expect(projectorRow(projector, 'Elena Castro').locator('.pj-percent')).toHaveText('100 %')
+  await expect(projectorRow(projector, 'Luis Pérez').locator('.pj-percent')).toHaveText('78 %')
+  await expectBadge(projectorRow(projector, 'Luis Pérez'), '✓ Electo/a')
+  await expect(projector.locator('.pj-turnout')).toContainText('9 de 9')
+  await snap(projector, 'proyector-nombramiento-P20')
   note(`Comisión de Nombramiento: ${Math.round((Date.now() - started) / 1000)} s`)
 
-  // 6. Comisión de Finanzas: 3 integrantes entre 4 nombres escritos.
+  // 5. Comisión de Finanzas: 3 integrantes among 4 typed names.
   started = Date.now()
-  await prepareCommittee(moderator, 'Comisión de Finanzas', 3, ['Ana Ruiz', 'María López', 'Pedro Vargas', 'Rosa Díaz'])
-  await confirm(moderator, 'Preparar papeleta')
-  await expect(moderator.getByText('PAPELETA PREPARADA', { exact: true })).toBeVisible()
-  await confirm(moderator, 'Abrir votación')
-  for (const [index, delegate] of delegates.entries()) {
-    await vote(delegate, index < 5 ? ['Ana Ruiz', 'María López', 'Pedro Vargas'] : ['Ana Ruiz', 'Rosa Díaz', 'María López'])
-  }
-  await confirm(moderator, 'Cerrar votación')
-  await confirm(moderator, 'Publicar conteo')
-  await declare(moderator, ['Ana Ruiz', 'María López', 'Pedro Vargas'], '')
+  await prepareBallot(mesa, { kind: 'committee', title: 'Comisión de Finanzas', seats: 3, candidates: ['Ana Ruiz', 'María López', 'Pedro Vargas', 'Rosa Díaz'] })
+  await runVote(room, phones.map((_, index) => index < 5 ? ['Ana Ruiz', 'María López', 'Pedro Vargas'] : ['Ana Ruiz', 'Rosa Díaz', 'María López']))
+  await expectBadge(mesaRow(mesa, 'Pedro Vargas'), 'Electo/a')
+  await expectBadge(mesaRow(mesa, 'Rosa Díaz'), null)
   note(`Comisión de Finanzas: ${Math.round((Date.now() - started) / 1000)} s`)
 
-  // 7. Cierre de la Asamblea y acta.
-  await moderator.getByRole('button', { name: 'Finalizar Asamblea…' }).click()
-  await moderator.getByRole('dialog').getByRole('button', { name: 'Finalizar Asamblea' }).click()
-  await expect(moderator.getByText('Asamblea finalizada', { exact: true })).toBeVisible()
-  await snap(moderator, 'mesa-asamblea-finalizada')
-  await arrives(projector, projector.getByRole('heading', { name: 'Asamblea finalizada' }), 'cierre en el proyector')
+  // 6. The Asamblea closes; the projector keeps the last count under "Asamblea finalizada".
+  await confirm(mesa, 'Finalizar Asamblea…', 'Finalizar Asamblea')
+  await expect(mesa.getByText('Asamblea finalizada', { exact: true })).toBeVisible()
+  await snap(mesa, 'mesa-asamblea-finalizada')
+  await expect(projector.locator('.pj-status')).toHaveText(/^Asamblea finalizada/)
+  await expect(phones[0].page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
   await snap(projector, 'proyector-finalizada')
 
   const final = await moderatorState(request, assemblyId)
-  const declared = final.rounds.filter((round: { officialResult: unknown }) => round.officialResult)
-  const summary = final.rounds.map((round: { title: string; status: string; officialResult?: { elected: Array<{ label: string }>; publishedAt: string | null } | null }) =>
-    `${round.title} · ${round.status}${round.officialResult ? ` · electos: ${round.officialResult.elected.map((person) => person.label).join(', ')}${round.officialResult.publishedAt ? ' (publicado)' : ' (interno)'}` : ''}`)
-  expect(declared).toHaveLength(4)
-  expect(final.rounds.find((round: { title: string; officialResult?: unknown }) => round.title === 'Presidencia' && round.officialResult).officialResult.elected.map((person: { label: string }) => person.label)).toEqual(['María López'])
-
-  writeFileSync(join(outDir, 'report.json'), `${JSON.stringify({ joinCode, rounds: summary, notes, consoleErrors }, null, 2)}\n`)
+  const electedOf = (title: string) => final.rounds.find((round: { title: string; committeeRootRoundId: string | null; officialResult: unknown }) => round.title === title && !round.committeeRootRoundId && round.officialResult)
+    ?.officialResult.elected.map((person: { label: string }) => person.label).sort()
+  expect(electedOf('Presidente')).toEqual(['María López'])
+  expect(electedOf('Secretario')).toEqual(['Ana Ruiz'])
+  expect(electedOf('Comisión de Nombramiento')).toEqual(['Elena Castro', 'Juan Mora', 'Luis Pérez', 'Pedro Vargas', 'Sofía Méndez'])
+  expect(electedOf('Comisión de Finanzas')).toEqual(['Ana Ruiz', 'María López', 'Pedro Vargas'])
+  const summaryRows = final.rounds.map((round: { title: string; status: string; voteNumber: number; officialResult?: { elected: Array<{ label: string }> } | null }) =>
+    `${round.title} · ${round.voteNumber}.ª · ${round.status}${round.officialResult ? ` · electos: ${round.officialResult.elected.map((person) => person.label).join(', ')}` : ''}`)
+  writeFileSync(join(outDir, 'report.json'), `${JSON.stringify({ joinCode, rounds: summaryRows, notes, consoleErrors }, null, 2)}\n`)
 })

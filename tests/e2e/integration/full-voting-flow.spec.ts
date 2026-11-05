@@ -1,91 +1,50 @@
-import { expect, test, type Page } from '@playwright/test'
-
-const moderatorToken = process.env.MODERATOR_ACCESS_TOKEN!
-const api = 'http://127.0.0.1:3300/api/v1'
-
-async function confirm(moderator: Page, action: string) {
-  await moderator.getByRole('button', { name: action }).first().click()
-  await moderator.getByRole('dialog').getByRole('button', { name: action }).click()
-}
+import { expect, test } from '@playwright/test'
+import { api, castVoteByApi, confirm, finishLiveAssembly, joinPhone, moderatorState, openMesa, openProjector, prepareBallot, vote } from './helpers'
 
 test('flujo real de asamblea: ingreso, voto único, cierre y publicación', async ({ browser, request }) => {
-  const context = await browser.newContext()
-  const moderator = await context.newPage()
+  await finishLiveAssembly(request)
+  const { mesa, joinCode, assemblyId } = await openMesa(browser, 'Asamblea E2E sintética')
+  await expect(mesa.getByRole('heading', { name: 'Participantes' })).toBeVisible()
 
-  await moderator.goto('/moderator')
-  await moderator.getByLabel('Credencial de moderación').fill(moderatorToken)
-  await moderator.getByRole('button', { name: 'Continuar' }).click()
-  await expect(moderator.getByRole('heading', { name: 'Control de Asamblea' })).toBeVisible()
-  await moderator.getByLabel('Nombre', { exact: true }).fill('Asamblea E2E sintética')
-  await moderator.getByRole('button', { name: 'Crear Asamblea y generar código' }).click()
+  const delegate = await joinPhone(browser, joinCode, 'Delegado E2E Sintético')
+  await expect(mesa.locator('.mesa-person-list')).toContainText('Delegado E2E Sintético')
 
-  const creationNotice = moderator.locator('.notice.success')
-  await expect(creationNotice).toContainText('Código de ingreso:')
-  const joinCode = (await creationNotice.innerText()).match(/Código de ingreso:\s*(\S+)/)?.[1]
-  expect(joinCode, 'the real API should return the generated join code to the moderator view').toBeTruthy()
-  const assemblyId = await moderator.evaluate(() => sessionStorage.getItem('assemblyId'))
-  expect(assemblyId).toBeTruthy()
-
-  const delegate = await context.newPage()
-  await delegate.goto(`/?join=${encodeURIComponent(joinCode!)}`)
-  await delegate.getByLabel('Nombre').fill('Delegado')
-  await delegate.getByLabel('Apellido').fill('E2E Sintético')
-  await delegate.getByRole('button', { name: 'Unirme a la sala' }).click()
-  await expect(delegate.getByText('Tu teléfono queda en espera.')).toBeVisible()
-
-  await confirm(moderator, 'Cerrar ingreso')
-  await expect(moderator.getByText('El ingreso está cerrado.')).toBeVisible()
-  await moderator.getByLabel('Nombre del cargo').fill('Votación E2E')
-  for (const option of ['Opción Ámbar', 'Opción Índigo']) {
-    await moderator.getByLabel('Agregar candidato').fill(option)
-    await moderator.getByLabel('Agregar candidato').press('Enter')
-  }
-  await confirm(moderator, 'Preparar papeleta')
-  await expect(moderator.getByText('PAPELETA PREPARADA', { exact: true })).toBeVisible()
-  await confirm(moderator, 'Abrir votación')
-  await expect(moderator.getByRole('button', { name: 'Cerrar votación' })).toBeVisible()
+  await confirm(mesa, 'Cerrar ingreso')
+  await expect(mesa.getByRole('button', { name: 'Reabrir ingreso' })).toBeVisible()
+  await prepareBallot(mesa, { kind: 'office', title: 'Vocal 1', candidates: ['Opción Ámbar', 'Opción Índigo'] })
+  await confirm(mesa, 'Abrir votación')
+  await expect(mesa.getByRole('button', { name: 'Cerrar votación' })).toBeVisible()
 
   // Arrives through the realtime event, without a manual reload.
-  await expect(delegate.getByRole('heading', { name: 'Votación E2E' })).toBeVisible()
-  await delegate.getByLabel('Opción Ámbar').check()
-  await delegate.getByRole('button', { name: 'Revisar y confirmar voto' }).click()
-  await delegate.getByRole('button', { name: 'Confirmar voto' }).click()
-  await expect(delegate.getByText('Tu participación fue registrada. Gracias.')).toBeVisible()
-  await expect(delegate.getByText('Tu participación está registrada')).toBeVisible()
+  await expect(delegate.page.getByRole('heading', { name: 'Vocal 1' })).toBeVisible()
+  await vote(delegate, ['Opción Ámbar'])
 
-  const moderatorState = await request.get(`${api}/moderator/assemblies/${assemblyId}`, {
-    headers: { Authorization: `Bearer ${moderatorToken}` },
-  })
-  expect(moderatorState.ok()).toBeTruthy()
-  const persistedState = await moderatorState.json()
-  expect(persistedState.rounds[0].participationCount).toBe(1)
-  const participantToken = await delegate.evaluate(() => localStorage.getItem('participantSessionToken'))
-  expect(participantToken).toBeTruthy()
-  const duplicateVote = await request.post(`${api}/participant/rounds/${persistedState.rounds[0].id}/vote`, {
-    headers: { Authorization: `Bearer ${participantToken}` },
-    data: { optionId: persistedState.rounds[0].options[0].id, confirmation: true },
-  })
-  expect(duplicateVote.status()).toBe(409)
-  const afterDuplicate = await request.get(`${api}/moderator/assemblies/${assemblyId}`, {
-    headers: { Authorization: `Bearer ${moderatorToken}` },
-  })
-  expect((await afterDuplicate.json()).rounds[0].participationCount).toBe(1)
+  const persisted = await moderatorState(request, assemblyId)
+  expect(persisted.rounds[0].participationCount).toBe(1)
+  const duplicate = await castVoteByApi(request, delegate.token, persisted.rounds[0].id, [persisted.rounds[0].options[0].id])
+  expect(duplicate.status()).toBe(409)
+  expect((await moderatorState(request, assemblyId)).rounds[0].participationCount).toBe(1)
 
-  await confirm(moderator, 'Cerrar votación')
-  await expect(moderator.getByText('La papeleta está cerrada. Cerrar no elige a nadie: publica el conteo y la mesa decide qué sigue.')).toBeVisible()
-  const hiddenResults = await request.get(`${api}/assemblies/${joinCode}/public-state`)
-  expect(hiddenResults.ok()).toBeTruthy()
-  expect(await hiddenResults.json()).not.toHaveProperty('results')
+  await confirm(mesa, 'Cerrar votación')
+  await expect(mesa.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
+  await expect(mesa.locator('.badge-private')).toHaveText('Solo la mesa')
+  const hidden = await request.get(`${api}/assemblies/${encodeURIComponent(joinCode)}/public-state`)
+  expect(hidden.ok()).toBeTruthy()
+  expect(await hidden.json()).not.toHaveProperty('results')
 
-  const projector = await context.newPage()
-  await projector.goto(`/projector?code=${encodeURIComponent(joinCode!)}`)
-  await expect(projector.getByRole('heading', { name: 'Votación E2E' })).toBeVisible()
-  await expect(projector.getByText('Votación cerrada · resultados ocultos')).toBeVisible()
+  const projector = await openProjector(browser, joinCode)
+  await expect(projector.getByRole('heading', { name: 'Vocal 1' })).toBeVisible()
+  await expect(projector.locator('.pj-status')).toHaveText('Votación cerrada')
   await expect(projector.getByText('Opción Ámbar')).toHaveCount(0)
 
-  await confirm(moderator, 'Publicar conteo')
-  await expect(projector.getByRole('heading', { name: 'Resultados publicados' })).toBeVisible({ timeout: 12_000 })
-  await expect(projector.getByText('Opción Ámbar')).toBeVisible()
-
-  await context.close()
+  await confirm(mesa, 'Publicar conteo')
+  // The elected office opens on its slide (P2, #48); the detailed count is behind «Ver conteo».
+  await expect(projector.locator('.slide-office .office-name')).toHaveText('Opción Ámbar')
+  await expect(projector.locator('.slide-office .office-votes')).toHaveText('1 de 1 votos · 100 %')
+  await projector.getByRole('button', { name: 'Ver conteo' }).click()
+  await expect(projector.locator('.pj-status')).toHaveText('Conteo publicado')
+  await expect(projector.locator('.pj-results .pj-label')).toHaveText(['Opción Ámbar', 'Opción Índigo'])
+  // One vote of one habilitado is a majority: elected on the projector and on the phone.
+  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Opción Ámbar')
+  await expect(delegate.page.locator('.official-card strong')).toHaveText('Opción Ámbar')
 })

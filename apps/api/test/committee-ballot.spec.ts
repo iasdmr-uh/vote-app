@@ -18,7 +18,7 @@ test('a committee needs its size, at least as many candidates as seats, and only
   await assert.rejects(service.createRound('assembly', { ...base, category: 'committee', memberCount: 2, options: [] }), /al menos una opción/)
 })
 
-test('a committee is a multiple-choice ballot of typed names, limited to its size, with no null vote', async () => {
+test('a committee is a multiple-choice ballot of typed names, sized to its seats, with no null vote', async () => {
   let created: Record<string, any> | undefined
   const tx = {
     $queryRaw: async () => [{ id: 'assembly', status: 'in_progress' }],
@@ -29,7 +29,7 @@ test('a committee is a multiple-choice ballot of typed names, limited to its siz
   const round = await voting.createRound('assembly', { ...base, format: 'single_choice', category: 'committee', memberCount: 2 })
   assert.equal(created?.format, 'multiple_choice')
   assert.equal(created?.memberCount, 2)
-  assert.equal(created?.electionSeats, 2, 'each delegate marks up to the committee size')
+  assert.equal(created?.electionSeats, 2, 'each delegate marks exactly the committee size')
   assert.deepEqual(round.options.map((option: { label: string }) => option.label), ['Ana Reyes', 'Luis Mejía', 'Rosa Paz'], 'more candidates than seats; nothing added')
 })
 
@@ -45,10 +45,10 @@ test('"Voto nulo" is an ordinary name now: nothing is added to the ballot or res
   assert.deepEqual(labels, ['A', 'B'])
 })
 
-test('a committee vote takes from one up to the committee size, never more', async () => {
+function exactSeatsVoting(seats: { member_count: number | null; election_seats: number | null }, format = 'multiple_choice') {
   const votes: string[][] = []
   const tx = {
-    $queryRaw: async () => [{ id: 'round', assembly_id: 'assembly', status: 'open', format: 'multiple_choice', member_count: 2, election_seats: 2 }],
+    $queryRaw: async () => [{ id: 'round', assembly_id: 'assembly', status: 'open', format, ...seats }],
     ballotOption: { count: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.length },
     participation: { create: async () => ({}) },
     anonymousVote: { createMany: async ({ data }: { data: Array<{ optionId: string }> }) => { votes.push(data.map((vote) => vote.optionId)) } },
@@ -61,25 +61,38 @@ test('a committee vote takes from one up to the committee size, never more', asy
   }
   const voting = new VotingService(database as never, { participantState: () => undefined, participationCount: () => undefined } as never)
   Object.assign(voting, { participantState: async () => ({}) })
-  await assert.rejects(voting.castVote('delegate', 'round', ['a', 'b', 'c']), /como máximo 2 nombres/)
+  return { voting, votes }
+}
+
+test('a committee vote takes exactly the committee size, never fewer or more', async () => {
+  const { voting, votes } = exactSeatsVoting({ member_count: 2, election_seats: 2 })
+  await assert.rejects(voting.castVote('delegate', 'round', ['a', 'b', 'c']), /exactamente 2 nombres/)
+  await assert.rejects(voting.castVote('delegate', 'round', ['a']), /exactamente 2 nombres/)
   await assert.rejects(voting.castVote('delegate', 'round', []), /al menos una opción/)
-  await voting.castVote('delegate', 'round', ['a'])
   await voting.castVote('delegate', 'round', ['a', 'b'])
-  assert.deepEqual(votes, [['a'], ['a', 'b']])
+  assert.deepEqual(votes, [['a', 'b']])
 })
 
-test('a declared committee composition must match its configured number of seats', async () => {
-  const database = {
-    $transaction: async (work: (tx: unknown) => unknown) => work({
-      $queryRaw: async () => [{ id: 'round', assembly_id: 'assembly', status: 'closed', category: 'committee', member_count: 3 }],
-      round: { findUniqueOrThrow: async () => ({ committeeRootRoundId: null }), findMany: async () => [{ status: 'closed' }] },
-    }),
-  }
-  const voting = new VotingService(database as never, {} as never)
-  await assert.rejects(
-    voting.declareOfficialResult('round', { optionIds: ['one', 'two'] }),
-    UnprocessableEntityException,
-  )
+test('a runoff takes exactly its open seats, not the committee size', async () => {
+  const { voting, votes } = exactSeatsVoting({ member_count: 3, election_seats: 2 })
+  await assert.rejects(voting.castVote('delegate', 'round', ['a', 'b', 'c']), /exactamente 2 nombres/)
+  await assert.rejects(voting.castVote('delegate', 'round', ['a']), /exactamente 2 nombres/)
+  await voting.castVote('delegate', 'round', ['b', 'c'])
+  assert.deepEqual(votes, [['b', 'c']])
+})
+
+test('a one-seat runoff takes exactly one name', async () => {
+  const { voting, votes } = exactSeatsVoting({ member_count: 3, election_seats: 1 })
+  await assert.rejects(voting.castVote('delegate', 'round', ['a', 'b']), /exactamente 1 nombre$/)
+  await voting.castVote('delegate', 'round', ['a'])
+  assert.deepEqual(votes, [['a']])
+})
+
+test('an office ballot without seats still takes a single choice', async () => {
+  const { voting, votes } = exactSeatsVoting({ member_count: null, election_seats: null }, 'single_choice')
+  await assert.rejects(voting.castVote('delegate', 'round', ['a', 'b']), /una sola opción/)
+  await voting.castVote('delegate', 'round', ['a'])
+  assert.deepEqual(votes, [['a']])
 })
 
 test('the mesa sees who voted in the latest opened ballot, never what they chose', async () => {
@@ -96,6 +109,7 @@ test('the mesa sees who voted in the latest opened ballot, never what they chose
     }, findMany: async () => [{ id: 'closed-round', committeeRootRoundId: null }] },
     participation: { findMany: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? [{ participantSessionId: 'ana' }] : [] },
     participantSession: { count: async () => 2, findMany: async () => [] },
+    position: { findMany: async () => [] },
   }
   const voting = new VotingService(database as never, {} as never)
   const state = await voting.moderatorAssembly('assembly')
@@ -109,6 +123,7 @@ test('before any ballot opens, nobody carries a voted flag', async () => {
     round: { findFirst: async () => null, findMany: async () => [] },
     participation: { findMany: async () => assert.fail('no receipts to read') },
     participantSession: { count: async () => 1, findMany: async () => [] },
+    position: { findMany: async () => [] },
   }
   const state = await new VotingService(database as never, {} as never).moderatorAssembly('assembly')
   assert.equal('voted' in state.participants[0]!, false)

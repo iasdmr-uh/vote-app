@@ -8,7 +8,6 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  Put,
   Req,
   UseGuards,
 } from '@nestjs/common'
@@ -16,15 +15,18 @@ import type { Request } from 'express'
 import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
+import { PresentationService } from './presentation.service.js'
 import {
+  AddPositionDto,
   AnnulRoundDto,
+  BallotOptionDto,
   CreateAssemblyDto,
   CompleteAssemblyDto,
   CreateRoundDto,
   JoinAssemblyDto,
   LobbyPatchDto,
   ParticipantPatchDto,
-  OfficialResultDto,
+  PresentationDto,
   RepeatRoundDto,
   ResumeSessionDto,
   VoteDto,
@@ -88,7 +90,7 @@ export class ParticipantLeaveController {
 @Controller('moderator')
 @UseGuards(ModeratorGuard)
 export class ModeratorController {
-  constructor(private readonly voting: VotingService) {}
+  constructor(private readonly voting: VotingService, private readonly presentation: PresentationService) {}
 
   @Get('session')
   session() {
@@ -97,7 +99,12 @@ export class ModeratorController {
 
   @Post('assemblies')
   createAssembly(@Body() input: CreateAssemblyDto) {
-    return this.voting.createAssembly(input.name)
+    return this.voting.createAssembly(input.name, input.period)
+  }
+
+  @Post('positions')
+  addPosition(@Body() input: AddPositionDto) {
+    return this.voting.addPosition(input.assemblyId, input.label)
   }
 
   // Declared before 'assemblies/:assemblyId' so that route does not capture "active".
@@ -109,6 +116,12 @@ export class ModeratorController {
   @Post('assemblies/:assemblyId/join-code')
   rotateJoinCode(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
     return this.voting.rotateJoinCode(assemblyId)
+  }
+
+  @Post('presentation')
+  @HttpCode(200)
+  setPresentation(@Body() input: PresentationDto) {
+    return this.presentation.setPresentation(input)
   }
 
   @Get('assemblies/:assemblyId')
@@ -141,6 +154,18 @@ export class ModeratorController {
     return this.voting.patchParticipant(participantId, input)
   }
 
+  @Post('participants/:participantId/disable-voting')
+  @HttpCode(200)
+  disableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.setVotingDisabled(participantId, true)
+  }
+
+  @Post('participants/:participantId/enable-voting')
+  @HttpCode(200)
+  enableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.setVotingDisabled(participantId, false)
+  }
+
   @Post('participants/:participantId/resume-code')
   participantResumeCode(@Param('participantId', ParseUUIDPipe) participantId: string) {
     return this.voting.issueResumeCode(participantId)
@@ -171,23 +196,18 @@ export class ModeratorController {
     return this.voting.annulRound(roundId, input.reason)
   }
 
+  @Post('rounds/:roundId/candidates')
+  addCandidate(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: BallotOptionDto) {
+    return this.voting.addCandidate(roundId, input.label)
+  }
+
+  @Delete('rounds/:roundId/candidates/:optionId')
+  removeCandidate(@Param('roundId', ParseUUIDPipe) roundId: string, @Param('optionId', ParseUUIDPipe) optionId: string) {
+    return this.voting.removeCandidate(roundId, optionId)
+  }
+
   @Post('rounds/:roundId/repeat')
   repeatRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: RepeatRoundDto) {
     return this.voting.repeatRound(roundId, input)
-  }
-
-  @Put('rounds/:roundId/official-result')
-  officialResult(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: OfficialResultDto) {
-    return this.voting.declareOfficialResult(roundId, input)
-  }
-
-  @Delete('rounds/:roundId/official-result')
-  withdrawOfficialResult(@Param('roundId', ParseUUIDPipe) roundId: string) {
-    return this.voting.withdrawOfficialResult(roundId)
-  }
-
-  @Post('rounds/:roundId/official-result/publish')
-  publishOfficialResult(@Param('roundId', ParseUUIDPipe) roundId: string) {
-    return this.voting.publishOfficialResult(roundId)
   }
 }

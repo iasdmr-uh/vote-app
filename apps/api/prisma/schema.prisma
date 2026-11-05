@@ -37,6 +37,12 @@ enum RoundStatus {
 enum RoundCategory {
   office
   committee
+  decision
+}
+
+enum PositionGroup {
+  board
+  department
 }
 
 model Organization {
@@ -53,14 +59,20 @@ model Assembly {
   id             String               @id @default(uuid()) @db.Uuid
   organizationId String               @map("organization_id") @db.Uuid
   name           String
+  /** Term the elected serve, e.g. "2027–2029"; shown on the acta and the projector. */
+  period         String?
   status         AssemblyStatus       @default(preparing)
   joinCodeHash   String               @unique @map("join_code_hash") @db.Char(64)
   createdAt      DateTime             @default(now()) @map("created_at")
   completedAt    DateTime?            @map("completed_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
+  /** «Presentar oficiales» on the projector (#48): whether it is on, and its slide (0 cover, 1 board, 2 departments). */
+  presentationActive Boolean          @default(false) @map("presentation_active")
+  presentationSlide  Int              @default(0) @map("presentation_slide")
   organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   participants   ParticipantSession[]
   rounds         Round[]
+  positions      Position[]
   auditEvents    AuditEvent[]
 
   @@index([organizationId, status])
@@ -76,6 +88,8 @@ model ParticipantSession {
   resumeCodeHash String?           @unique @map("resume_code_hash") @db.Char(64)
   resumeExpiresAt DateTime?        @map("resume_expires_at")
   status         ParticipantStatus @default(active)
+  /** Inhabilitado by the mesa: stays in the room and in the majority base, but cannot vote. */
+  votingDisabled Boolean           @default(false) @map("voting_disabled")
   joinedAt       DateTime          @default(now()) @map("joined_at")
   assembly       Assembly          @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   participations Participation[]
@@ -90,12 +104,16 @@ model Round {
   title          String
   format         String          @default("single_choice")
   category       RoundCategory   @default(office)
-  /** Committee only: how many people stay on it, and the most names a delegate may mark. */
+  /** Committee only: how many people stay on it; the first vote asks for exactly this many names. */
   memberCount    Int?            @map("member_count")
-  /** Most names a delegate may mark in this vote; a repetition may ask for fewer than the committee size. */
+  /** Exact names a delegate marks in this vote; a runoff asks for the seats still open. */
   electionSeats  Int?             @map("election_seats")
-  /** Set on a repeated vote: the original round, where the official result is declared. */
+  /** Set on a runoff or repetition: the election's first vote, where the computed official result accumulates. */
   committeeRootRoundId String?    @map("committee_root_round_id") @db.Uuid
+  /** Decision only: 'boolean' (A favor / En contra) or 'options' (written by the mesa; one is chosen). */
+  decisionFormat String?          @map("decision_format")
+  /** Votes needed over the frozen base: 'simple' (more than half) or 'three_quarters' (at least 3/4). */
+  approvalRule   String           @default("simple") @map("approval_rule")
   countingRule   Json            @map("counting_rule")
   status         RoundStatus     @default(draft)
   openedAt       DateTime?       @map("opened_at")
@@ -106,8 +124,11 @@ model Round {
   annulReason    String?         @map("annul_reason")
   /** Percentage base frozen when the ballot stops taking votes, so later arrivals cannot change it. */
   eligibleCount  Int?            @map("eligible_count")
+  /** Office only, on the election's first vote: the org-chart box its elected fills. Runoffs inherit it from the root. */
+  positionId     String?         @map("position_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
   assembly       Assembly        @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  position       Position?       @relation(fields: [positionId], references: [id], onDelete: SetNull)
   options        BallotOption[]
   participations Participation[]
   votes          AnonymousVote[]
@@ -118,6 +139,24 @@ model Round {
 
   @@index([assemblyId, status])
   @@map("rounds")
+}
+
+/** A box of the Unión Hondureña org chart: the junta directiva and the departamentos. */
+model Position {
+  id         String        @id @default(uuid()) @db.Uuid
+  assemblyId String        @map("assembly_id") @db.Uuid
+  group      PositionGroup
+  label      String
+  sortOrder  Int           @map("sort_order")
+  /** Added by the mesa during the Asamblea, not one of the defaults. */
+  custom     Boolean       @default(false)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  assembly   Assembly      @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  rounds     Round[]
+
+  @@unique([assemblyId, label])
+  @@index([assemblyId, group, sortOrder])
+  @@map("positions")
 }
 
 model OfficialResult {
@@ -148,6 +187,8 @@ model BallotOption {
   roundId         String                 @map("round_id") @db.Uuid
   label           String
   order           Int
+  /** Added by the mesa to a runoff from the 3rd vote on; it was not on the vote that prepared it. */
+  isNew           Boolean                @default(false) @map("is_new")
   round           Round                  @relation(fields: [roundId], references: [id], onDelete: Cascade)
   votes           AnonymousVote[]
   officialResults OfficialResultOption[]

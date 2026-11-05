@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { actaSheetRows, isTied, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../apps/web/src/resultados'
+import type { Position, RoundRecord } from '../../apps/web/src/types'
+import { actaPositions, actaRounds } from './acta-fixture'
+import { actaKind, actaMetaText, actaRows, actaSheetRows, actaSummary, isTied, orgChart, votesText, notVotedOf, notVotedText, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../apps/web/src/resultados'
 
 test.describe('resultados', () => {
   const tiedFirst = [{ count: 4 }, { count: 4 }, { count: 2 }, { count: 0 }, { count: 0 }]
@@ -26,6 +28,9 @@ test.describe('resultados', () => {
     expect(votedText(18, 20)).toBe('18 de 20 votaron')
     expect(votedText(1, 20)).toBe('1 de 20 votó')
     expect(votedText(3, 0)).toBe('3 votaron')
+    expect(notVotedText(36, 38)).toBe('2 no votaron')
+    expect(notVotedText(37, 38)).toBe('1 no votó')
+    expect(notVotedOf(5, 4)).toBe(0)
     expect(turnoutOf({ participationCount: 7, eligibleCount: 9 })).toEqual({ recorded: 7, eligible: 9 })
     expect(turnoutOf({ recordedCount: 8, participationCount: 7, eligibleCount: 9 })).toEqual({ recorded: 8, eligible: 9 })
   })
@@ -43,9 +48,64 @@ test.describe('resultados', () => {
       { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Error', participationCount: 2, options: [] },
     ], { published: 'publicada', annulled: 'anulada' })
     expect(rows.slice(1)).toEqual([
-      ['Presidencia', 'publicada', '3 de 4 votaron', 1, 'Rosa', 1, 25, 'sí', 'sí'],
-      ['Presidencia', 'publicada', '3 de 4 votaron', 2, 'Pedro', 1, 25, 'sí', ''],
+      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 1, 'Rosa', 1, 25, 'sí', 'sí'],
+      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 2, 'Pedro', 1, 25, 'sí', ''],
       ['Secretaría', 'anulada: Error', '2 votaron', '', '', '', '', '', ''],
     ])
+  })
+  const [first, runoff, , committee, committeeRunoff, annulled, , decision] = actaRounds as unknown as RoundRecord[]
+
+  test('etiqueta de cada votación en el acta impresa', () => {
+    expect(actaKind(first!).text).toBe('1.ª VOTACIÓN')
+    expect(actaKind(runoff!)).toEqual({ text: 'DESEMPATE · 2.ª VOTACIÓN', tone: 'vote' })
+    expect(actaKind(committee!, 1).text).toBe('1.ª VOTACIÓN')
+    expect(actaKind(annulled!)).toEqual({ text: 'ANULADA', tone: 'annulled' })
+    expect(actaKind(decision!)).toEqual({ text: 'DECISIÓN · APROBADA', tone: 'approved' })
+    expect(actaKind({ ...decision!, outcome: { ...decision!.outcome!, approved: false } })).toEqual({ text: 'DECISIÓN · NO APROBADA', tone: 'rejected' })
+    expect(actaKind({ ...decision!, outcome: undefined }).text).toBe('DECISIÓN')
+    // An annulled vote is not counted: the vote that repeats it is still the first.
+    expect(actaKind({ ...first!, voteNumber: 2 }).text).toBe('2.ª VOTACIÓN')
+  })
+
+  test('línea de participación y mayoría del acta impresa', () => {
+    expect(actaMetaText(first!)).toBe('36 de 38 votaron · 2 no votaron · Mayoría: 20')
+    expect(actaMetaText(runoff!)).toBe('37 de 38 votaron · 1 no votó · Mayoría: 20')
+    expect(actaMetaText(committee!)).toBe('3 integrantes · 36 de 38 votaron · 2 no votaron · Mayoría: 20')
+    expect(actaMetaText(committeeRunoff!)).toBe('2 puestos · 36 de 38 votaron · 2 no votaron · Mayoría: 20')
+    expect(actaMetaText({ ...committeeRunoff!, outcome: undefined, electionSeats: 1 })).toBe('1 puesto · 36 de 38 votaron · 2 no votaron')
+    expect(actaMetaText(decision!)).toBe('Se aprueba con 3/4 · 29 votos · 36 de 38 votaron · 2 no votaron')
+    expect(actaMetaText(annulled!)).toBe('Error en la papeleta')
+    expect(actaMetaText({ ...annulled!, annulReason: null })).toBe('')
+  })
+
+  test('filas del acta impresa con votos, % y etiqueta', () => {
+    expect(actaRows(first!).map(({ rank, label, count, percent, tag, winner }) => [rank, label, count, percent, tag, winner])).toEqual([
+      [1, 'María López', 18, 47, 'Desempate', false], [2, 'Carlos Gómez', 12, 32, 'Desempate', false], [3, 'Rosa Díaz', 6, 16, null, false],
+    ])
+    expect(actaRows(runoff!)[0]).toMatchObject({ label: 'María López', tag: 'Electo/a', winner: true })
+    expect(actaRows(decision!).map(({ label, tag }) => [label, tag])).toEqual([['A favor', 'Aprobada'], ['En contra', null]])
+    expect(actaRows({ ...decision!, outcome: { ...decision!.outcome!, approved: false } }).map(({ tag }) => tag)).toEqual([null, null])
+    // Without a computed result, only a tie is marked; without a base there is no %.
+    expect(actaRows({ id: 'x', title: 'X', status: 'published', options: [], results: [{ optionId: 'a', label: 'A', count: 2 }, { optionId: 'b', label: 'B', count: 2 }] })
+      .map(({ tag, percent }) => [tag, percent])).toEqual([['Empate', null], ['Empate', null]])
+    expect(votesText(1)).toBe('1 voto')
+    expect(votesText(0)).toBe('0 votos')
+  })
+
+  test('resumen del acta impresa', () => {
+    expect(actaSummary(actaRounds.slice(0, 8) as unknown as RoundRecord[], 38)).toBe('38 habilitados · 8 votaciones · 1 anulada')
+    expect(actaSummary([first!], 1)).toBe('1 habilitado · 1 votación')
+    expect(actaSummary([annulled!, annulled!], 5)).toBe('5 habilitados · 2 votaciones · 2 anuladas')
+  })
+
+  test('organigrama: Junta directiva arriba y abajo, departamentos de dos en dos', () => {
+    const shuffled = [...actaPositions].reverse() as Position[]
+    const chart = orgChart(shuffled)
+    expect(chart.boardTop.map((position) => position.label)).toEqual(['Presidente', 'Vicepresidente'])
+    expect(chart.boardBottom.map((position) => position.label)).toEqual(['Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3'])
+    expect(chart.departmentRows).toHaveLength(8)
+    expect(chart.departmentRows[0]!.map((position) => position.label)).toEqual(['Auditor', 'Escuela Sabática'])
+    expect(chart.departmentRows[7]!.map((position) => position.label)).toEqual(['Mayordomía'])
+    expect(orgChart([])).toEqual({ boardTop: [], boardBottom: [], departmentRows: [] })
   })
 })

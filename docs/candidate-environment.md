@@ -77,7 +77,7 @@ El respaldo usa formato custom de `pg_dump`, permisos de archivo `0600` y valida
 
 ## Rollback y límites
 
-Si HTTPS o un healthcheck falla durante una sesión, avisa a la mesa y sigue su procedimiento manual aprobado para pausar o continuar el proceso. La aplicación no determina elegibilidad, quórum, conteo ni proclamación; esta guía no crea reglas de papeleta ni sustituye la decisión de Secretaría. Antes de usar el candidato en un simulacro, registra responsables, contactos y el procedimiento físico aprobado en el checklist operativo.
+Si HTTPS o un healthcheck falla durante una sesión, avisa a la mesa y sigue su procedimiento manual aprobado para pausar o continuar el proceso. La aplicación no determina elegibilidad ni quórum; calcula mayorías y desempates con las reglas confirmadas en noviembre de 2026, y esta guía no crea reglas de papeleta ni sustituye la decisión de Secretaría. Antes de usar el candidato en un simulacro, registra responsables, contactos y el procedimiento físico aprobado en el checklist operativo.
 
 El rollback de contenedores solo es seguro cuando la versión anterior soporta el esquema ya migrado. Conserva y etiqueta los artefactos de la versión anterior, revisa la compatibilidad de cada migración y vuelve a ejecutar healthchecks después del rollback. Si hace falta recuperar datos, prueba el dump en una base aislada antes de acordar con el responsable del entorno cualquier sustitución o cambio de tráfico. No hay rollback automático de datos.
 

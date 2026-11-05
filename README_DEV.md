@@ -68,10 +68,27 @@ Para preparar una instalación candidata reproducible con Caddy/HTTPS, servicios
 
 - Delegado: `POST /api/v1/assemblies/:assemblyCode/join`, `GET /api/v1/participant/me` y `POST /api/v1/participant/rounds/:roundId/vote`.
 - Proyector: `GET /api/v1/assemblies/:assemblyCode/public-state`; durante el ingreso abierto expone nombres y total de participantes. Cuando inicia una papeleta, oculta la lista y expone solo progreso agregado; los resultados por opción aparecen después de su publicación.
-- Moderador: crear/consultar Asamblea, cerrar lobby, corregir/retirar participante, preparar/abrir/cerrar ronda y publicar resultados bajo `/api/v1/moderator/*`.
+- Moderador: crear/consultar Asamblea, cerrar lobby, corregir/retirar participante, preparar/abrir/cerrar ronda (cargo, comisión o decisión) y publicar resultados bajo `/api/v1/moderator/*`.
 - Recuperación: `GET /api/v1/moderator/assemblies/active` permite retomar la Asamblea activa desde otra pestaña o equipo; `POST /api/v1/moderator/assemblies/:id/join-code` genera un nuevo código/QR (el anterior deja de funcionar); `POST /api/v1/moderator/participants/:id/resume-code` emite un QR de reconexión de un solo uso (10 minutos) que el delegado canjea con `POST /api/v1/assemblies/resume`. La reconexión conserva la participación registrada, por lo que no habilita un segundo voto.
 - `PATCH /api/v1/moderator/assemblies/:id/lobby` con `lobby_open` reabre el ingreso solo si no hay papeleta abierta, y queda registrado como `lobby.reopened`.
-- La única regla de conteo implementada es `kind: count_only`: se agregan votos por opción tras publicación y no se proclama ganador. La mayoría, abstención, nulidad, empate, repetición y cancelación requieren decisión institucional.
+- Inhabilitar / Habilitar: `POST /api/v1/moderator/participants/:id/disable-voting` y `.../enable-voting`. Un inhabilitado sigue en la sala, en la lista y en la base de mayoría, pero no recibe papeletas y el servidor rechaza su voto (`403`); un voto ya emitido se conserva. Inhabilitar a quien salió lo devuelve a la lista. Queda auditado.
+- Candidato nuevo: `POST /api/v1/moderator/rounds/:roundId/candidates` (`{ "label": "..." }`) y `DELETE /api/v1/moderator/rounds/:roundId/candidates/:optionId`. Solo en el borrador de un desempate desde la 3.ª votación de una elección (nunca en el primer desempate ni en decisiones); «Quitar» solo retira candidatos agregados por la mesa (`is_new`).
+- `POST /api/v1/moderator/rounds/:roundId/annul` anula; `POST .../repeat` solo repite una papeleta anulada.
+
+## Resultados automáticos (noviembre 2026)
+
+La mesa abre, cierra, publica y puede anular; nunca elige ganadores. No existen endpoints de declaración manual. Al cerrar, `settleElection` (`apps/api/src/voting/voting.service.ts`) aplica `apps/api/src/voting/results-engine.ts` (funciones puras, probadas en `test/results-engine.spec.ts`):
+
+- Base: participantes habilitados al cierre, congelada en `rounds.eligible_count`; inhabilitados y quienes no votaron cuentan. Mayoría = más de la mitad (38 → 20; la mitad exacta no alcanza).
+- Elecciones (`electionOutcome`): cargo = 1 puesto, comisión = `electionSeats` puestos. Electo = dentro de los N primeros y con mayoría. Un empate en el corte va a desempate solo entre los empatados. Si los puestos quedan abiertos, el servidor crea el desempate como borrador (`committee_root_round_id` = primera votación, `electionSeats` = puestos abiertos) con los N primeros sin mayoría y los empatados en el corte; si eso no supera los puestos abiertos, se agrega el siguiente (y sus empatados). La mesa lo abre; se repite hasta llenar los puestos. Los electos se acumulan en `official_results` de la primera votación (`declaredBy: results_engine`).
+- Selección exacta: en comisiones y desempates cada delegado marca exactamente `electionSeats ?? memberCount` nombres; el servidor rechaza otra cantidad (`422`).
+- Decisiones (`category: "decision"`, `decisionOutcome`): `decisionFormat` `boolean` (el servidor escribe «A favor» / «En contra») u `options`; `approvalRule` `simple` (> 1/2) o `three_quarters` (≥ 3/4, redondeo hacia arriba: 38 → 29). Booleana: aprobada si «A favor» alcanza el umbral; si no, no aprobada y no se repite. Con opciones, sin umbral se repite entre las 2 primeras y empatadas.
+- Publicado: `recordedCount` y `eligibleCount`; «no votaron» = base − votos emitidos. `outcome` trae `threshold`, `elected`, `runoff` y `openSeats`; `voteNumber` y `runoff` indican la votación de la cadena.
+- `countingRule` ya no elige la regla: al crear se guarda `{ kind: "automatic", rule }` y el contenido que envíe el cliente se ignora. Los desempates y repeticiones guardan `reason: "runoff" | "repeat"` y `sourceRoundId` (con `kind: "count_only"` heredado como marcador interno).
+
+Migraciones: `20261102004200_decision_rounds` (categoría `decision`, `decision_format`, `approval_rule`), `20261102004300_participant_voting_disabled` (`participant_sessions.voting_disabled`) y `20261102004400_ballot_option_is_new` (`ballot_options.is_new`).
+
+E2E real: `npm run test:e2e:integration`; si 3300 o 4174 están ocupados, `E2E_API_PORT=… E2E_WEB_PORT=… npm run test:e2e:integration` ([docs/e2e-real-postgres.md](docs/e2e-real-postgres.md)).
 
 ## Documentos de fundamento
 

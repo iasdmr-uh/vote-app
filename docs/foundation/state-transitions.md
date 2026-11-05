@@ -20,7 +20,7 @@ Transiciones previstas: `preparing → lobby_open → lobby_closed → in_progre
 |---|---|
 | `draft` | Configuración editable; no recibe votos. |
 | `open` | Configuración congelada; acepta una participación válida por sesión. |
-| `closed` | No acepta votos; resultados aún ocultos. |
+| `closed` | No acepta votos; resultado calculado (y desempate preparado como `draft` si quedan puestos), oculto hasta publicar. |
 | `published` | Resultados agregados autorizados visibles. |
 | `cancelled` | Estado reservado; su uso requiere decisión institucional. |
 
@@ -33,4 +33,4 @@ Transiciones: `draft → open → closed → published`. `open → cancelled` y 
 - La base de datos impone unicidad `(round_id, participant_session_id)` en Participación.
 - El cierre impide nuevos votos a partir de la transacción que confirma el cierre.
 - No se devuelven conteos por opción antes de `published`.
-- Elegibilidad, quórum, mayoría, empate y proclamación son determinaciones humanas/institucionales.
+- Elegibilidad y quórum son determinaciones humanas/institucionales. Desde noviembre de 2026, mayoría, desempate y aprobación se calculan al cerrar (`results-engine.ts`); la mesa no elige ganadores.

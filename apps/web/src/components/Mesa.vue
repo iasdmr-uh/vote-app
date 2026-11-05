@@ -1,24 +1,46 @@
 <script setup lang="ts">
-import { countsOf, decisionTie, rankedResults, turnoutOf, votedText, voteCountOf } from '../resultados'
+import { approvalText, countsOf, decisionVerdict, electedText, isDecision, majorityText, notVotedText, outcomeTag, voteLabel, winnerText } from '../resultados'
+import type { RoundRecord } from '../types'
+import ActaImpresa from './ActaImpresa.vue'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
+import { usePresentacion } from '../usePresentacion'
 
 const {
   origin, loading, syncing, state, code, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies, liveAssembly,
-  assemblyStatus, lobbyStatus, round, eligibleVotes, completionTime, ballotMaxChoices, participantLeft, refresh, formatDateTime,
+  assemblyStatus, lobbyStatus, round, eligibleVotes, completionTime, ballotMaxChoices, participantLeft, participantLeftId, refresh, formatDateTime,
 } = useAssembly()
 const {
-  moderationConfirmation, moderationReason, moderatorCredential, assemblyName, roundTitle, roundCategory, committeeMemberCount,
-  repeatSelections, repeatSeats, showNextBallotForm, resumeQr, officialSelections, officialNotes, ballotCandidates, newBallotCandidate,
-  repeatDialogRoundId, declareDialogRoundId,
-  secrecyCleanupPendingRounds, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord, currentRoundDeclared,
-  moderatorWorkflowStep, repeatContext, repeatDialogRound, declareDialogRound, otherPendingActas,
-  roundChain, isDecidable, latestCounted, voteNumber, rootRoundOf, nextVoteNumber, eligibleOf, rankedRows,
-  annulRound, repeatAllOptions, openRepeatDialog, confirmRepeatDialog, openDeclareDialog, confirmDeclareDialog, addBallotCandidate,
-  removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, openCompletedAssembly,
+  moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
+  roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
+  showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
+  secrecyCleanupPendingRounds, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
+  moderatorWorkflowStep, otherPendingActas,
+  roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, runoffOf,
+  annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
+  removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
   openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
-  createAssembly, editParticipant, createRound, formatActor, signInModerator,
+  createAssembly, editParticipant, createRound, signInModerator,
 } = useMesa()
+const { presentation, slideName, startPresentation, stopPresentation, previousSlide, nextSlide } = usePresentacion()
+
+function runoffButtonText(target: NonNullable<typeof currentRoundRecord.value>) {
+  const runoff = runoffOf(target)
+  if (!runoff) return ''
+  const seats = runoff.electionSeats ?? 1
+  return runoff.category === 'committee' ? `Abrir desempate · ${seats} ${seats === 1 ? 'puesto' : 'puestos'}` : 'Abrir desempate'
+}
+
+/** Aprobada / No aprobada, or the winning option, of a decision's computed result. */
+function verdictOf(target: RoundRecord) {
+  return decisionVerdict(target, target.outcome, countsOf(target))
+}
+
+/** "Cargo", "Comisión · 3 integrantes" or "Decisión · Se aprueba con 3/4 · 29 votos" in the acta. */
+function categoryText(target: RoundRecord) {
+  if (isDecision(target)) return ['Decisión', approvalText(target, target.outcome)].filter(Boolean).join(' · ')
+  return target.category === 'committee' ? `Comisión · ${target.memberCount} ${target.memberCount === 1 ? 'integrante' : 'integrantes'}` : 'Cargo'
+}
 
 function closePersonMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
@@ -34,34 +56,6 @@ function closePersonMenu(event: Event) {
       <div class="confirmation-actions">
         <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
         <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim()) || (!!moderationConfirmation.typedConfirmation && moderationReason.trim() !== moderationConfirmation.typedConfirmation)" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
-      </div>
-    </section>
-  </div>
-  <div v-if="repeatDialogRound" class="confirmation-backdrop" @click.self="repeatDialogRoundId = ''">
-    <section class="confirmation-dialog repeat-dialog" role="dialog" aria-modal="true" aria-labelledby="repeat-dialog-title">
-      <p class="eyebrow">REPETIR VOTACIÓN</p>
-      <h2 id="repeat-dialog-title">{{ rootRoundOf(repeatDialogRound)?.title || repeatDialogRound.title }} — {{ nextVoteNumber(repeatDialogRound) }}.ª votación</h2>
-      <fieldset class="dialog-options"><legend>¿Quiénes pasan a la nueva votación?</legend>
-        <label v-for="option in repeatDialogRound.options" :key="option.id" class="check-row"><input v-model="repeatSelections[repeatDialogRound.id]" type="checkbox" :value="option.id" /><span>{{ option.label }}</span><small>{{ voteCountOf(repeatDialogRound, option) }} {{ voteCountOf(repeatDialogRound, option) === 1 ? 'voto' : 'votos' }}</small></label>
-      </fieldset>
-      <label v-if="repeatDialogRound.category === 'committee'">Cupos a elegir en la nueva votación<input v-model.number="repeatSeats[repeatDialogRound.id]" type="number" min="1" :max="(repeatSelections[repeatDialogRound.id] || []).length || undefined" /></label>
-      <div class="confirmation-actions">
-        <button class="secondary" :disabled="loading" @click="repeatDialogRoundId = ''">Cancelar</button>
-        <button class="primary" :disabled="loading || !(repeatSelections[repeatDialogRound.id] || []).length" @click="confirmRepeatDialog">Preparar {{ nextVoteNumber(repeatDialogRound) }}.ª votación</button>
-      </div>
-    </section>
-  </div>
-  <div v-if="declareDialogRound" class="confirmation-backdrop" @click.self="declareDialogRoundId = ''">
-    <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="declare-dialog-title">
-      <p class="eyebrow">{{ declareDialogRound.officialResult ? 'CORREGIR DECLARACIÓN' : 'DECLARAR RESULTADO' }}</p>
-      <h2 id="declare-dialog-title">{{ declareDialogRound.title }}</h2>
-      <fieldset class="dialog-options"><legend>¿Quién queda electo?</legend>
-        <label v-for="option in declareDialogRound.options" :key="option.id" class="check-row"><input v-model="officialSelections[declareDialogRound.id]" type="checkbox" :value="option.id" /><span>{{ option.label }}</span><small>{{ voteCountOf(latestCounted(declareDialogRound), option) }} {{ voteCountOf(latestCounted(declareDialogRound), option) === 1 ? 'voto' : 'votos' }}</small></label>
-      </fieldset>
-      <label>Observación (opcional)<textarea v-model="officialNotes[declareDialogRound.id]" rows="2" maxlength="1000" placeholder="Ej. Decisión de desempate de la Asamblea"></textarea></label>
-      <div class="confirmation-actions">
-        <button class="secondary" :disabled="loading" @click="declareDialogRoundId = ''">Cancelar</button>
-        <button class="primary" :disabled="loading || !(officialSelections[declareDialogRound.id] || []).length" @click="confirmDeclareDialog">{{ declareDialogRound.officialResult ? 'Guardar corrección' : 'Declarar resultado oficial' }}</button>
       </div>
     </section>
   </div>
@@ -82,8 +76,18 @@ function closePersonMenu(event: Event) {
   <template v-else-if="moderatorAuthState === 'authenticated'">
     <section v-if="!assemblyId && completedAssemblies.length" class="card after-assembly"><h2>Asambleas finalizadas con datos guardados</h2><ul class="participant-list"><li v-for="item in completedAssemblies" :key="item.id"><span>{{ item.name }}<template v-if="item.completedAt"> · {{ formatDateTime(item.completedAt) }}</template></span><button class="secondary" @click="openCompletedAssembly(item.id)">Abrir acta y borrado</button></li></ul></section>
     <section v-if="!assemblyId && liveAssembly" class="card"><p class="eyebrow">ASAMBLEA ACTIVA</p><h2>{{ liveAssembly.name }}</h2><button class="primary" @click="openLiveAssembly">Volver a la Asamblea activa</button></section>
-    <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><label>Nombre<input v-model="assemblyName" required /></label><button class="primary" :disabled="loading">Crear Asamblea</button></form></section>
+    <section v-else-if="!assemblyId" class="card"><h2>Crear Asamblea</h2><form @submit.prevent="createAssembly"><div class="assembly-fields"><label>Nombre<input v-model="assemblyName" required /></label><label>Periodo<input v-model="assemblyPeriod" maxlength="60" placeholder="2027–2029" /></label></div><button class="primary" :disabled="loading">Crear Asamblea</button></form></section>
     <template v-else>
+      <section class="presentation-bar" :class="{ presenting: presentation.active }" aria-label="Presentar oficiales">
+        <button v-if="!presentation.active" class="secondary" :disabled="loading" @click="startPresentation">Presentar oficiales</button>
+        <template v-else>
+          <span class="badge badge-info">PRESENTANDO</span>
+          <button class="secondary presentation-arrow" aria-label="Diapositiva anterior" :disabled="loading || presentation.slide === 0" @click="previousSlide">←</button>
+          <strong class="presentation-slide" aria-live="polite">{{ slideName }} · {{ presentation.slide + 1 }}/3</strong>
+          <button class="secondary presentation-arrow" aria-label="Diapositiva siguiente" :disabled="loading || presentation.slide === 2" @click="nextSlide">→</button>
+          <button class="link-button push-right" :disabled="loading" @click="stopPresentation">Terminar presentación</button>
+        </template>
+      </section>
       <ol class="workflow-steps" aria-label="Pasos de la mesa">
         <li v-for="(step, index) in moderatorWorkflow" :key="step" :class="{ complete: index < moderatorWorkflowStep, current: index === moderatorWorkflowStep && assemblyStatus !== 'completed' }" :aria-current="index === moderatorWorkflowStep && assemblyStatus !== 'completed' ? 'step' : undefined">
           <span class="workflow-step-number">{{ index < moderatorWorkflowStep ? '✓' : index + 1 }}</span><span>{{ step }}</span>
@@ -103,13 +107,21 @@ function closePersonMenu(event: Event) {
       <div v-else class="mesa-layout">
         <div class="mesa-main">
           <section class="card ballot-card">
-            <template v-if="round?.status === 'draft'">
-              <div class="eyebrow-row"><p class="eyebrow">PAPELETA PREPARADA</p><span v-if="currentRoundRecord && voteNumber(currentRoundRecord) > 1" class="badge badge-info">{{ voteNumber(currentRoundRecord) }}.ª VOTACIÓN</span></div>
+            <template v-if="preparedRunoff">
+              <p class="eyebrow">{{ voteLabel(preparedRunoff) }}</p>
+              <h2 class="ballot-title">{{ rootRoundOf(preparedRunoff)?.title || preparedRunoff.title }}</h2>
+              <ol class="ranked-rows runoff-candidates">
+                <li v-for="(option, index) in preparedRunoff.options" :key="option.id" :class="{ first: index === 0 }"><span class="rank-number">{{ index + 1 }}</span><span class="ranked-label">{{ option.label }}<span v-if="option.isNew" class="badge badge-info">Nuevo</span></span><button v-if="option.isNew" type="button" class="link-button" :aria-label="`Quitar ${option.label}`" :disabled="loading" @click="removeRunoffCandidate(option.id)">Quitar</button></li>
+              </ol>
+              <form class="new-candidate" @submit.prevent="addRunoffCandidate"><input v-model="newRunoffCandidate" aria-label="Nombre del candidato" maxlength="160" placeholder="Nombre del candidato" /><button class="link-button" :disabled="loading || !newRunoffCandidate.trim()">+ Agregar</button></form>
+              <div class="action-row ballot-actions"><button class="primary push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(preparedRunoff.id)}/open`)">Abrir votación</button></div>
+            </template>
+            <template v-else-if="round?.status === 'draft'">
+              <div class="eyebrow-row"><p class="eyebrow">PAPELETA PREPARADA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div>
               <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2>
-              <p v-if="repeatContext" class="card-subtitle">{{ repeatContext }}</p>
               <ul class="ballot-options"><li v-for="option in round.options || []" :key="option.id">{{ option.label }}</li></ul>
               <p v-if="round.category === 'committee' && ballotMaxChoices" class="status-line">Hasta {{ ballotMaxChoices }} por persona</p>
-              <div class="action-row"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">{{ currentRoundRecord && voteNumber(currentRoundRecord) > 1 ? 'Cancelar la repetición' : 'Anular papeleta' }}</button><button class="primary push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/open`)">Abrir votación</button></div>
+              <div class="action-row"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">{{ currentRoundRecord && voteNumber(currentRoundRecord) > 1 ? 'Cancelar esta votación' : 'Anular papeleta' }}</button><button class="primary push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/open`)">Abrir votación</button></div>
               <template v-if="currentRoundRecord && voteNumber(currentRoundRecord) > 1">
                 <h3 class="list-heading eyebrow">HISTORIAL DE ESTA ELECCIÓN</h3>
                 <ul class="history-rows"><li v-for="item in roundChain(rootRoundOf(currentRoundRecord) || currentRoundRecord)" :key="item.id"><div><strong>{{ voteNumber(item) }}.ª votación</strong><span v-if="countsOf(item).length" class="muted"> · {{ countsOf(item).slice(0, 3).map((result) => `${result.label} ${result.count}`).join(' · ') }}</span><span v-else-if="item.annulReason" class="muted"> · {{ item.annulReason }}</span></div><span :class="['badge', item.status === 'published' ? 'badge-success' : item.status === 'annulled' ? 'badge-danger' : 'badge-info']">{{ (roundStatusLabels[item.status] || item.status).toUpperCase() }}</span></li></ul>
@@ -117,36 +129,34 @@ function closePersonMenu(event: Event) {
             </template>
             <template v-else-if="round?.status === 'published' && !showNextBallotForm && currentRoundRecord">
               <div class="ballot-heading">
-                <div><p class="eyebrow">CONTEO PUBLICADO</p><h2 class="ballot-title">{{ rootRoundOf(currentRoundRecord)?.title || round.title }}<template v-if="voteNumber(currentRoundRecord) > 1"> — {{ voteNumber(currentRoundRecord) }}.ª votación</template></h2></div>
-                <p class="voters-total"><strong>{{ currentRoundRecord.participationCount ?? state?.recordedCount ?? 0 }} de {{ eligibleOf(currentRoundRecord) }}</strong><span>votaron</span></p>
+                <div><div class="eyebrow-row"><p class="eyebrow">CONTEO PUBLICADO</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div><h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2><p v-if="currentRoundRecord && majorityText(currentRoundRecord, currentRoundRecord.outcome)" class="majority-chip">{{ majorityText(currentRoundRecord, currentRoundRecord.outcome) }}</p></div>
+                <p class="voters-total"><strong>{{ currentRoundRecord.participationCount ?? state?.recordedCount ?? 0 }} de {{ eligibleOf(currentRoundRecord) }}</strong><span>votaron<template v-if="eligibleOf(currentRoundRecord)"> · {{ notVotedText(currentRoundRecord.participationCount ?? state?.recordedCount ?? 0, eligibleOf(currentRoundRecord)) }}</template></span></p>
               </div>
+              <p v-if="verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === 'No aprobada' }]">{{ verdictOf(currentRoundRecord) }}</p>
               <ol class="ranked-rows">
-                <li v-for="row in rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :key="row.key" :class="{ first: row.rank === 1 }"><span class="rank-number">{{ row.rank }}</span><span class="ranked-label">{{ row.label }}<span v-if="row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span><span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span></li>
+                <li v-for="row in rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :key="row.key" :class="{ first: row.rank === 1 }"><span class="rank-number">{{ row.rank }}</span><span class="ranked-label">{{ row.label }}<span v-if="outcomeTag(currentRoundRecord.outcome, row.key) === 'elected'" class="badge badge-success">{{ winnerText(currentRoundRecord, row.label) }}</span><span v-else-if="outcomeTag(currentRoundRecord.outcome, row.key) === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="!currentRoundRecord.outcome && row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span><span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span></li>
               </ol>
-              <p v-if="currentRoundDeclared" class="summary-box summary-success">Declarado: {{ rootRoundOf(currentRoundRecord)?.officialResult?.elected.map((person) => person.label).join(', ') }}</p>
               <div class="action-row ballot-actions">
                 <button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button>
-                <div v-if="!currentRoundDeclared" class="button-group">
-                  <button :class="decisionTie(currentRoundRecord) ? 'primary' : 'secondary'" :disabled="loading" @click="openRepeatDialog(currentRoundRecord)">Repetir votación…</button>
-                  <button :class="decisionTie(currentRoundRecord) ? 'secondary' : 'primary'" :disabled="loading || !rootRoundOf(currentRoundRecord) || !isDecidable(rootRoundOf(currentRoundRecord)!)" @click="openDeclareDialog(rootRoundOf(currentRoundRecord)!)">Declarar resultado…</button>
-                </div>
+                <button v-if="runoffOf(currentRoundRecord)" class="primary push-right" :disabled="loading" @click="openRunoff(currentRoundRecord)">{{ runoffButtonText(currentRoundRecord) }}</button>
               </div>
             </template>
             <template v-else-if="round?.status === 'open' || (round?.status === 'closed' && !showNextBallotForm)">
               <template v-if="round.status === 'open'">
-                <p class="status-label status-label-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p>
-                <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}<template v-if="currentRoundRecord && voteNumber(currentRoundRecord) > 1"> — {{ voteNumber(currentRoundRecord) }}.ª votación</template></h2>
+                <div class="eyebrow-row"><p class="status-label status-label-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div>
+                <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2>
                 <p class="vote-progress"><strong>{{ state?.recordedCount ?? 0 }}</strong><span>de {{ eligibleVotes }} ya {{ (state?.recordedCount ?? 0) === 1 ? 'votó' : 'votaron' }}</span></p>
                 <span class="vote-progress-bar" aria-hidden="true"><span :style="{ width: `${eligibleVotes ? Math.min(100, Math.round(((state?.recordedCount ?? 0) / eligibleVotes) * 100)) : 0}%` }"></span></span>
                 <div class="action-row ballot-actions"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular votación</button><button class="danger push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/close`)">Cerrar votación</button></div>
               </template>
               <template v-else>
                 <div class="ballot-heading">
-                  <div><div class="eyebrow-row"><p class="eyebrow">VOTACIÓN CERRADA</p><span class="badge badge-private">Solo la mesa</span></div><h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}<template v-if="currentRoundRecord && voteNumber(currentRoundRecord) > 1"> — {{ voteNumber(currentRoundRecord) }}.ª votación</template></h2></div>
+                  <div><div class="eyebrow-row"><p class="eyebrow">VOTACIÓN CERRADA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span><span class="badge badge-private">Solo la mesa</span></div><h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2><p v-if="currentRoundRecord && majorityText(currentRoundRecord, currentRoundRecord.outcome)" class="majority-chip">{{ majorityText(currentRoundRecord, currentRoundRecord.outcome) }}</p></div>
                   <p v-if="currentRoundRecord" class="voters-total"><strong>{{ currentRoundRecord.participationCount ?? state?.recordedCount ?? 0 }} de {{ eligibleOf(currentRoundRecord) }}</strong><span>votaron</span></p>
                 </div>
+                <p v-if="currentRoundRecord && verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === 'No aprobada' }]">{{ verdictOf(currentRoundRecord) }}</p>
                 <ol v-if="currentRoundRecord?.privateResults?.length" class="ranked-rows">
-                  <li v-for="row in rankedRows(currentRoundRecord.privateResults, eligibleOf(currentRoundRecord))" :key="row.key" :class="{ first: row.rank === 1 }"><span class="rank-number">{{ row.rank }}</span><span class="ranked-label">{{ row.label }}<span v-if="row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span><span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span></li>
+                  <li v-for="row in rankedRows(currentRoundRecord.privateResults, eligibleOf(currentRoundRecord))" :key="row.key" :class="{ first: row.rank === 1 }"><span class="rank-number">{{ row.rank }}</span><span class="ranked-label">{{ row.label }}<span v-if="outcomeTag(currentRoundRecord.outcome, row.key) === 'elected'" class="badge badge-success">{{ winnerText(currentRoundRecord, row.label) }}</span><span v-else-if="outcomeTag(currentRoundRecord.outcome, row.key) === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="!currentRoundRecord.outcome && row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span><span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span></li>
                 </ol>
                 <div class="action-row ballot-actions"><button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button><div class="button-group"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular papeleta</button><button class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/publish`)">Publicar conteo</button></div></div>
               </template>
@@ -156,16 +166,36 @@ function closePersonMenu(event: Event) {
               <div class="eyebrow-row"><p class="eyebrow">NUEVA PAPELETA</p><button v-if="round?.status === 'published' || round?.status === 'closed'" class="link-button" @click="showNextBallotForm = false">Volver al conteo</button></div>
               <form class="ballot-form" @submit.prevent="createRound">
                 <div class="field-group"><span class="field-label" id="ballot-kind-label">¿Qué se vota?</span>
-                  <div class="segmented" role="radiogroup" aria-labelledby="ballot-kind-label"><button type="button" role="radio" :aria-checked="roundCategory === 'office'" :class="{ active: roundCategory === 'office' }" @click="chooseRoundCategory('office')">Un cargo</button><button type="button" role="radio" :aria-checked="roundCategory === 'committee'" :class="{ active: roundCategory === 'committee' }" @click="chooseRoundCategory('committee')">Una comisión</button></div>
+                  <div class="segmented" role="radiogroup" aria-labelledby="ballot-kind-label"><button type="button" role="radio" :aria-checked="roundCategory === 'office'" :class="{ active: roundCategory === 'office' }" @click="chooseRoundCategory('office')">Cargo</button><button type="button" role="radio" :aria-checked="roundCategory === 'committee'" :class="{ active: roundCategory === 'committee' }" @click="chooseRoundCategory('committee')">Comisión</button><button type="button" role="radio" :aria-checked="roundCategory === 'decision'" :class="{ active: roundCategory === 'decision' }" @click="chooseRoundCategory('decision')">Decisión</button></div>
                 </div>
-                <label v-if="roundCategory === 'office'">Nombre del cargo<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Presidencia" /></label>
-                <template v-else>
+                <div v-if="roundCategory === 'office'" class="field-group position-picker"><span class="field-label" id="position-label">Puesto</span>
+                  <button type="button" class="position-trigger" aria-labelledby="position-label" :aria-expanded="positionMenuOpen" aria-haspopup="listbox" @click="positionMenuOpen = !positionMenuOpen"><span :class="{ placeholder: !selectedPosition }">{{ selectedPosition?.label ?? 'Elige el puesto' }}</span><span class="chevron" aria-hidden="true">{{ positionMenuOpen ? '⌃' : '⌄' }}</span></button>
+                  <div v-if="positionMenuOpen" class="position-menu">
+                    <ul role="listbox" aria-labelledby="position-label">
+                      <template v-for="group in positionGroups" :key="group.group">
+                        <li class="position-group" role="presentation">{{ group.label }}</li>
+                        <li v-for="position in group.items" :key="position.id" role="option" class="position-option" :class="{ elected: position.elected, selected: position.id === roundPositionId }" :aria-selected="position.id === roundPositionId" :aria-disabled="Boolean(position.elected)" @click="choosePosition(position)"><span>{{ position.label }}</span><span v-if="position.elected" class="position-elected">{{ position.elected.label }}</span><span v-else-if="position.id === roundPositionId" class="position-check" aria-hidden="true">✓</span></li>
+                      </template>
+                    </ul>
+                    <div class="new-department"><input v-model="newDepartment" aria-label="Nombre del departamento" maxlength="160" placeholder="Nombre del departamento" @keydown.enter.prevent="addDepartment" /><button type="button" class="secondary" :disabled="loading || !newDepartment.trim()" @click="addDepartment">+ Agregar</button></div>
+                  </div>
+                </div>
+                <template v-else-if="roundCategory === 'committee'">
                   <label>Nombre de la comisión<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Comisión de Finanzas" /></label>
                   <label>¿Cuántos integrantes quedarán en la comisión?<input v-model.number="committeeMemberCount" class="member-count-input" type="number" min="1" max="40" required /></label>
                 </template>
-                <div class="field-group"><span class="field-label">Candidatos</span>
+                <template v-else>
+                  <label>Decisión<input v-model="roundTitle" required maxlength="200" placeholder="Ej. Presupuesto 2027" /></label>
+                  <div class="field-group"><span class="field-label" id="decision-format-label">Papeleta</span>
+                    <div class="segmented" role="radiogroup" aria-labelledby="decision-format-label"><button type="button" role="radio" :aria-checked="decisionFormat === 'boolean'" :class="{ active: decisionFormat === 'boolean' }" @click="decisionFormat = 'boolean'">A favor / En contra</button><button type="button" role="radio" :aria-checked="decisionFormat === 'options'" :class="{ active: decisionFormat === 'options' }" @click="decisionFormat = 'options'">Opciones</button></div>
+                  </div>
+                  <div class="field-group"><span class="field-label" id="approval-rule-label">Se aprueba con</span>
+                    <div class="segmented" role="radiogroup" aria-labelledby="approval-rule-label"><button type="button" role="radio" :aria-checked="approvalRule === 'simple'" :class="{ active: approvalRule === 'simple' }" @click="approvalRule = 'simple'">Mayoría simple</button><button type="button" role="radio" :aria-checked="approvalRule === 'three_quarters'" :class="{ active: approvalRule === 'three_quarters' }" @click="approvalRule = 'three_quarters'">3/4</button></div>
+                  </div>
+                </template>
+                <div v-if="roundCategory !== 'decision' || decisionFormat === 'options'" class="field-group"><span class="field-label">{{ roundCategory === 'decision' ? 'Opciones' : 'Candidatos' }}</span>
                   <ul v-if="ballotCandidates.length" class="candidate-rows"><li v-for="(name, index) in ballotCandidates" :key="name"><span>{{ name }}</span><button type="button" class="link-button remove-link" :aria-label="`Quitar ${name}`" @click="removeBallotCandidate(index)">Quitar</button></li></ul>
-                  <input v-model="newBallotCandidate" aria-label="Agregar candidato" maxlength="160" placeholder="Nombre y Enter" @keydown.enter.prevent="addBallotCandidate" />
+                  <input v-model="newBallotCandidate" :aria-label="roundCategory === 'decision' ? 'Agregar opción' : 'Agregar candidato'" maxlength="160" :placeholder="roundCategory === 'decision' ? 'Opción y Enter' : 'Nombre y Enter'" @keydown.enter.prevent="addBallotCandidate" />
                 </div>
                 <button class="primary full-width" :disabled="loading">Preparar papeleta</button>
               </form>
@@ -175,13 +205,13 @@ function closePersonMenu(event: Event) {
         </div>
         <aside class="card mesa-participants" aria-labelledby="mesa-participants-title">
           <div class="section-heading"><h2 id="mesa-participants-title">Participantes</h2><span class="count-pill">{{ state?.participants?.length ?? 0 }}</span></div>
-          <p v-if="attendance" class="attendance-summary"><span><span class="vote-dot vote-dot-done" aria-hidden="true"></span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span><span class="vote-dot vote-dot-pending" aria-hidden="true"></span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span></p>
-          <p v-if="participantLeft" class="left-notice" role="status" aria-live="polite"><span aria-hidden="true">←</span>{{ participantLeft }} salió de la sala</p>
+          <p v-if="attendance" class="attendance-summary"><span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span><span v-if="attendance.disabled">{{ attendance.disabled }} {{ attendance.disabled === 1 ? 'inhabilitado' : 'inhabilitados' }}</span></p>
+          <p v-if="participantLeft" class="left-notice" role="status" aria-live="polite"><span aria-hidden="true">←</span>{{ participantLeft }} salió de la sala<button v-if="participantLeftId && assemblyStatus !== 'completed'" class="link-button push-right" :disabled="loading" @click="setVotingDisabled(participantLeftId, true)">Inhabilitar</button></p>
           <ul class="mesa-person-list">
-            <li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`">
-              <span v-if="person.voted !== undefined" :class="['vote-dot', person.voted ? 'vote-dot-done' : 'vote-dot-pending']" role="img" :aria-label="person.voted ? 'Ya votó' : 'Falta votar'" :title="person.voted ? 'Ya votó' : 'Falta votar'"></span>
-              <span class="person-name">{{ person.firstName }} {{ person.lastName }}</span>
-              <details v-if="person.id" class="person-menu">
+            <li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`" :class="{ 'person-disabled': person.votingDisabled }">
+              <span class="person-name">{{ person.firstName }} {{ person.lastName }}<span v-if="person.votingDisabled" class="badge badge-disabled">Inhabilitado</span></span>
+              <button v-if="person.id && person.votingDisabled && assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="setVotingDisabled(person.id, false)">Habilitar</button>
+              <details v-if="person.id && !(person.votingDisabled && assemblyStatus === 'completed')" class="person-menu">
                 <summary :aria-label="`Acciones para ${person.firstName} ${person.lastName}`">⋯</summary>
                 <div class="person-menu-list">
                   <template v-if="assemblyStatus === 'lobby_open' || assemblyStatus === 'lobby_closed'">
@@ -189,6 +219,7 @@ function closePersonMenu(event: Event) {
                     <button type="button" class="remove-link" @click="closePersonMenu($event); moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button>
                   </template>
                   <button type="button" @click="closePersonMenu($event); issueResumeCode(person)">Reconectar dispositivo</button>
+                  <button v-if="!person.votingDisabled" type="button" class="remove-link" :disabled="loading" @click="closePersonMenu($event); setVotingDisabled(person.id, true)">Inhabilitar</button>
                 </div>
               </details>
             </li>
@@ -200,44 +231,30 @@ function closePersonMenu(event: Event) {
         </aside>
       </div>
       <section v-if="state?.rounds?.length" id="acta-de-resultados" class="card official-history">
-        <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Declaraciones oficiales de la mesa</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
+        <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Resultados</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
         <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
-          <div class="section-heading"><div><h3>{{ historyRound.title }}</h3><p class="status-line">{{ historyRound.category === 'committee' ? `Comisión · ${historyRound.memberCount} ${historyRound.memberCount === 1 ? 'integrante' : 'integrantes'}` : 'Cargo' }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}<template v-if="historyRound.results?.length"> · {{ historyRound.participationCount ?? 0 }} de {{ eligibleOf(historyRound) }} votaron</template></p></div></div>
+          <div class="section-heading"><div><h3>{{ rootRoundOf(historyRound)?.title || historyRound.title }}<span v-if="voteLabel(historyRound)" class="badge badge-info">{{ voteLabel(historyRound) }}</span></h3><p class="status-line">{{ categoryText(historyRound) }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}<template v-if="historyRound.results?.length"> · {{ historyRound.participationCount ?? 0 }} de {{ eligibleOf(historyRound) }} votaron · {{ notVotedText(historyRound.participationCount ?? 0, eligibleOf(historyRound)) }}</template><template v-if="historyRound.outcome && !isDecision(historyRound)"> · Mayoría: {{ historyRound.outcome.threshold }}</template></p></div></div>
           <p v-if="historyRound.status === 'annulled'" class="status-line">Anulada<template v-if="historyRound.annulReason">: {{ historyRound.annulReason }}</template></p>
           <ol v-if="historyRound.results?.length" class="ranked-rows compact-rows">
-            <li v-for="row in rankedRows(historyRound.results, eligibleOf(historyRound))" :key="row.key" :class="{ first: row.rank === 1 }"><span class="rank-number">{{ row.rank }}</span><span class="ranked-label">{{ row.label }}<span v-if="row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span></li>
+            <li v-for="row in rankedRows(historyRound.results, eligibleOf(historyRound))" :key="row.key" :class="{ first: row.rank === 1 }"><span class="rank-number">{{ row.rank }}</span><span class="ranked-label">{{ row.label }}<span v-if="outcomeTag(historyRound.outcome, row.key) === 'elected'" class="badge badge-success">{{ winnerText(historyRound, row.label) }}</span><span v-else-if="outcomeTag(historyRound.outcome, row.key) === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="!historyRound.outcome && row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span></li>
           </ol>
-          <div v-if="assemblyStatus !== 'completed' && ['closed', 'published', 'annulled'].includes(historyRound.status) && !rootRoundOf(historyRound)?.officialResult && roundChain(rootRoundOf(historyRound) || historyRound).at(-1)?.id === historyRound.id" class="action-row"><button class="secondary" :disabled="loading" @click="openRepeatDialog(historyRound)">Repetir votación…</button></div>
-          <div v-if="historyRound.officialResult" class="declared-result">
-            <strong>Declaración {{ historyRound.officialResult.publishedAt ? 'publicada' : 'interna' }}</strong>
-            <p>Electos: {{ historyRound.officialResult.elected.map((person) => person.label).join(', ') }}</p>
-            <p v-if="historyRound.officialResult.note">Observación: {{ historyRound.officialResult.note }}</p>
-            <small>{{ formatDateTime(historyRound.officialResult.declaredAt) }} · {{ formatActor(historyRound.officialResult.declaredBy) }}</small>
-          </div>
-          <p v-else-if="!historyRound.committeeRootRoundId" class="status-line">La mesa aún no ha registrado una declaración oficial.</p>
-          <p v-if="historyRound.committeeRootRoundId" class="status-line">Repetición de «{{ state.rounds.find((item) => item.id === historyRound.committeeRootRoundId)?.title }}»</p>
-          <div v-if="isDecidable(historyRound)" class="action-row">
-            <button class="secondary" :disabled="loading" @click="openDeclareDialog(historyRound)">{{ historyRound.officialResult ? 'Corregir declaración…' : 'Declarar resultado…' }}</button>
-            <button v-if="historyRound.officialResult && !historyRound.officialResult.publishedAt && roundChain(historyRound).some((item) => item.status === 'published')" class="primary" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result/publish`)">Publicar declaración</button>
-            <button v-if="historyRound.officialResult && assemblyStatus !== 'completed'" class="link-button remove-link" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(historyRound.id)}/official-result`, 'DELETE')">Retirar declaración</button>
-          </div>
+          <div v-if="historyRound.results?.length && historyRound.decisionFormat === 'boolean' && verdictOf(historyRound)" class="declared-result"><strong>{{ verdictOf(historyRound) }}</strong></div>
+          <div v-else-if="historyRound.officialResult" class="declared-result"><strong>{{ isDecision(historyRound) ? 'Aprobada' : historyRound.officialResult.elected.length === 1 ? electedText(historyRound.officialResult.elected[0]!.label) : 'Electos' }}</strong><p>{{ historyRound.officialResult.elected.map((person) => person.label).join(', ') }}</p></div>
         </article>
       </section>
     </template>
   </template>
-  <section v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" class="acta-print">
-    <h1>Acta de resultados</h1>
-    <p><strong>{{ state.assembly?.name }}</strong><template v-if="completionTime"> · finalizada {{ completionTime }}</template> · impresa {{ formatDateTime(new Date().toISOString()) }}</p>
-    <p>Participantes registrados: {{ (state.participants?.length ?? 0) + (state.leftParticipants?.length ?? 0) }}. Los votos son secretos: el sistema no guarda quién votó por quién.</p>
-    <article v-for="item in state.rounds" :key="`acta-${item.id}`">
-      <h2>{{ item.title }}</h2>
-      <p>{{ item.category === 'committee' ? 'Comisión' : 'Cargo' }} · papeleta {{ roundStatusLabels[item.status] || item.status }}<template v-if="item.participationCount !== undefined"> · {{ votedText(turnoutOf(item).recorded, turnoutOf(item).eligible) }}</template><template v-if="item.committeeRootRoundId"> · repetición de «{{ state.rounds.find((root) => root.id === item.committeeRootRoundId)?.title }}»</template></p>
-      <p v-if="item.status === 'annulled'">Anulada por la mesa<template v-if="item.annulReason">: {{ item.annulReason }}</template>. Sus votos no se contaron.</p>
-      <table v-if="item.results?.length"><thead><tr><th>Lugar</th><th>Opción</th><th>Votos</th><th>%</th></tr></thead><tbody><tr v-for="result in rankedResults(item.results, turnoutOf(item).eligible)" :key="result.optionId"><td>{{ result.rank }}<template v-if="result.tied"> (empate)</template></td><td>{{ result.label }}</td><td>{{ result.count }}</td><td>{{ turnoutOf(item).eligible ? `${result.percent} %` : '' }}</td></tr></tbody></table>
-      <p v-else-if="item.status !== 'annulled'">Conteo no publicado.</p>
-      <p v-if="item.officialResult"><strong>Declarado electo por la mesa:</strong> {{ item.officialResult.elected.map((person) => person.label).join(', ') }} ({{ formatDateTime(item.officialResult.declaredAt) }})<template v-if="item.officialResult.note">. Observación: {{ item.officialResult.note }}</template></p>
-    </article>
-    <h2>Participantes</h2>
-    <ol><li v-for="person in state.participants || []" :key="`acta-person-${person.id}`">{{ person.firstName }} {{ person.lastName }}</li><li v-for="person in state.leftParticipants || []" :key="`acta-left-${person.id}`">{{ person.firstName }} {{ person.lastName }} (salió)</li></ol>
-    <p class="acta-signatures"><span>Moderación</span><span>Secretaría</span></p>
-  </section></template>
+  <ActaImpresa v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" :state="state" />
+</template>
+
+<style scoped>
+.presentation-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem; margin-bottom: 1rem; }
+.presentation-bar.presenting { justify-content: flex-start; padding: .55rem .75rem; border: 1px solid #c7d3e7; border-radius: .75rem; background: #fff; }
+.presentation-arrow { min-width: 46px; font-size: 1.15rem; }
+.presentation-slide { color: var(--blue-dark); text-align: center; }
+@media (min-width: 720px) { .presentation-slide { min-width: 12rem; } }
+.majority-chip { display: inline-block; margin: .35rem 0 0; padding: .2rem .6rem; border-radius: 999px; background: #e8efff; color: var(--blue-dark); font-size: .75rem; font-weight: 700; }
+.official-round h3 .badge { margin-left: .5rem; vertical-align: middle; }
+.decision-verdict { margin: .75rem 0 0; padding: .7rem 1rem; border-radius: 10px; background: var(--blue-dark); color: #fff; font-size: 1.25rem; font-weight: 800; }
+.decision-verdict.rejected { background: #fff2f0; color: #b42318; }
+</style>
