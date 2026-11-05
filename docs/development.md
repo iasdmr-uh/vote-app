@@ -20,14 +20,14 @@
 
 Registro reproducible más reciente: 2026-10-01. En Node.js 22.22.1/npm 11.13.0, `npm run typecheck` y `npm run build` terminaron correctamente. `npm run test:e2e` pasó 6/6 pruebas (Chromium de escritorio y móvil); Playwright intercepta la API con datos sintéticos, por lo que no valida el recorrido integrado contra API y PostgreSQL. La primera ejecución E2E dentro del sandbox no pudo abrir `127.0.0.1:5173` (`EPERM`); al autorizar el servidor local, la misma suite pasó.
 
-La suite integrada real se ejecuta por separado con `npm run test:e2e:integration` (requiere Docker o las herramientas locales de PostgreSQL y Chromium de Playwright). Instrucciones y formato de evidencia: [docs/e2e-real-postgres.md](docs/e2e-real-postgres.md).
+La suite integrada real se ejecuta por separado con `npm run test:e2e:integration` (requiere Docker o las herramientas locales de PostgreSQL y Chromium de Playwright). Instrucciones y formato de evidencia: [e2e-real-postgres.md](e2e-real-postgres.md).
 
 
 Docker 28.0.4 estaba instalado, pero su daemon no estaba disponible. Se usó PostgreSQL local 15.15 para crear un clúster nuevo y desechable en `/private/tmp`, escuchando solo en `127.0.0.1:55432`, con una base vacía `asdmr_integration`; no se conectó a la base local habitual ni a datos reales. `prisma migrate deploy` aplicó `20261001000000_initial`; `TEST_DATABASE_URL=... npm run test --workspace @asdmr/api` pasó 11/11, incluido el caso de concurrencia, cierre y publicación que antes se omitía. El clúster de prueba se detuvo después de la corrida. La repetición limpia requiere los comandos de abajo.
 
-`k6` no está instalado (`k6 version`: comando no encontrado en la última verificación), por lo que no hay resultado de rendimiento. `tests/load/voting.js` ofrece tres modos (`join`, `vote-retry`, `closed-vote`) que crean Asamblea, participantes y papeleta sintéticos en un staging declarado. Requiere credencial de moderación de staging, etiqueta de corrida y umbrales P95/tasa de error acordados. No ejecutar hasta tener k6 y el staging autorizado; consultar `PHASE_05_VERIFICATION_PLAN.md` para comandos y evidencia requerida. Los ensayos presenciales siguen pendientes.
+`k6` no está instalado (`k6 version`: comando no encontrado en la última verificación), por lo que no hay resultado de rendimiento. `tests/load/voting.js` ofrece tres modos (`join`, `vote-retry`, `closed-vote`) que crean Asamblea, participantes y papeleta sintéticos en un staging declarado. Requiere credencial de moderación de staging, etiqueta de corrida y umbrales P95/tasa de error acordados. No ejecutar hasta tener k6 y el staging autorizado; consultar `docs/plan/phase-05-verification-plan.md` para comandos y evidencia requerida. Los ensayos presenciales siguen pendientes.
 
-Pendiente: repetir integración de forma independiente cuando cambie la migración o la lógica de persistencia, ejecutar carga real con k6 y completar ensayos operativos. Consultar `PHASE_05_VERIFICATION_PLAN.md` para dependencias, procedimientos y matriz completa. La comprobación de sintaxis k6 no equivale a ejecutar la carga.
+Pendiente: repetir integración de forma independiente cuando cambie la migración o la lógica de persistencia, ejecutar carga real con k6 y completar ensayos operativos. Consultar `docs/plan/phase-05-verification-plan.md` para dependencias, procedimientos y matriz completa. La comprobación de sintaxis k6 no equivale a ejecutar la carga.
 
 ### Repetir integración con una base desechable (PostgreSQL local)
 
@@ -58,9 +58,9 @@ Consulta `.env.example`. `POSTGRES_PASSWORD`, `DATABASE_URL` y `MODERATOR_ACCESS
 
 La credencial compartida habilita el MVP técnico, pero no identifica a cada operador individual. No desplegarla para una Asamblea oficial hasta que Secretaría/mesa valide quién modera, cómo se entrega y cómo se rota. Producción requiere secretos administrados por el entorno, HTTPS y una lista CORS específica.
 
-Para la Asamblea en red local (una laptop como servidor en el Wi-Fi de Starlink, panel de la mesa solo en esa laptop y borrado de datos al final), consulta la guía del técnico [docs/lan-assembly.md](docs/lan-assembly.md).
+Para la Asamblea en red local (una laptop como servidor en el Wi-Fi de Starlink, panel de la mesa solo en esa laptop y borrado de datos al final), consulta la guía del técnico [lan-assembly.md](lan-assembly.md).
 
-Para preparar una instalación candidata reproducible con Caddy/HTTPS, servicios aislados, migraciones, healthchecks y verificación de backups, consulta [docs/candidate-environment.md](docs/candidate-environment.md). Requiere un host y DNS de prueba autorizados; no uses datos personales reales.
+Para preparar una instalación candidata reproducible con Caddy/HTTPS, servicios aislados, migraciones, healthchecks y verificación de backups, consulta [candidate-environment.md](candidate-environment.md). Requiere un host y DNS de prueba autorizados; no uses datos personales reales.
 
 `WEB_ORIGIN` acepta una lista de orígenes exactos separados por comas. Para probar desde un teléfono, agrega el origen LAN del equipo que sirve Vite (por ejemplo, `http://192.168.1.20:5173`) y configura `VITE_API_URL` en `apps/web/.env.local` hacia la API en esa misma IP. Mantén solo los orígenes locales necesarios y reinicia ambos servidores después de cambiar `.env`.
 
