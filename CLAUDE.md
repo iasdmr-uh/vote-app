@@ -43,7 +43,8 @@ Requires Node `^22.22.3 || ^24.15.0`. CI uses 24.15.0. Local setup is in `docs/d
 
 ### API
 
-- `voting/voting.service.ts` holds nearly all domain logic. Transactions take `FOR UPDATE` row locks to serialize state changes.
+- `voting/voting.service.ts` holds most domain logic. Transactions take `FOR UPDATE` row locks to serialize state changes.
+- `voting/results-engine.ts` computes results, and `voting/presentation.service.ts` handles «Presentar oficiales».
 - `auth/` has three access levels:
   - Public callers use the assembly code.
   - Participants use a session token.

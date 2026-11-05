@@ -6,7 +6,7 @@
 - Ingreso por QR común, sin cuenta, con nombre y apellido. El nombre no acredita elegibilidad.
 - Moderador prepara, abre y cierra papeletas y publica resultados explícitamente.
 - No hay temporizador, resultados parciales, edición de voto emitido ni quórum automático. El resultado se calcula solo (ver punto siguiente).
-- Resultados automáticos (2 de noviembre de 2026): mayoría sobre participantes habilitados al cierre, desempates encadenados, selección exacta en comisiones, candidato nuevo desde la 3.ª votación, decisiones (mayoría simple o 3/4), inhabilitación y «no votaron». La mesa no elige ganadores; puede anular. Detalle en `sistema-votaciones-asdmr.md`, sección 8, reglas 11–16.
+- Resultados automáticos (2 de noviembre de 2026): mayoría sobre participantes habilitados al cierre, desempates encadenados, selección exacta en comisiones, candidato nuevo desde la 3.ª votación, decisiones (mayoría simple o 3/4), inhabilitación y «no votaron». La mesa no elige ganadores; puede anular. Detalle en `docs/scope.md`, sección 8, reglas 11–16.
 - Una respuesta por sesión participante y ronda; la opción no debe tener vínculo consultable a la identidad.
 - Durante el ingreso abierto, el proyector muestra tanto los nombres de quienes ya ingresaron como el total de participantes; al iniciar una papeleta, los nombres se ocultan y solo se muestra progreso agregado.
 - Asociación queda contemplada para evolución futura; iglesias y producto multi-organización activo quedan fuera de V1.

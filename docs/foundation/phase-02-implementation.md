@@ -23,7 +23,7 @@ El ingreso responde con `participantSessionToken` (única entrega del secreto), 
 ## Decisiones de negocio que bloquean uso oficial
 
 - Credencial compartida no identifica a operadores individuales; requiere validar responsable, distribución y rotación antes del uso oficial.
-- Las reglas de mayoría, desempate y decisiones son las confirmadas el 2 de noviembre de 2026 (`sistema-votaciones-asdmr.md`, sección 8). Quórum y elegibilidad de cada delegado siguen fuera del software.
+- Las reglas de mayoría, desempate y decisiones son las confirmadas el 2 de noviembre de 2026 (`docs/scope.md`, sección 8). Quórum y elegibilidad de cada delegado siguen fuera del software.
 - Retención/eliminación automática no está implementada hasta aprobación de política.
 - Reapertura de lobby está deshabilitada; la lista de nombres pública tampoco se envía.
 - Configuración de red, Wi-Fi, dominio, HTTPS, respaldo/restauración y contingencia física dependen de la operación del evento.
