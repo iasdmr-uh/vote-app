@@ -1,6 +1,6 @@
 # Glossary
 
-**Status:** DRAFT, not yet approved
+**Status:** Approved
 
 ## Roles
 
