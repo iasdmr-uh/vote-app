@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { actaKind, actaMetaText, actaRows, actaSummary, orgChart, votesText } from '../resultados'
+import { actaKind, actaMetaText, actaRows, actaSummary, completedCommittee, orgChart, votesText } from '../resultados'
 import type { Position, PublicState, RoundRecord } from '../types'
 
 const props = defineProps<{ state: PublicState }>()
@@ -56,6 +56,7 @@ function nameOf(position: Position) {
                 <span class="acta-kind" :class="`tone-${actaKind(item).tone}`">{{ actaKind(item).text }}</span>
               </header>
               <p v-if="actaMetaText(item)" class="acta-meta">{{ actaMetaText(item) }}</p>
+              <p v-if="completedCommittee(item, rounds).length" class="acta-meta acta-members">Comisión completa, en orden de elección: {{ completedCommittee(item, rounds).join(', ') }}</p>
               <ol v-if="item.results?.length" class="acta-results">
                 <li v-for="row in actaRows(item)" :key="row.key" :class="{ winner: row.winner }">
                   <span class="acta-rank">{{ row.rank }}</span>

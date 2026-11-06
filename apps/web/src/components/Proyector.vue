@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { voteLabel } from '../resultados'
+import { REGIONAL_SECRETARY_NOTE, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
@@ -33,7 +33,7 @@ const view = computed(() => {
   return 'idle'
 })
 
-const roundLabel = computed(() => voteLabel(round.value))
+const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · '))
 const statusLabel = computed(() => ({
   voting: [round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
   results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),

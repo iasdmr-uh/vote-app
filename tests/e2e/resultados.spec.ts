@@ -43,15 +43,52 @@ test.describe('resultados', () => {
   test('filas del acta en Excel', () => {
     const rows = actaSheetRows([
       { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, eligibleCount: 4, options: [],
-        results: [{ optionId: 'a', label: 'Rosa', count: 1 }, { optionId: 'b', label: 'Pedro', count: 1 }],
+        results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 1 }],
+        outcome: { seats: 1, base: 4, threshold: 3, elected: ['a'], runoff: [], openSeats: 0 },
         officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'x', declaredAt: '', publishedAt: null } },
       { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Error', participationCount: 2, options: [] },
     ], { published: 'publicada', annulled: 'anulada' })
+    expect(rows[0]?.at(-1)).toBe('Resultado')
     expect(rows.slice(1)).toEqual([
-      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 1, 'Rosa', 1, 25, 'sí', 'sí'],
-      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 2, 'Pedro', 1, 25, 'sí', ''],
+      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 1, 'Rosa', 2, 50, '', 'Electo/a'],
+      ['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 2, 'Pedro', 1, 25, '', 'No continúa'],
       ['Secretaría', 'anulada: Error', '2 votaron', '', '', '', '', '', ''],
     ])
+  })
+
+  test('cada fila del Excel dice lo que esa votación decidió, y la última lista la comisión en orden', () => {
+    const root = {
+      id: 'c1', title: 'Comisión', status: 'published', category: 'committee' as const, memberCount: 3, voteNumber: 1, participationCount: 10, eligibleCount: 10, options: [],
+      results: [{ optionId: 'a', label: 'Ana', count: 7 }, { optionId: 'b', label: 'Bruno', count: 5 }, { optionId: 'c', label: 'Carla', count: 5 }, { optionId: 'd', label: 'Dora', count: 3 }],
+      outcome: { seats: 3, base: 10, threshold: 6, elected: ['a'], runoff: ['b', 'c'], openSeats: 2 },
+      officialResult: { elected: [{ optionId: 'a', label: 'Ana' }, { optionId: 'c2', label: 'Carla' }, { optionId: 'b2', label: 'Bruno' }], note: null, declaredBy: 'x', declaredAt: '', publishedAt: null },
+    }
+    const last = {
+      id: 'c2', title: 'Comisión', status: 'published', category: 'committee' as const, memberCount: 3, electionSeats: 2, voteNumber: 2, runoff: true, committeeRootRoundId: 'c1', participationCount: 10, eligibleCount: 11, regionalSecretaryVotes: true, options: [],
+      results: [{ optionId: 'c2', label: 'Carla', count: 7 }, { optionId: 'b2', label: 'Bruno', count: 6 }],
+      outcome: { seats: 2, base: 11, threshold: 6, elected: ['c2', 'b2'], runoff: [], openSeats: 0 }, officialResult: null,
+    }
+    const rows = actaSheetRows([root, last], { published: 'publicada' }).slice(1)
+    expect(rows.map((row) => [row[0], row[4], row[8]])).toEqual([
+      ['Comisión', 'Ana', 'Electo/a'],
+      ['Comisión', 'Bruno', 'Pasa'],
+      ['Comisión', 'Carla', 'Pasa'],
+      ['Comisión', 'Dora', 'No continúa'],
+      ['Comisión · DESEMPATE · 2.ª VOTACIÓN', 'Carla', 'Electo/a'],
+      ['Comisión · DESEMPATE · 2.ª VOTACIÓN', 'Bruno', 'Electo/a'],
+    ])
+    expect(rows[0]?.[1]).toBe('publicada')
+    expect(rows[4]?.[1]).toBe('publicada · Comisión completa: Ana, Carla, Bruno')
+    expect(rows[4]?.[2]).toBe('10 de 11 votaron · 1 no votó · Con la secretaría regional')
+    expect(actaMetaText(last)).toContain('Con la secretaría regional')
+  })
+
+  test('una papeleta anulada no repite a los electos de otras votaciones', () => {
+    const annulled = {
+      id: 'c1', title: 'Comisión', status: 'annulled', annulReason: 'Error', options: [],
+      officialResult: { elected: [{ optionId: 'z', label: 'Zoe' }], note: null, declaredBy: 'x', declaredAt: '', publishedAt: null },
+    }
+    expect(actaSheetRows([annulled], { annulled: 'anulada' })[1]?.at(-1)).toBe('')
   })
   const [first, runoff, , committee, committeeRunoff, annulled, , decision] = actaRounds as unknown as RoundRecord[]
 

@@ -1,4 +1,4 @@
-import { approvalText, displayOrder, percentOf, voteLabel } from './resultados'
+import { approvalText, displayOrder, percentOf, REGIONAL_SECRETARY_NOTE, voteLabel } from './resultados'
 import type { Position, PresentationSlide, PublicState } from './types'
 
 /** Agenda UH 2026 slides on the projector (Figma 160:9, P1–P6). */
@@ -67,7 +67,7 @@ export function resultSlide(state: PublicState | null | undefined): ResultSlide 
   const person = elected[0]
   if (!person) return null
   const count = countOf(person) ?? 0
-  return { kind: 'office', title: round.title, name: person.label, votes: `${count} de ${base} votos · ${percentOf(count, base)} %`, label: voteLabel(round) }
+  return { kind: 'office', title: round.title, name: person.label, votes: `${count} de ${base} votos · ${percentOf(count, base)} %`, label: [voteLabel(round), round.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · ') }
 }
 
 /** P2: the elected name in one or two lines at most, as large as fits the 1680-wide column. */

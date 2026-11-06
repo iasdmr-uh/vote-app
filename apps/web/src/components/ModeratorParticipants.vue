@@ -5,7 +5,7 @@ import { useMesa } from '../useMesa'
 const {
   origin, loading, state, code, qrImage, assemblyStatus, lobbyStatus, assemblyId, round, participantLeft, participantLeftId, formatDateTime,
 } = useAssembly()
-const { attendance, setVotingDisabled, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
+const { attendance, setVotingDisabled, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr, regionalSecretaryInBallot } = useMesa()
 
 function closePersonMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
@@ -35,8 +35,13 @@ function closePersonMenu(event: Event) {
       </li>
       <li v-if="!state?.participants?.length" class="empty">Sin participantes</li>
     </ul>
+    <p v-if="regionalSecretaryInBallot && state?.regionalSecretary" class="regional-secretary-row"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretaría regional</span></span><span v-if="round?.status === 'open'" class="muted">{{ state.regionalSecretary.voted ? 'Votó' : 'Falta' }}</span><button type="button" class="link-button" :disabled="loading" @click="issueResumeCode(state!.regionalSecretary!)">Reconectar dispositivo</button></p>
     <div class="action-row lobby-actions"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><button v-else-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button class="link-button" :disabled="loading" @click="rotateJoinCode">Nuevo código</button></div>
-    <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>Reconexión de {{ resumeQr.name }}</strong><p>Un solo uso · vence {{ formatDateTime(resumeQr.expiresAt) }}</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
+    <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>{{ resumeQr.heading || `Reconexión de ${resumeQr.name}` }}</strong><p>Un solo uso · vence {{ formatDateTime(resumeQr.expiresAt) }}</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
     <div v-if="qrImage && lobbyStatus === 'lobby_open'" class="qr-panel"><img :src="qrImage" alt="Código QR para unirse a la Asamblea" /><div><a :href="`/?code=${encodeURIComponent(code)}`">{{ origin }}/?code={{ code }}</a></div></div>
   </aside>
 </template>
+
+<style scoped>
+.regional-secretary-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0; }
+</style>
