@@ -128,6 +128,10 @@ export function countsOf(target: RoundRecord) {
   return target.results?.length ? target.results : target.privateResults || []
 }
 
+export function verdictOf(target: RoundRecord) {
+  return decisionVerdict(target, target.outcome, countsOf(target))
+}
+
 export function voteCountOf(target: RoundRecord, option: { id: string; label: string }) {
   const counts = countsOf(target)
   return (counts.find((result) => result.optionId === option.id) || counts.find((result) => result.label === option.label))?.count ?? 0

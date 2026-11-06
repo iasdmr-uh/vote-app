@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { decisionVerdict, displayOrder, isDecision, isTied, outcomeTag, percentOf, voteLabel, winnerText } from '../resultados'
-import { ApiRequestError, useAssembly } from '../useAssembly'
+import { computed, ref } from 'vue'
+import { decisionVerdict, displayOrder, isDecision, isTied, percentOf, voteLabel } from '../resultados'
+import { useAssembly } from '../useAssembly'
+import PhoneBallot from './PhoneBallot.vue'
+import PhoneJoinForm from './PhoneJoinForm.vue'
+import PhoneResults from './PhoneResults.vue'
+import PhoneVoteReview from './PhoneVoteReview.vue'
 
 const {
-  loading, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode, selectedOptions,
+  loading, error, notice, state, code, sessionToken, pendingJoinCode, selectedOptions,
   reviewingVote, voteSubmitting, assemblyStatus, round, ballotMaxChoices, request, handleParticipantUnauthorized, isUnauthorized,
-  clearParticipantSession, normalizeState, refresh,
+  clearParticipantSession, refresh,
 } = useAssembly()
 
-const reviewHeading = ref<HTMLElement | null>(null)
 const leaving = ref(false)
 const reviewedOptions = computed(() => round.value?.options?.filter((option) => selectedOptions.value.includes(option.id)) || [])
 // Committees and runoffs take exactly the open seats; any other ballot takes one choice.
@@ -25,46 +28,16 @@ const resultRows = computed(() => {
   const results = displayOrder(round.value, state.value?.results || [])
   const outcome = state.value?.outcome
   return results.map((result, index) => ({
+    key: result.optionId || result.label,
     label: result.label,
     count: result.count,
     rank: index + 1,
-    // The computed result marks the elected and the runoff, as on the mesa and the projector.
-    tag: outcomeTag(outcome, result.optionId),
     // A decision's result is its verdict, so a tie needs no badge.
     tied: !outcome && !isDecision(round.value) && isTied(results, index),
     percent: percentOf(result.count, resultBase.value),
   }))
 })
 const verdict = computed(() => round.value ? decisionVerdict(round.value, state.value?.outcome, state.value?.results) : '')
-
-watch(reviewingVote, (reviewing) => {
-  if (reviewing) void nextTick(() => reviewHeading.value?.focus())
-})
-
-async function join() {
-  error.value = ''
-  loading.value = true
-  try {
-    const joined = await request<Record<string, any>>(`/assemblies/${encodeURIComponent(code.value)}/join`, {
-      method: 'POST', body: JSON.stringify({ firstName: firstName.value.trim(), lastName: lastName.value.trim() }),
-    })
-    sessionToken.value = joined.participantSessionToken
-    sessionAssemblyId.value = String(joined.assembly?.id || '')
-    localStorage.setItem('participantSessionToken', joined.participantSessionToken)
-    if (sessionAssemblyId.value) localStorage.setItem('participantAssemblyId', sessionAssemblyId.value)
-    pendingJoinCode.value = ''
-    state.value = normalizeState(joined)
-    notice.value = ''
-    await refresh()
-  } catch (e) {
-    if (!handleParticipantUnauthorized(e, sessionToken.value)) {
-      error.value = e instanceof ApiRequestError && e.status === 404
-        ? 'El código no corresponde a una sala abierta.'
-        : (e as Error).message
-    }
-  }
-  finally { loading.value = false }
-}
 
 async function leaveRoom() {
   const token = sessionToken.value
@@ -124,86 +97,26 @@ async function submitVote() {
   finally { loading.value = false; voteSubmitting.value = false }
   if (accepted) await refresh()
 }
-
-function toggleBallotOption(optionId: string, input: HTMLInputElement) {
-  const checked = input.checked
-  if (round.value?.format !== 'multiple_choice') {
-    selectedOptions.value = checked ? [optionId] : []
-    return
-  }
-  if (checked) {
-    // Once every seat is marked, another box does not tick.
-    if (seatsToFill.value && selectedOptions.value.length >= seatsToFill.value) {
-      input.checked = false
-      return
-    }
-    selectedOptions.value = [...selectedOptions.value, optionId]
-  } else selectedOptions.value = selectedOptions.value.filter((id) => id !== optionId)
-  error.value = ''
-}
 </script>
 
 <template>
-  <section v-if="!sessionToken" class="card join-card phone-screen">
-    <h1>Bienvenido</h1>
-    <form class="phone-form" @submit.prevent="join">
-      <label>Código de sala<input v-model="code" autocomplete="off" required /></label>
-      <label>Nombre<input v-model="firstName" autocomplete="given-name" required maxlength="80" placeholder="Tu nombre" /></label>
-      <label>Apellido<input v-model="lastName" autocomplete="family-name" required maxlength="100" placeholder="Tu apellido" /></label>
-      <button class="primary phone-action" :disabled="loading">{{ loading ? 'Entrando…' : 'Entrar a la sala' }}</button>
-    </form>
-  </section>
+  <PhoneJoinForm v-if="!sessionToken" />
   <section v-else class="card participant-card phone-screen">
     <button class="link-button participant-leave" :disabled="leaving" @click="leaveParticipantSession">Salir</button>
     <div v-if="pendingJoinCode" class="notice error" role="alert">
       Este QR corresponde a otra Asamblea.
       <button class="secondary" :disabled="leaving" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
     </div>
-    <template v-if="ballotShown && round && reviewingVote">
-      <section class="vote-review" aria-labelledby="vote-review-title">
-        <h2 id="vote-review-title" ref="reviewHeading" tabindex="-1">Confirma tu voto</h2>
-        <dl class="review-details">
-          <div><dt>{{ round.title }}</dt><dd>{{ reviewedOptions.map((option) => option.label).join(', ') }}</dd></div>
-        </dl>
-      </section>
-      <div class="review-actions phone-action">
-        <button class="secondary" :disabled="loading" @click="reviewingVote = false">Volver</button>
-        <button class="primary" :disabled="loading || !reviewedOptions.length" @click="submitVote">{{ voteSubmitting ? 'Enviando…' : 'Confirmar voto' }}</button>
-      </div>
-    </template>
+    <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
       <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
       <h1>Voto inhabilitado</h1>
     </template>
-    <template v-else-if="ballotShown && round">
-      <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>{{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
-      <div v-if="seatsToFill" class="phone-ballot-heading"><h1>{{ round.title }}</h1><span class="count-pill">{{ selectedOptions.length }} de {{ seatsToFill }}</span></div>
-      <h1 v-else>{{ round.title }}</h1>
-      <fieldset class="options" :aria-label="seatsToFill ? `${selectedOptions.length} de ${seatsToFill}` : undefined">
-        <label v-for="option in round.options" :key="option.id" class="option"><input :type="round.format === 'multiple_choice' ? 'checkbox' : 'radio'" name="option" :value="option.id" :checked="selectedOptions.includes(option.id)" @change="toggleBallotOption(option.id, $event.target as HTMLInputElement)" /><span>{{ option.label }}</span></label>
-      </fieldset>
-      <button class="primary phone-action phone-ballot-submit" :disabled="loading || voteSubmitting || !selectionComplete" @click="reviewVote">Revisar mi voto</button>
-    </template>
+    <PhoneBallot v-else-if="ballotShown && round" :round="round" :seats-to-fill="seatsToFill" :selection-complete="selectionComplete" @review="reviewVote" />
     <template v-else>
       <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
       <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
-      <section v-if="resultRows.length || state?.officialResult || verdict" class="phone-results" aria-labelledby="phone-results-title">
-        <div class="phone-results-heading">
-          <div><p class="eyebrow">RESULTADOS</p><h2 id="phone-results-title">{{ round?.title }}</h2></div>
-          <p v-if="resultBase" class="voters-total"><strong>{{ resultVoters }} de {{ resultBase }}</strong><span>votaron</span></p>
-        </div>
-        <div v-if="verdict" class="official-card"><p class="eyebrow">RESULTADO</p><strong>{{ verdict }}</strong></div>
-        <div v-else-if="state?.officialResult" class="official-card"><p class="eyebrow">RESULTADO OFICIAL</p><strong>{{ state.officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="state.officialResult.note">{{ state.officialResult.note }}</p></div>
-        <ol v-if="resultRows.length" class="ranked-rows">
-          <li v-for="row in resultRows" :key="row.label" :class="{ first: row.rank === 1 }">
-            <span class="rank-number">{{ row.rank }}</span>
-            <span class="ranked-label">{{ row.label }}<span v-if="row.tag === 'elected'" class="badge badge-success">{{ round ? winnerText(round, row.label) : '' }}</span><span v-else-if="row.tag === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="row.tied" class="badge badge-warning">Empate</span></span>
-            <strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong>
-            <span class="ranked-percent">{{ row.percent }} %</span>
-            <span class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span>
-          </li>
-        </ol>
-      </section>
+      <PhoneResults v-if="resultRows.length || state?.officialResult || verdict" :round="round" :rows="resultRows" :verdict="verdict" :base="resultBase" :voters="resultVoters" :official-result="state?.officialResult" :outcome="state?.outcome" />
       <h1 v-else-if="round?.status === 'annulled' && assemblyStatus !== 'completed'">Votación anulada</h1>
       <h1 v-else-if="assemblyStatus !== 'completed' && !voteRecorded">Sala de espera</h1>
       <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? 'Votación en curso' : 'Espera la siguiente papeleta' }}</p>
