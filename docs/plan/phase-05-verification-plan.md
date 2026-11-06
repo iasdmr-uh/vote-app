@@ -1,7 +1,7 @@
 # Fase 05 — Plan y matriz de verificación operativa
 
 **Estado:** pruebas automatizadas parciales; la prueba puntual contra PostgreSQL local pasó; validación integrada en entorno candidato, carga y simulacro siguen pendientes.
-**Base:** `PHASE_05_TESTING.md`, `README_IMPLEMENTATION.md` y `sistema-votaciones-asdmr.md`.
+**Base:** `docs/plan/phase-05-testing.md`, `docs/plan/README.md` y `docs/scope.md`.
 **Objetivo:** convertir los criterios de Fase 05 en escenarios repetibles, con evidencia y bloqueos visibles, para el entorno candidato de la Asamblea ASDMR.
 
 ## 1. Condiciones de ejecución
@@ -34,15 +34,15 @@ Antes de ejecutar, completar estas decisiones y dependencias:
 
 ### Preparación candidata (#6)
 
-El repositorio incluye ahora `docker-compose.candidate.yml`, imágenes API/web, Caddy para HTTPS, migración explícita, healthchecks, ejemplo de variables sin secretos y guiones para respaldo y comprobación de restauración aislada. Procedimiento y evidencia local: [docs/candidate-environment.md](docs/candidate-environment.md). El 2026-10-02, con Docker Engine 28.0.4, Compose 2.34.0-desktop.1 y la imagen fijada `postgres:17.11-alpine3.24`, se construyeron API/web, se aplicó la migración, API y web quedaron healthy, y los scripts candidatos completaron dump custom y restauración aislada con las cuatro tablas principales presentes. Se eliminaron contenedores y volúmenes de prueba; no se usaron datos personales. La fila de entorno sigue `Pendiente` hasta desplegar en host/DNS autorizados y adjuntar evidencia del HTTPS público y CORS desde un móvil fuera del host, junto al SHA candidato. No se guardan secretos ni backups en Git.
+El repositorio incluye ahora `docker-compose.candidate.yml`, imágenes API/web, Caddy para HTTPS, migración explícita, healthchecks, ejemplo de variables sin secretos y guiones para respaldo y comprobación de restauración aislada. Procedimiento y evidencia local: [docs/candidate-environment.md](../candidate-environment.md). El 2026-10-02, con Docker Engine 28.0.4, Compose 2.34.0-desktop.1 y la imagen fijada `postgres:17.11-alpine3.24`, se construyeron API/web, se aplicó la migración, API y web quedaron healthy, y los scripts candidatos completaron dump custom y restauración aislada con las cuatro tablas principales presentes. Se eliminaron contenedores y volúmenes de prueba; no se usaron datos personales. La fila de entorno sigue `Pendiente` hasta desplegar en host/DNS autorizados y adjuntar evidencia del HTTPS público y CORS desde un móvil fuera del host, junto al SHA candidato. No se guardan secretos ni backups en Git.
 
 Las filas marcadas pendientes son bloqueos para sus pruebas correspondientes; no representan fallos ni resultados. La revisión documental y preparación de casos sí puede avanzar con los contratos de Fase 01.
 
 ### Registro reproducible de validación local (2026-10-01)
 
-Entorno: macOS, commit base ef79c17, Node.js 22.22.1, npm 11.13.0, Docker CLI 28.0.4 instalado pero daemon inaccesible (Cannot connect to the Docker daemon), PostgreSQL local 15.15. README_DEV.md requiere Node.js 22.22.3+ para desarrollo; por tanto esta corrida sirve como evidencia observada en 22.22.1, pero debe repetirse en la versión indicada antes de la aceptación. No se conectó a una base existente.
+Entorno: macOS, commit base ef79c17, Node.js 22.22.1, npm 11.13.0, Docker CLI 28.0.4 instalado pero daemon inaccesible (Cannot connect to the Docker daemon), PostgreSQL local 15.15. docs/development.md requiere Node.js 22.22.3+ para desarrollo; por tanto esta corrida sirve como evidencia observada en 22.22.1, pero debe repetirse en la versión indicada antes de la aceptación. No se conectó a una base existente.
 
-Se creó /private/tmp/asdmr-pg-test.QgPHjv/data desde cero; servidor limitado a 127.0.0.1:55432, base vacía asdmr_integration, autenticación trust local para el clúster efímero. Se aplicó 20261001000000_initial con prisma migrate deploy; luego se detuvo el servidor. La creación y el apagado necesitaron permiso fuera del sandbox para inicializar memoria compartida y detener el proceso. Comandos funcionales equivalentes para repetir el caso están en README_DEV.md.
+Se creó /private/tmp/asdmr-pg-test.QgPHjv/data desde cero; servidor limitado a 127.0.0.1:55432, base vacía asdmr_integration, autenticación trust local para el clúster efímero. Se aplicó 20261001000000_initial con prisma migrate deploy; luego se detuvo el servidor. La creación y el apagado necesitaron permiso fuera del sandbox para inicializar memoria compartida y detener el proceso. Comandos funcionales equivalentes para repetir el caso están en docs/development.md.
 
 Comandos y resultados de esta corrida:
 

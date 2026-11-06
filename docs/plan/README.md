@@ -1,6 +1,6 @@
 # Backlog técnico de implementación — ASDMR Voting System
 
-**Base:** `scope-sistema-votaciones-asdmr.md` (alcance V1, 1 de octubre de 2026)
+**Base:** [`docs/scope.md`](../scope.md) (alcance V1, 1 de octubre de 2026)
 **Estado:** backlog de planificación; no implica que exista código implementado.
 
 ## Propósito y orden recomendado
@@ -9,11 +9,11 @@ Construir un MVP para una Asamblea presencial de 50–70 delegados de la Unión 
 
 Ejecutar las fases en este orden:
 
-1. [PHASE_01_FOUNDATION.md](PHASE_01_FOUNDATION.md) — decisiones, estructura y contratos mínimos.
-2. [PHASE_02_BACKEND.md](PHASE_02_BACKEND.md) — persistencia, reglas y API.
-3. [PHASE_03_REALTIME.md](PHASE_03_REALTIME.md) — actualizaciones en vivo y reconexión.
-4. [PHASE_04_FRONTEND.md](PHASE_04_FRONTEND.md) — experiencias de delegado, moderador y proyector.
-5. [PHASE_05_TESTING.md](PHASE_05_TESTING.md) — verificación, simulacro y preparación de operación.
+1. [phase-01-foundation.md](phase-01-foundation.md) — decisiones, estructura y contratos mínimos.
+2. [phase-02-backend.md](phase-02-backend.md) — persistencia, reglas y API.
+3. [phase-03-realtime.md](phase-03-realtime.md) — actualizaciones en vivo y reconexión.
+4. [phase-04-frontend.md](phase-04-frontend.md) — experiencias de delegado, moderador y proyector.
+5. [phase-05-testing.md](phase-05-testing.md) — verificación, simulacro y preparación de operación.
 
 Las fases 2 y 3 pueden diseñarse en paralelo tras la fase 1, pero la integración de tiempo real depende del modelo y las reglas acordadas en fase 2. No saltar a UI final antes de la segunda iteración de Figma; sí se permite construir flujo funcional con estilos provisionales alineados al manual de marca.
 
@@ -32,7 +32,7 @@ Las fases 2 y 3 pueden diseñarse en paralelo tras la fase 1, pero la integraci�
 - No almacenar `participant_id`, nombre, token de sesión ni un identificador correlacionable en el registro de voto. Mantener participación y voto en registros separados; revisar cuidadosamente trazas, eventos, colas y logs para que tampoco creen un enlace indirecto.
 - El secreto práctico del voto no equivale a anonimato criptográfico frente a acceso privilegiado al servidor. Esta limitación, junto con el límite de “una persona = un voto”, debe documentarse.
 - V1 atiende una Asamblea de la Unión Hondureña; asociaciones se contemplan en el modelo, pero no se habilitan como producto multi-organización en esta entrega.
-- Secretaría y autoridad institucional validan reglas por papeleta, mayoría, abstención, nulidad, empate, repetición y publicación antes de la implementación final de esos comportamientos. Las de mayoría, desempate, decisiones e inhabilitación se confirmaron el 2 de noviembre de 2026 y están implementadas (`README_DEV.md`, «Resultados automáticos»).
+- Secretaría y autoridad institucional validan reglas por papeleta, mayoría, abstención, nulidad, empate, repetición y publicación antes de la implementación final de esos comportamientos. Las de mayoría, desempate, decisiones e inhabilitación se confirmaron el 2 de noviembre de 2026 y están implementadas (`docs/development.md`, «Resultados automáticos»).
 
 ## Dependencias externas que pueden bloquear
 
