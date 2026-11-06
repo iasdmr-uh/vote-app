@@ -175,6 +175,8 @@ model OfficialResult {
 model OfficialResultOption {
   officialResultId String         @map("official_result_id") @db.Uuid
   optionId         String         @map("option_id") @db.Uuid
+  /** Place in the election, counted across its votes. In a committee, place 0 was elected first. */
+  seatOrder        Int            @map("seat_order")
   officialResult   OfficialResult @relation(fields: [officialResultId], references: [id], onDelete: Cascade)
   option           BallotOption   @relation(fields: [optionId], references: [id], onDelete: Cascade)
 

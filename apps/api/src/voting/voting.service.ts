@@ -1121,10 +1121,12 @@ export class VotingService implements OnModuleInit {
     const labelOf = new Map(round.options.map((option) => [option.id, option.label]))
     const now = new Date()
     if (outcome.elected.length) {
+      const seatsTaken = await tx.officialResultOption.count({ where: { officialResult: { roundId: rootId } } })
+      const seats = outcome.elected.map((optionId, index) => ({ optionId, seatOrder: seatsTaken + index }))
       await tx.officialResult.upsert({
         where: { roundId: rootId },
-        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: outcome.elected.map((optionId) => ({ optionId })) } },
-        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: outcome.elected.map((optionId) => ({ optionId })) } },
+        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: seats } },
+        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: seats } },
       })
     }
     const rootTitle = round.committeeRootRoundId ? (await tx.round.findUniqueOrThrow({ where: { id: rootId }, select: { title: true } })).title : round.title
@@ -1183,7 +1185,7 @@ export class VotingService implements OnModuleInit {
 
   private async moderatorOfficialResult(roundId: string) {
     const result = await this.prisma.officialResult.findUnique({
-      where: { roundId }, include: { options: { include: { option: { select: { label: true, roundId: true } } } } },
+      where: { roundId }, include: { options: { orderBy: { seatOrder: 'asc' }, include: { option: { select: { label: true, roundId: true } } } } },
     })
     return result ? this.serializeOfficialResult(result) : null
   }
@@ -1192,7 +1194,7 @@ export class VotingService implements OnModuleInit {
   private async publishedOfficialResult(roundId: string) {
     const result = await this.prisma.officialResult.findUnique({
       where: { roundId },
-      include: { options: { where: { option: { round: { status: 'published' } } }, include: { option: { select: { label: true, roundId: true } } } } },
+      include: { options: { where: { option: { round: { status: 'published' } } }, orderBy: { seatOrder: 'asc' }, include: { option: { select: { label: true, roundId: true } } } } },
     })
     if (!result?.options.length) return null
     const serialized = this.serializeOfficialResult(result)
