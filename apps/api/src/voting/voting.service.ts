@@ -17,7 +17,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CreateRoundDto, RepeatRoundDto } from './dtos.js'
 import { presentationOf } from './presentation.service.js'
-import { decisionOutcome, electionOutcome, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
+import { decisionOutcome, electionOutcome, tiedAtCut, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const RESUME_CODE_TTL_MS = 10 * 60_000
@@ -231,7 +231,7 @@ export class VotingService implements OnModuleInit {
         },
         select: { id: true, assemblyId: true, firstName: true, lastName: true },
       })
-      const count = await tx.participantSession.count({ where: { assemblyId: assembly.id, status: 'active' } })
+      const count = await tx.participantSession.count({ where: { assemblyId: assembly.id, status: 'active', isRegionalSecretary: false } })
       return { participant, count }
     })
     this.realtime.participantJoined(joined.participant.assemblyId, {
@@ -269,7 +269,7 @@ export class VotingService implements OnModuleInit {
     if (left.changed) {
       this.realtime.participantLeft(left.assemblyId, { participantId: left.id, firstName: left.firstName, lastName: left.lastName })
       const [count, assembly, openRound] = await Promise.all([
-        this.prisma.participantSession.count({ where: { assemblyId: left.assemblyId, status: 'active' } }),
+        this.prisma.participantSession.count({ where: { assemblyId: left.assemblyId, status: 'active', isRegionalSecretary: false } }),
         this.prisma.assembly.findUniqueOrThrow({ where: { id: left.assemblyId }, select: { status: true } }),
         this.prisma.round.findFirst({ where: { assemblyId: left.assemblyId, status: 'open' }, select: { id: true } }),
       ])
@@ -298,9 +298,9 @@ export class VotingService implements OnModuleInit {
       : null
     const chain = round ? await this.chainPosition(round) : null
     // An inhabilitado receives no ballot: the open round is announced without its options.
-    const ballotWithheld = participant.votingDisabled && round?.status === 'open'
+    const ballotWithheld = round?.status === 'open' && (participant.votingDisabled || (participant.isRegionalSecretary && !round.regionalSecretaryVotes))
     const openRound = round
-      ? { roundId: round.id, status: round.status, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, ...decisionFields(round), ...chain, options: ballotWithheld ? [] : round.options.map((o) => ({ optionId: o.id, label: o.label })) }
+      ? { roundId: round.id, status: round.status, title: round.title, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, regionalSecretaryVotes: round.regionalSecretaryVotes, ...decisionFields(round), ...chain, options: ballotWithheld ? [] : round.options.map((o) => ({ optionId: o.id, label: o.label })) }
       : null
     // Runoffs belong to the election's first vote, where the official result accumulates.
     const officialRoundId = round?.committeeRootRoundId ?? round?.id
@@ -337,18 +337,19 @@ export class VotingService implements OnModuleInit {
     if (!participant || participant.status !== 'active') throw new ForbiddenException()
     try {
       await this.prisma.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; format: string; category: string; member_count: number | null; election_seats: number | null }>>`
-          SELECT id, assembly_id, status, format, category::text AS category, member_count, election_seats FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+        const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; format: string; category: string; member_count: number | null; election_seats: number | null; regional_secretary_votes: boolean }>>`
+          SELECT id, assembly_id, status, format, category::text AS category, member_count, election_seats, regional_secretary_votes FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
         `
         const round = rows[0]
         if (!round) throw new NotFoundException('Ronda no encontrada')
         if (round.assembly_id !== participant.assemblyId) throw new NotFoundException('Ronda no encontrada')
         if (round.status !== 'open') throw new ConflictException('La papeleta no está abierta')
         // Read under a row lock so an Inhabilitar committing at the same moment lands either before or after this vote.
-        const sessions = await tx.$queryRaw<Array<{ voting_disabled: boolean }>>`
-          SELECT voting_disabled FROM participant_sessions WHERE id = ${participant.id}::uuid FOR SHARE
+        const sessions = await tx.$queryRaw<Array<{ voting_disabled: boolean; is_regional_secretary: boolean }>>`
+          SELECT voting_disabled, is_regional_secretary FROM participant_sessions WHERE id = ${participant.id}::uuid FOR SHARE
         `
         if (sessions[0]?.voting_disabled === true) throw new ForbiddenException('Tu voto está inhabilitado')
+        if (sessions[0]?.is_regional_secretary === true && !round.regional_secretary_votes) throw new ForbiddenException('Esta votación no incluye a la secretaría regional')
         if (round.format === 'single_choice' && optionIds.length !== 1) throw new UnprocessableEntityException('Esta papeleta permite una sola opción')
         const options = await tx.ballotOption.count({ where: { id: { in: optionIds }, roundId } })
         if (options !== optionIds.length) throw new UnprocessableEntityException('Todas las opciones deben pertenecer a esta papeleta')
@@ -386,10 +387,10 @@ export class VotingService implements OnModuleInit {
     if (!assembly) throw new NotFoundException('Asamblea no encontrada')
     const round = assembly.rounds[0]
     const [participantCount, participants, recordedCount, eligibleCounts] = await Promise.all([
-      this.prisma.participantSession.count({ where: { assemblyId: assembly.id, status: 'active' } }),
+      this.prisma.participantSession.count({ where: { assemblyId: assembly.id, status: 'active', isRegionalSecretary: false } }),
       assembly.status === 'lobby_open'
         ? this.prisma.participantSession.findMany({
-            where: { assemblyId: assembly.id, status: 'active' },
+            where: { assemblyId: assembly.id, status: 'active', isRegionalSecretary: false },
             orderBy: { joinedAt: 'asc' },
             select: { firstName: true, lastName: true },
           })
@@ -418,7 +419,7 @@ export class VotingService implements OnModuleInit {
       participantCount,
       ...(participants ? { participants } : {}),
       ...(recordedCount !== undefined ? { recordedCount, eligibleCount: eligibleCounts.get(round!.id) ?? participantCount } : {}),
-      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, positionId: await this.positionIdOf(round), ...decisionFields(round), ...chain } : null,
+      round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, regionalSecretaryVotes: round.regionalSecretaryVotes, positionId: await this.positionIdOf(round), ...decisionFields(round), ...chain } : null,
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
       ...(officialResult ? { officialResult } : {}),
@@ -430,7 +431,7 @@ export class VotingService implements OnModuleInit {
     const assembly = await this.prisma.assembly.findUnique({
       where: { id: assemblyId },
       include: {
-        participants: { where: { status: 'active' }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true, status: true, votingDisabled: true, joinedAt: true } },
+        participants: { where: { status: 'active', isRegionalSecretary: false }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true, status: true, votingDisabled: true, joinedAt: true } },
         rounds: { orderBy: { createdAt: 'asc' }, include: { options: { orderBy: { order: 'asc' } }, _count: { select: { participations: true } } } },
       },
     })
@@ -443,9 +444,10 @@ export class VotingService implements OnModuleInit {
     const voted = new Set(attendanceRound
       ? (await this.prisma.participation.findMany({ where: { roundId: attendanceRound.id }, select: { participantSessionId: true } })).map((item) => item.participantSessionId)
       : [])
-    const [eligibleCounts, leftParticipants] = await Promise.all([
+    const [eligibleCounts, leftParticipants, regionalSecretary] = await Promise.all([
       this.eligibleCounts(assemblyId),
-      this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left' }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
+      this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left', isRegionalSecretary: false }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
+      this.prisma.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { id: true, firstName: true, lastName: true } }),
     ])
     const chains = new Map<string, Array<{ id: string; status: string }>>()
     for (const round of assembly.rounds) {
@@ -462,6 +464,7 @@ export class VotingService implements OnModuleInit {
       category: round.category,
       memberCount: round.memberCount,
       electionSeats: round.electionSeats,
+      regionalSecretaryVotes: round.regionalSecretaryVotes,
       ...decisionFields(round),
       committeeRootRoundId: round.committeeRootRoundId,
       countingRule: round.countingRule,
@@ -498,6 +501,7 @@ export class VotingService implements OnModuleInit {
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants.map((person) => ({ ...person, ...(attendanceRound ? { voted: voted.has(person.id) } : {}) })),
       participantCount: assembly.participants.length,
+      regionalSecretary: regionalSecretary ? { ...regionalSecretary, ...(attendanceRound ? { voted: voted.has(regionalSecretary.id) } : {}) } : null,
       // Kept for the acta: they were registered, and those who voted still count in that ballot's base.
       leftParticipants,
       attendanceRound: attendanceRound ? { roundId: attendanceRound.id, status: attendanceRound.status, votedCount: voted.size, eligibleCount: eligibleCounts.get(attendanceRound.id) ?? assembly.participants.length } : null,
@@ -557,7 +561,7 @@ export class VotingService implements OnModuleInit {
       return { ...updated, changed: true }
     })
     if (!result.changed) return { id: result.id, status: result.status }
-    const count = await this.prisma.participantSession.count({ where: { assemblyId, status: 'active' } })
+    const count = await this.prisma.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })
     this.realtime.assemblyState(assemblyId, { status: 'lobby_open' })
     this.realtime.lobbyState(assemblyId, { status: 'open', participantCount: count })
     return { id: result.id, status: result.status }
@@ -579,7 +583,7 @@ export class VotingService implements OnModuleInit {
       return { ...updated, changed: true }
     })
     if (!result.changed) return { id: result.id, status: result.status }
-    const count = await this.prisma.participantSession.count({ where: { assemblyId, status: 'active' } })
+    const count = await this.prisma.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })
     this.realtime.assemblyState(assemblyId, { status: result.status as AssemblyStatus })
     this.realtime.lobbyState(assemblyId, { status: 'closed', participantCount: count })
     return result
@@ -680,7 +684,7 @@ export class VotingService implements OnModuleInit {
     })
     if (updated.status === 'removed') {
       this.realtime.participantRemoved(updated.assemblyId, updated.id)
-      const count = await this.prisma.participantSession.count({ where: { assemblyId: updated.assemblyId, status: 'active' } })
+      const count = await this.prisma.participantSession.count({ where: { assemblyId: updated.assemblyId, status: 'active', isRegionalSecretary: false } })
       const assembly = await this.prisma.assembly.findUniqueOrThrow({ where: { id: updated.assemblyId }, select: { status: true } })
       this.realtime.lobbyState(updated.assemblyId, { status: assembly.status === 'lobby_open' ? 'open' : 'closed', participantCount: count })
     } else this.realtime.participantUpdated(updated.assemblyId, { participantId: updated.id, firstName: updated.firstName, lastName: updated.lastName })
@@ -724,7 +728,7 @@ export class VotingService implements OnModuleInit {
       if (!result.rejoined) this.realtime.participantState(result.id, await this.participantState(result.id))
       if (result.rejoined) {
         const [count, assembly, openRound] = await Promise.all([
-          this.prisma.participantSession.count({ where: { assemblyId: result.assemblyId, status: 'active' } }),
+          this.prisma.participantSession.count({ where: { assemblyId: result.assemblyId, status: 'active', isRegionalSecretary: false } }),
           this.prisma.assembly.findUniqueOrThrow({ where: { id: result.assemblyId }, select: { status: true } }),
           this.prisma.round.findFirst({ where: { assemblyId: result.assemblyId, status: 'open' }, select: { id: true } }),
         ])
@@ -1027,6 +1031,7 @@ export class VotingService implements OnModuleInit {
           approvalRule: source.approvalRule,
           committeeRootRoundId: rootId,
           electionSeats: seats,
+          regionalSecretaryVotes: source.regionalSecretaryVotes,
           // Repeating an annulled runoff is still that runoff: same label, same rules for new candidates.
           countingRule: { kind: 'count_only', reason: 'repeat', sourceRoundId: source.id, ...(isRunoff(source.countingRule) ? { runoff: true } : {}) },
           options: { create: selected.map((option, order) => ({ label: option.label, order })) },
@@ -1082,23 +1087,74 @@ export class VotingService implements OnModuleInit {
 
   /** Locks a runoff draft whose candidates the mesa may change: the 3rd vote of its election or later. */
   private async lockCandidateDraft(tx: Prisma.TransactionClient, roundId: string) {
+    const round = await this.lockDraft(tx, roundId, 'Los candidatos solo se cambian antes de abrir la votación')
+    // A decision repeats between the options it already had; only an election takes a new candidate.
+    if (round.category === 'decision') throw new ConflictException('Solo se agregan candidatos en la elección de un cargo o una comisión')
+    if (!round.runoff || round.voteNumber < 3) {
+      throw new ConflictException('Solo se puede agregar un candidato a partir de la 3.ª votación')
+    }
+    return round
+  }
+
+  private async lockDraft(tx: Prisma.TransactionClient, roundId: string, notDraftMessage: string) {
     const rows = await tx.$queryRaw<Array<{ assembly_id: string }>>`SELECT assembly_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
     if (!rows[0]) throw new NotFoundException('Ronda no encontrada')
     await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${rows[0].assembly_id}::uuid FOR UPDATE`
     const assembly = await tx.assembly.findUniqueOrThrow({ where: { id: rows[0].assembly_id }, select: { status: true } })
     if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
     const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, category: true, committeeRootRoundId: true, countingRule: true } })
-    if (round.status !== 'draft') throw new ConflictException('Los candidatos solo se cambian antes de abrir la votación')
-    // A decision repeats between the options it already had; only an election takes a new candidate.
-    if (round.category === 'decision') throw new ConflictException('Solo se agregan candidatos en la elección de un cargo o una comisión')
+    if (round.status !== 'draft') throw new ConflictException(notDraftMessage)
     const rootId = round.committeeRootRoundId ?? round.id
     // Counted as chainPosition counts it, so the server agrees with the "N.ª VOTACIÓN" the mesa sees.
     const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true } })
-    const voteNumber = voteNumberIn(chain, round.id)
-    if (!isRunoff(round.countingRule) || voteNumber < 3) {
-      throw new ConflictException('Solo se puede agregar un candidato a partir de la 3.ª votación')
-    }
-    return { assemblyId: round.assemblyId, rootId, voteNumber }
+    return { assemblyId: round.assemblyId, rootId, category: round.category, runoff: isRunoff(round.countingRule), voteNumber: voteNumberIn(chain, round.id), chain }
+  }
+
+  /**
+   * Reglamento 05-09 02: a tie that persists through three votes brings in the regional secretary, who
+   * joins from the 4th vote as one more secret voter. They enter on a one-time link because the lobby is closed.
+   */
+  async addRegionalSecretary(roundId: string, input: { firstName: string; lastName: string }) {
+    const resumeCode = newOpaqueCredential()
+    const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
+    const identity = { firstName: input.firstName.trim(), lastName: input.lastName.trim() }
+    const session = { ...identity, status: 'active' as const, resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt }
+    const secretary = await this.prisma.$transaction(async (tx) => {
+      const round = await this.lockDraft(tx, roundId, 'La secretaría regional solo se agrega antes de abrir la votación')
+      if (!round.runoff || round.voteNumber < 4) throw new ConflictException('La secretaría regional se agrega a partir de la 4.ª votación')
+      if (!await this.previousVoteTied(tx, round.chain, roundId)) throw new ConflictException('La secretaría regional solo se agrega si la votación anterior terminó en empate')
+      const existing = await tx.participantSession.findFirst({ where: { assemblyId: round.assemblyId, isRegionalSecretary: true }, select: { id: true } })
+      const person = existing
+        ? await tx.participantSession.update({ where: { id: existing.id }, data: session, select: { id: true } })
+        // The real token replaces this one when the link is redeemed.
+        : await tx.participantSession.create({ data: { ...session, assemblyId: round.assemblyId, isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true } })
+      await tx.round.update({ where: { id: roundId }, data: { regionalSecretaryVotes: true } })
+      await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.regional_secretary_added', metadata: { participantId: person.id, voteNumber: round.voteNumber } } })
+      return person
+    })
+    await this.announceRound(roundId)
+    return { participantId: secretary.id, name: `${identity.firstName} ${identity.lastName}`, resumeUrl: this.appUrl({ resume: resumeCode }), expiresAt: expiresAt.toISOString() }
+  }
+
+  async removeRegionalSecretary(roundId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const round = await this.lockDraft(tx, roundId, 'La secretaría regional solo se quita antes de abrir la votación')
+      await tx.round.update({ where: { id: roundId }, data: { regionalSecretaryVotes: false } })
+      await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.regional_secretary_removed', metadata: { voteNumber: round.voteNumber } } })
+    })
+    await this.announceRound(roundId)
+    return { roundId, removed: true as const }
+  }
+
+  /** Whether the last counted vote before this draft left its top places tied. */
+  private async previousVoteTied(tx: Prisma.TransactionClient, chain: Array<{ id: string; status: string }>, roundId: string) {
+    const earlier = chain.slice(0, chain.findIndex((item) => item.id === roundId))
+    const previous = earlier.filter((item) => (SETTLED_ROUND_STATUSES as readonly string[]).includes(item.status) && item.status !== 'annulled').at(-1)
+    if (!previous) return false
+    const round = await tx.round.findUniqueOrThrow({ where: { id: previous.id }, include: { options: { select: { id: true } } } })
+    const counts = await tx.anonymousVote.groupBy({ by: ['optionId'], where: { roundId: previous.id }, _count: { _all: true } })
+    const countOf = new Map(counts.map((row) => [row.optionId, row._count._all]))
+    return tiedAtCut(round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 })), seatsOf(round))
   }
 
   /** Which vote of its election a round is (1 for the first) and whether it is a runoff. */
@@ -1143,6 +1199,7 @@ export class VotingService implements OnModuleInit {
             approvalRule: round.approvalRule,
             committeeRootRoundId: rootId,
             electionSeats: round.category === 'committee' ? outcome.openSeats : null,
+            regionalSecretaryVotes: round.regionalSecretaryVotes,
             countingRule: { kind: 'count_only', reason: 'runoff', sourceRoundId: round.id },
             // Ballot order, not rank order, so the runoff ballot does not favor the most voted.
             options: { create: round.options.filter((option) => outcome.runoff.includes(option.id)).map((option, order) => ({ label: option.label, order })) },
@@ -1290,17 +1347,24 @@ export class VotingService implements OnModuleInit {
   /** Counted from who is in the room now; a settled ballot uses the value frozen when it closed instead. */
   private async liveEligibleCounts(client: Prisma.TransactionClient, assemblyId: string) {
     // Sequential: an interactive transaction runs on one connection.
-    const active = await client.participantSession.count({ where: { assemblyId, status: 'active' } })
-    const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true } })
+    const active = await client.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })
+    const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true, regionalSecretaryVotes: true } })
     const inactiveVoters = await client.participantSession.findMany({
-      where: { assemblyId, status: { not: 'active' }, participations: { some: {} } },
+      where: { assemblyId, status: { not: 'active' }, isRegionalSecretary: false, participations: { some: {} } },
       select: { participations: { select: { roundId: true } } },
+    })
+    const secretary = await client.participantSession.findFirst({
+      where: { assemblyId, isRegionalSecretary: true },
+      select: { status: true, participations: { select: { roundId: true } } },
     })
     const chainOf = new Map(rounds.map((round) => [round.id, round.committeeRootRoundId ?? round.id]))
     const votedChains = inactiveVoters.map((person) => new Set(person.participations.map((item) => chainOf.get(item.roundId))))
+    const secretaryChains = new Set(secretary?.participations.map((item) => chainOf.get(item.roundId)))
     return new Map(rounds.map((round) => {
       const chain = chainOf.get(round.id)
-      return [round.id, active + votedChains.filter((chains) => chains.has(chain)).length]
+      // The regional secretary counts only in the votes they joined, and leaving after voting keeps them in.
+      const secretaryCounts = round.regionalSecretaryVotes && (secretary?.status === 'active' || secretaryChains.has(chain))
+      return [round.id, active + votedChains.filter((chains) => chains.has(chain)).length + (secretaryCounts ? 1 : 0)]
     }))
   }
 

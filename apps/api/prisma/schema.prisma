@@ -90,6 +90,8 @@ model ParticipantSession {
   status         ParticipantStatus @default(active)
   /** Inhabilitado by the mesa: stays in the room and in the majority base, but cannot vote. */
   votingDisabled Boolean           @default(false) @map("voting_disabled")
+  /** Not a delegate: votes only in the rounds marked regionalSecretaryVotes, and stays out of every delegate count. */
+  isRegionalSecretary Boolean      @default(false) @map("is_regional_secretary")
   joinedAt       DateTime          @default(now()) @map("joined_at")
   assembly       Assembly          @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   participations Participation[]
@@ -108,6 +110,8 @@ model Round {
   memberCount    Int?            @map("member_count")
   /** Exact names a delegate marks in this vote; a runoff asks for the seats still open. */
   electionSeats  Int?             @map("election_seats")
+  /** The mesa added the regional secretary to this vote, so the base grows by one. Later votes of the election inherit it. */
+  regionalSecretaryVotes Boolean  @default(false) @map("regional_secretary_votes")
   /** Set on a runoff or repetition: the election's first vote, where the computed official result accumulates. */
   committeeRootRoundId String?    @map("committee_root_round_id") @db.Uuid
   /** Decision only: 'boolean' (A favor / En contra) or 'options' (written by the mesa; one is chosen). */
