@@ -64,7 +64,6 @@ export function electionOutcome(tallies: Tally[], seats: number, base: number, r
   return { seats: wanted, base, threshold, elected: elected.map((item) => item.optionId), runoff: pool.map((item) => item.optionId), openSeats }
 }
 
-/** Whether more candidates share the last seat's vote count than there are seats left to give them. */
 export function tiedAtCut(tallies: Tally[], seats: number) {
   const wanted = Math.max(1, Math.trunc(seats))
   const counts = tallies.map((tally) => tally.count).sort((a, b) => b - a)

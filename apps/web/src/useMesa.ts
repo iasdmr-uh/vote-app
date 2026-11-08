@@ -73,7 +73,6 @@ function runoffOf(target: RoundRecord) {
 function acceptsNewCandidates(target: RoundRecord) {
   return target.status === 'draft' && target.category !== 'decision' && Boolean(target.runoff) && voteNumber(target) >= 3
 }
-/** From the 4th vote on, a draft that follows a tied vote may take the regional secretary as a secret voter. The API has the final say. */
 function acceptsRegionalSecretary(target: RoundRecord) {
   if (target.status !== 'draft' || !target.runoff || voteNumber(target) < 4) return false
   if (target.regionalSecretaryVotes) return true
@@ -82,7 +81,6 @@ function acceptsRegionalSecretary(target: RoundRecord) {
   const previous = counted.at(-1)
   return Boolean(previous && decisionTie(previous))
 }
-/** A draft the mesa reviews before opening, because it can still change who is on it or who votes. */
 function needsPreparation(target: RoundRecord) {
   return acceptsNewCandidates(target) || acceptsRegionalSecretary(target)
 }
@@ -91,7 +89,6 @@ const preparedRunoff = computed(() => {
   if (chosen && needsPreparation(chosen)) return chosen
   return currentRoundRecord.value && needsPreparation(currentRoundRecord.value) ? currentRoundRecord.value : undefined
 })
-/** The regional secretary votes in the ballot on screen, so the mesa keeps their row and QR at hand. */
 const regionalSecretaryInBallot = computed(() => Boolean((preparedRunoff.value ?? currentRoundRecord.value)?.regionalSecretaryVotes && state.value?.regionalSecretary))
 const currentRoundComplete = computed(() => Boolean(currentRoundRecord.value && electionComplete(currentRoundRecord.value)))
 const moderatorWorkflowStep = computed(() => {
@@ -156,7 +153,6 @@ function repeatAllOptions(target: RoundRecord | undefined) {
 function openRunoff(target: RoundRecord) {
   const runoff = runoffOf(target)
   if (!runoff) return
-  // The mesa first sees the ballot, where it may add a candidate or the regional secretary.
   if (needsPreparation(runoff)) { preparingRunoffId.value = runoff.id; newRunoffCandidate.value = ''; return }
   void moderatorAction(`/moderator/rounds/${encodeURIComponent(runoff.id)}/open`)
 }

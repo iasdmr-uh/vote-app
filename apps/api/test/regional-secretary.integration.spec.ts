@@ -52,7 +52,6 @@ async function roundOnMesa(service: VotingService, assemblyId: string, roundId: 
   return (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.id === roundId)!
 }
 
-/** Half the delegates mark each name, so the vote ties unless one more voter joins. */
 async function voteAndClose(service: VotingService, vote: Vote, people: string[], labels: string[]) {
   await service.openRound(vote.id)
   for (const [index, person] of people.entries()) await service.castVote(person, vote.id, optionId(vote, labels[index % labels.length]!))
@@ -60,7 +59,6 @@ async function voteAndClose(service: VotingService, vote: Vote, people: string[]
   await service.publishRound(vote.id)
 }
 
-/** Ties votes in a row and returns the draft of the next vote. */
 async function tiedVotes(service: VotingService, assemblyId: string, first: Vote, people: string[], times: number) {
   let vote = first
   for (let count = 0; count < times; count += 1) {
@@ -128,7 +126,6 @@ test('the regional secretary cannot join before the 4th vote', { skip }, async (
 test('the regional secretary cannot join when the previous vote did not tie', { skip }, async () => {
   await withAssembly('secretary-no-tie', 10, async ({ service, assemblyId, people }) => {
     const third = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 2)
-    // Ana 5 and Luis 4 with one delegate not voting: no majority of 10, and no tie.
     await voteAndClose(service, third, people.slice(0, 9), ['Ana', 'Luis'])
     const fourth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === third.id)!
     await assert.rejects(service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY), conflict(/empate/))
@@ -156,7 +153,6 @@ test('the regional secretary stays in later votes of that election until the mes
   await withAssembly('secretary-later-votes', 4, async ({ service, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
-    // The secretary does not vote, so Ana 2 and Luis 2 tie again over a base of 5.
     await voteAndClose(service, fourth, people, ['Ana', 'Luis'])
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
 

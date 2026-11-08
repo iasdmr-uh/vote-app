@@ -90,7 +90,6 @@ model ParticipantSession {
   status         ParticipantStatus @default(active)
   /** Inhabilitado by the mesa: stays in the room and in the majority base, but cannot vote. */
   votingDisabled Boolean           @default(false) @map("voting_disabled")
-  /** Not a delegate: votes only in the rounds marked regionalSecretaryVotes, and stays out of every delegate count. */
   isRegionalSecretary Boolean      @default(false) @map("is_regional_secretary")
   joinedAt       DateTime          @default(now()) @map("joined_at")
   assembly       Assembly          @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
@@ -110,7 +109,6 @@ model Round {
   memberCount    Int?            @map("member_count")
   /** Exact names a delegate marks in this vote; a runoff asks for the seats still open. */
   electionSeats  Int?             @map("election_seats")
-  /** The mesa added the regional secretary to this vote, so the base grows by one. Later votes of the election inherit it. */
   regionalSecretaryVotes Boolean  @default(false) @map("regional_secretary_votes")
   /** Set on a runoff or repetition: the election's first vote, where the computed official result accumulates. */
   committeeRootRoundId String?    @map("committee_root_round_id") @db.Uuid
@@ -179,7 +177,6 @@ model OfficialResult {
 model OfficialResultOption {
   officialResultId String         @map("official_result_id") @db.Uuid
   optionId         String         @map("option_id") @db.Uuid
-  /** Place in the election, counted across its votes. In a committee, place 0 was elected first. */
   seatOrder        Int            @map("seat_order")
   officialResult   OfficialResult @relation(fields: [officialResultId], references: [id], onDelete: Cascade)
   option           BallotOption   @relation(fields: [optionId], references: [id], onDelete: Cascade)

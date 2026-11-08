@@ -1,5 +1,3 @@
--- Committee members keep the order they were elected in, because that order is shown to the assembly.
--- Existing results rank earlier votes first, then most votes, then ballot order.
 ALTER TABLE "official_result_options" ADD COLUMN "seat_order" INTEGER;
 
 UPDATE "official_result_options" AS seat

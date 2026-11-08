@@ -68,7 +68,6 @@ export function electedText(_name?: string) {
 
 export const REGIONAL_SECRETARY_NOTE = 'Con la secretaría regional'
 
-/** What one vote decided for one option. A boolean decision's verdict is in its status instead. */
 export function voteResultText(target: RoundRecord, optionId?: string) {
   const outcome = target.outcome
   if (!outcome || !optionId || (isDecision(target) && target.decisionFormat === 'boolean')) return ''
@@ -76,14 +75,12 @@ export function voteResultText(target: RoundRecord, optionId?: string) {
   return outcome.runoff.includes(optionId) ? 'Pasa' : 'No continúa'
 }
 
-/** The names this vote elected, never those of earlier or later votes of the election. */
 export function electedInVote(target: RoundRecord) {
   const elected = target.outcome?.elected ?? []
   const counts = countsOf(target)
   return elected.map((optionId) => counts.find((result) => result.optionId === optionId)?.label).filter((label): label is string => Boolean(label))
 }
 
-/** The whole committee in election order, only on the vote that filled its last seat. */
 export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {
   const root = rounds.find((item) => item.id === (target.committeeRootRoundId || target.id))
   const members = root?.officialResult?.elected ?? []

@@ -1110,10 +1110,6 @@ export class VotingService implements OnModuleInit {
     return { assemblyId: round.assemblyId, rootId, category: round.category, runoff: isRunoff(round.countingRule), voteNumber: voteNumberIn(chain, round.id), chain }
   }
 
-  /**
-   * Reglamento 05-09 02: a tie that persists through three votes brings in the regional secretary, who
-   * joins from the 4th vote as one more secret voter. They enter on a one-time link because the lobby is closed.
-   */
   async addRegionalSecretary(roundId: string, input: { firstName: string; lastName: string }) {
     const resumeCode = newOpaqueCredential()
     const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
@@ -1126,7 +1122,6 @@ export class VotingService implements OnModuleInit {
       const existing = await tx.participantSession.findFirst({ where: { assemblyId: round.assemblyId, isRegionalSecretary: true }, select: { id: true } })
       const person = existing
         ? await tx.participantSession.update({ where: { id: existing.id }, data: session, select: { id: true } })
-        // The real token replaces this one when the link is redeemed.
         : await tx.participantSession.create({ data: { ...session, assemblyId: round.assemblyId, isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true } })
       await tx.round.update({ where: { id: roundId }, data: { regionalSecretaryVotes: true } })
       await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.regional_secretary_added', metadata: { participantId: person.id, voteNumber: round.voteNumber } } })
@@ -1146,7 +1141,6 @@ export class VotingService implements OnModuleInit {
     return { roundId, removed: true as const }
   }
 
-  /** Whether the last counted vote before this draft left its top places tied. */
   private async previousVoteTied(tx: Prisma.TransactionClient, chain: Array<{ id: string; status: string }>, roundId: string) {
     const earlier = chain.slice(0, chain.findIndex((item) => item.id === roundId))
     const previous = earlier.filter((item) => (SETTLED_ROUND_STATUSES as readonly string[]).includes(item.status) && item.status !== 'annulled').at(-1)
@@ -1362,7 +1356,6 @@ export class VotingService implements OnModuleInit {
     const secretaryChains = new Set(secretary?.participations.map((item) => chainOf.get(item.roundId)))
     return new Map(rounds.map((round) => {
       const chain = chainOf.get(round.id)
-      // The regional secretary counts only in the votes they joined, and leaving after voting keeps them in.
       const secretaryCounts = round.regionalSecretaryVotes && (secretary?.status === 'active' || secretaryChains.has(chain))
       return [round.id, active + votedChains.filter((chains) => chains.has(chain)).length + (secretaryCounts ? 1 : 0)]
     }))

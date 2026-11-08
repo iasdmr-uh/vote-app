@@ -55,7 +55,6 @@ test('a vote that fills several seats lists them from most voted to least voted'
     const candidates = ['Diego', 'Carla', 'Bruno', 'Ana', 'Elsa']
     const round = await service.createRound(assemblyId, { title: 'Comisión', category: 'committee', memberCount: 4, format: 'multiple_choice', options: candidates.map((label) => ({ label })) })
     await service.openRound(round.id)
-    // Each delegate leaves one name out, so Ana 10, Bruno 9, Carla 8, Diego 7 and Elsa 6.
     const leftOut = ['Bruno', 'Carla', 'Carla', 'Diego', 'Diego', 'Diego', 'Elsa', 'Elsa', 'Elsa', 'Elsa']
     for (const [index, omitted] of leftOut.entries()) {
       await service.castVote(people[index]!, round.id, idsOf(round.options, candidates.filter((name) => name !== omitted)))
@@ -73,7 +72,6 @@ test('a member elected in an earlier vote stays ahead of a later vote with more 
   await withAssembly('order-chain', 5, async ({ service, assemblyId, people }) => {
     const first = await service.createRound(assemblyId, { title: 'Comisión', category: 'committee', memberCount: 2, format: 'multiple_choice', options: ['Zoe', 'Ana', 'Luis'].map((label) => ({ label })) })
     await service.openRound(first.id)
-    // Zoe 3 reaches the majority of 5. Ana 2 and Luis 1 go to a runoff for the open seat.
     const marks = [['Zoe', 'Ana'], ['Zoe', 'Ana'], ['Zoe', 'Luis']]
     for (const [index, names] of marks.entries()) await service.castVote(people[index]!, first.id, idsOf(first.options, names))
     await service.closeRound(first.id)
@@ -85,7 +83,6 @@ test('a member elected in an earlier vote stays ahead of a later vote with more 
     await service.closeRound(draft.id)
     assert.deepEqual(await electedOnMesa(service, assemblyId, first.id), ['Zoe', 'Ana'])
 
-    // Annulling and repeating the runoff returns the seat to the same place.
     await service.annulRound(draft.id, 'Error de lectura')
     assert.deepEqual(await electedOnMesa(service, assemblyId, first.id), ['Zoe'])
     const repeat = await service.repeatRound(draft.id, { optionIds: idsOf(draft.options, ['Ana', 'Luis']), seats: 1 })

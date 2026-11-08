@@ -26,7 +26,6 @@ export type PublicState = {
   status?: string
   lobbyStatus?: string
   participants?: Array<{ id?: string; firstName: string; lastName: string; voted?: boolean; votingDisabled?: boolean }>
-  /** Mesa only. Votes secretly in the rounds marked `regionalSecretaryVotes` and stays out of `participants`. */
   regionalSecretary?: { id: string; firstName: string; lastName: string; voted?: boolean } | null
   attendanceRound?: { roundId: string; status: string; votedCount: number; eligibleCount?: number } | null
   leftParticipants?: Array<{ id: string; firstName: string; lastName: string }>
