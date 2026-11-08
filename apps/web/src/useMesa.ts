@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
@@ -7,7 +7,7 @@ import { useAssembly } from './useAssembly'
 
 const {
   loading, error, notice, state, code, moderatorToken, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies,
-  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, participantLeft, participantLeftId, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
+  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
@@ -99,7 +99,6 @@ const moderatorWorkflowStep = computed(() => {
   if (round.value?.status === 'draft') return 1
   return lobbyStatus.value === 'lobby_open' ? 0 : 1
 })
-watch(assemblyId, () => { participantLeft.value = ''; participantLeftId.value = '' })
 
 function eligibleOf(target: RoundRecord) {
   const own = (target as RoundRecord & { eligibleCount?: number }).eligibleCount
@@ -319,6 +318,30 @@ function issueResumeCode(person: { id?: string; firstName: string; lastName: str
   }
 }
 
+function removeFromRoom(person: { id?: string; firstName: string; lastName: string }) {
+  if (!person.id) return
+  moderationConfirmation.value = {
+    title: `¿Retirar a ${person.firstName} ${person.lastName} de la sala?`,
+    consequence: 'La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta, salvo en una elección en la que ya votó. Puedes regresarlo a la sala después.',
+    label: 'Retirar de la sala',
+    path: `/moderator/participants/${encodeURIComponent(person.id)}/take-out`,
+    method: 'POST',
+  }
+}
+
+async function returnToRoom(participantId: string | undefined) {
+  if (!participantId || loading.value) return
+  error.value = ''
+  loading.value = true
+  let succeeded = false
+  try {
+    await request(`/moderator/participants/${encodeURIComponent(participantId)}/return`, { method: 'POST' }, moderatorToken.value)
+    succeeded = true
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  if (succeeded) await refresh(true)
+}
+
 /** Inhabilitar / Habilitar is reversible and audited, so it applies at once without a confirmation step. */
 async function setVotingDisabled(participantId: string | undefined, disabled: boolean) {
   if (!participantId || loading.value) return
@@ -331,7 +354,6 @@ async function setVotingDisabled(participantId: string | undefined, disabled: bo
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
   if (!succeeded) return
-  if (participantId === participantLeftId.value) { participantLeft.value = ''; participantLeftId.value = '' }
   await refresh(true)
 }
 
@@ -532,7 +554,7 @@ export function useMesa() {
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
     annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
-    removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
+    removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
     createAssembly, editParticipant, createRound, signInModerator,
   }

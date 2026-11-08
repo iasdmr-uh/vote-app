@@ -51,14 +51,8 @@ test('D · inhabilitar durante una votación: el teléfono no recibe la papeleta
   await vote(carlos, ['Juan Mora'])
   await expect(summary.locator(':scope > span')).toHaveText(['2 votaron', '4 faltan'])
 
-  // Rosa taps "Salir"; the mesa's notice offers Inhabilitar, which keeps her in the list and the base.
-  await rosa.page.getByRole('button', { name: 'Salir' }).click()
-  await expect(rosa.page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
-  const left = mesa.locator('.left-notice')
-  await expect(left).toContainText('Rosa Díaz salió de la sala')
-  await left.getByRole('button', { name: 'Inhabilitar' }).click()
-  await expect(left).toHaveCount(0)
-  // Inhabilitar someone who left brings them back to the list (confirmed by the user).
+  await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
+  await person(mesa, 'Rosa Díaz').getByRole('button', { name: 'Inhabilitar' }).click()
   await expect(person(mesa, 'Rosa Díaz').locator('.badge-disabled')).toHaveText('Inhabilitado')
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('6')
   await expect(summary.locator(':scope > span')).toHaveText(['2 votaron', '3 faltan', '1 inhabilitado'])

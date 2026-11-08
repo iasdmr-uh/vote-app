@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { decisionVerdict, displayOrder, isDecision, isTied, percentOf, voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 import PhoneBallot from './PhoneBallot.vue'
@@ -9,11 +9,10 @@ import PhoneVoteReview from './PhoneVoteReview.vue'
 
 const {
   loading, error, notice, state, code, sessionToken, pendingJoinCode, selectedOptions,
-  reviewingVote, voteSubmitting, assemblyStatus, round, ballotMaxChoices, request, handleParticipantUnauthorized, isUnauthorized,
+  reviewingVote, voteSubmitting, assemblyStatus, round, ballotMaxChoices, request, handleParticipantUnauthorized,
   clearParticipantSession, refresh,
 } = useAssembly()
 
-const leaving = ref(false)
 const reviewedOptions = computed(() => round.value?.options?.filter((option) => selectedOptions.value.includes(option.id)) || [])
 // Committees and runoffs take exactly the open seats; any other ballot takes one choice.
 const seatsToFill = computed(() => round.value?.format === 'multiple_choice' ? ballotMaxChoices.value : null)
@@ -39,33 +38,14 @@ const resultRows = computed(() => {
 })
 const verdict = computed(() => round.value ? decisionVerdict(round.value, state.value?.outcome, state.value?.results) : '')
 
-async function leaveRoom() {
-  const token = sessionToken.value
-  leaving.value = true
-  try {
-    if (token) await request('/participant/leave', { method: 'POST' }, token)
-  } catch (e) {
-    if (!isUnauthorized(e)) {
-      error.value = 'No se pudo salir. Intenta de nuevo.'
-      return false
-    }
-  } finally { leaving.value = false }
+function switchToIncomingAssembly() {
+  const incoming = pendingJoinCode.value
+  if (!incoming) return
   clearParticipantSession()
   pendingJoinCode.value = ''
   error.value = ''
   notice.value = ''
-  return true
-}
-
-async function leaveParticipantSession() {
-  if (leaving.value) return
-  await leaveRoom()
-}
-
-async function switchToIncomingAssembly() {
-  const incoming = pendingJoinCode.value
-  if (!incoming || leaving.value) return
-  if (await leaveRoom()) code.value = incoming
+  code.value = incoming
 }
 
 function reviewVote() {
@@ -102,10 +82,9 @@ async function submitVote() {
 <template>
   <PhoneJoinForm v-if="!sessionToken" />
   <section v-else class="card participant-card phone-screen">
-    <button class="link-button participant-leave" :disabled="leaving" @click="leaveParticipantSession">Salir</button>
     <div v-if="pendingJoinCode" class="notice error" role="alert">
       Este QR corresponde a otra Asamblea.
-      <button class="secondary" :disabled="leaving" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
+      <button class="secondary" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
     </div>
     <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
