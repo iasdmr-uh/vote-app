@@ -537,6 +537,27 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('new-session-token')
 })
 
+test('el teléfono pide esperar si alguien intenta ingresar durante una votación abierta', async ({ page }) => {
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/DEMO-ROOM/join')) {
+      await route.fulfill({ status: 409, json: { message: 'Hay una votación en curso. Espera a que termine para ingresar.' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for join during vote test' } })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Código de sala').fill('DEMO-ROOM')
+  await page.getByLabel('Nombre').fill('Delegado')
+  await page.getByLabel('Apellido').fill('Tardío')
+  await page.getByRole('button', { name: 'Entrar a la sala' }).click()
+  await expect(page.getByRole('alert')).toContainText('Hay una votación en curso. Espera a que termine para ingresar.')
+  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
+})
+
 test('un error de red conserva la selección y permite revisar y reintentar', async ({ page }) => {
   let voteCount = 0
   await page.route(api, async (route) => {

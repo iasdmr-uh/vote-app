@@ -81,3 +81,25 @@ test('the regional secretary gets no reconnection code', async () => {
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.resume_code_issued' } }), 0)
   } finally { await cleanup() }
 })
+
+test('nobody joins with the assembly code while a vote is open, and the mesa can reopen check-in once it ends', async () => {
+  const prisma = await connectDatabase()
+  const { gateway } = gatewayStub()
+  const { voting: service, room } = buildProviders(prisma, gateway)
+  const seeded = await seedAssembly(prisma, room, { label: 'join-open-vote', delegates: ['Jonás', 'Nahúm'] })
+  try {
+    const round = await service.createRound(seeded.assemblyId, { title: 'Tesorería', ...twoOptions })
+    await service.openRound(round.id)
+    const before = await prisma.participantSession.count({ where: { assemblyId: seeded.assemblyId } })
+    await assert.rejects(room.joinAssembly(seeded.joinCode, 'Delegado', '03'), (error: unknown) =>
+      error instanceof ConflictException && /votación en curso/.test(error.message) && /espera/i.test(error.message))
+    assert.equal(await prisma.participantSession.count({ where: { assemblyId: seeded.assemblyId } }), before)
+
+    await service.annulRound(round.id, 'Falta un delegado')
+    await room.changeLobby(seeded.assemblyId, 'lobby_open')
+    assert.ok((await room.joinAssembly(seeded.joinCode, 'Delegado', '03')).participantSessionToken)
+  } finally {
+    await seeded.cleanup()
+    await prisma.$disconnect()
+  }
+})
