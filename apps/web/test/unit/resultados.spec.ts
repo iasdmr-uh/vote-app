@@ -41,8 +41,8 @@ function counted(rows: Row[]) {
   }
 }
 
-function outcome(threshold: number, elected: string[], runoff: string[] = [], seats = 1): Outcome {
-  return { seats, base: 38, threshold, elected, runoff, openSeats: seats - elected.length }
+function outcome(threshold: number, elected: string[], runoff: string[] = [], seats = 1, base = 38): Outcome {
+  return { seats, base, threshold, elected, runoff, openSeats: seats - elected.length }
 }
 
 function round(overrides: Partial<RoundRecord> = {}): RoundRecord {
@@ -115,13 +115,6 @@ describe('percentOf', () => {
     assert.equal(percentOf(5, 0), 0)
     assert.equal(percentOf(5, undefined), 0)
   })
-
-  test('percentOf: abstentions stay in the base, so shares add up to less than 100', () => {
-    const shares = [percentOf(18, 38), percentOf(12, 38)]
-
-    assert.deepEqual(shares, [47, 32])
-    assert.equal(shares[0]! + shares[1]!, 79)
-  })
 })
 
 describe('turnout', () => {
@@ -139,6 +132,9 @@ describe('turnout', () => {
 
   test('notVotedText: abstentions are counted as not voting', () => {
     assert.equal(notVotedText(36, 38), '2 no votaron')
+  })
+
+  test('notVotedText: one missing vote uses the singular', () => {
     assert.equal(notVotedText(37, 38), '1 no votó')
   })
 
@@ -150,8 +146,11 @@ describe('turnout', () => {
     assert.equal(notVotedOf(5, 4), 0)
   })
 
-  test('turnoutOf: prefers the recorded count over the participation count', () => {
+  test('turnoutOf: uses the participation count when there is no recorded count', () => {
     assert.deepEqual(turnoutOf({ participationCount: 7, eligibleCount: 9 }), { recorded: 7, eligible: 9 })
+  })
+
+  test('turnoutOf: prefers the recorded count over the participation count', () => {
     assert.deepEqual(turnoutOf({ recordedCount: 8, participationCount: 7, eligibleCount: 9 }), { recorded: 8, eligible: 9 })
   })
 
@@ -187,6 +186,14 @@ describe('rankedResults', () => {
     const ranked = rankedResults(results, 38)
 
     assert.deepEqual(ranked.map(({ tied, percent }) => [tied, percent]), [[false, 0], [false, 0]])
+  })
+
+  test('rankedResults: abstentions stay in the base, so 18 of 30 votes cast among 38 eligible is 47 percent', () => {
+    const results = [{ label: 'Elías', count: 18 }, { label: 'Eliseo', count: 12 }]
+
+    const ranked = rankedResults(results, 38)
+
+    assert.deepEqual(ranked.map(({ percent }) => percent), [47, 32])
   })
 
   test('rankedResults: places run from 1 to the number of candidates', () => {
@@ -314,33 +321,51 @@ describe('labels', () => {
     assert.equal(majorityText(round(), outcome(20, [])), 'Mayoría: 20')
   })
 
-  test('majorityText: a committee shows its members, and its runoff the seats left', () => {
+  test('majorityText: a committee shows its members', () => {
     assert.equal(majorityText(committee(), outcome(20, [], [], 3)), '3 integrantes · Mayoría: 20')
+  })
+
+  test('majorityText: a committee runoff shows the seats left', () => {
     assert.equal(majorityText(committee({ runoff: true }), outcome(20, [], [], 2)), '2 puestos · Mayoría: 20')
   })
 
-  test('approvalText: names the rule and the votes it needs', () => {
+  test('approvalText: names the 3/4 rule and the votes it needs', () => {
     assert.equal(approvalText(decision(), decision().outcome), 'Se aprueba con 3/4 · 29 votos')
+  })
+
+  test('approvalText: names the simple majority and uses the singular for one vote', () => {
     assert.equal(approvalText(decision({ approvalRule: 'simple' }), { ...outcome(1, []), rule: undefined }), 'Se aprueba con mayoría simple · 1 voto')
   })
 
-  test('formatNames: joins names with commas and a final y', () => {
+  test('formatNames: no names give an empty text', () => {
     assert.equal(formatNames([]), '')
+  })
+
+  test('formatNames: one name is shown alone', () => {
     assert.equal(formatNames(['Elías']), 'Elías')
+  })
+
+  test('formatNames: several names are joined with commas and a final y', () => {
     assert.equal(formatNames(['Elías', 'Eliseo', 'Isaías']), 'Elías, Eliseo y Isaías')
   })
 
   test('votesText: one vote uses the singular', () => {
     assert.equal(votesText(1), '1 voto')
+  })
+
+  test('votesText: zero votes use the plural', () => {
     assert.equal(votesText(0), '0 votos')
   })
 })
 
 describe('decisions', () => {
-  test('decisionVerdict: a yes or no decision is approved or not', () => {
+  test('decisionVerdict: an approved yes or no decision is Aprobada', () => {
+    assert.equal(decisionVerdict(decision(), decision().outcome), 'Aprobada')
+  })
+
+  test('decisionVerdict: a rejected yes or no decision is No aprobada', () => {
     const rejected = decision({ outcome: { ...outcome(29, []), approved: false } })
 
-    assert.equal(decisionVerdict(decision(), decision().outcome), 'Aprobada')
     assert.equal(decisionVerdict(rejected, rejected.outcome), 'No aprobada')
   })
 
@@ -376,12 +401,16 @@ describe('counts', () => {
     assert.deepEqual(countsOf(round({ privateResults })), privateResults)
   })
 
-  test('voteCountOf: finds an option by id, then by label, and defaults to zero', () => {
-    const target = round(counted([['Elías', 3]]))
+  test('voteCountOf: finds an option by id', () => {
+    assert.equal(voteCountOf(round(counted([['Elías', 3]])), { id: 'Elías', label: 'Elías' }), 3)
+  })
 
-    assert.equal(voteCountOf(target, { id: 'Elías', label: 'Elías' }), 3)
-    assert.equal(voteCountOf(target, { id: 'other-id', label: 'Elías' }), 3)
-    assert.equal(voteCountOf(target, { id: 'Eliseo', label: 'Eliseo' }), 0)
+  test('voteCountOf: falls back to the label when the id does not match', () => {
+    assert.equal(voteCountOf(round(counted([['Elías', 3]])), { id: 'other-id', label: 'Elías' }), 3)
+  })
+
+  test('voteCountOf: an option without votes counts zero', () => {
+    assert.equal(voteCountOf(round(counted([['Elías', 3]])), { id: 'Eliseo', label: 'Eliseo' }), 0)
   })
 })
 
@@ -393,7 +422,7 @@ describe('actaSheetRows', () => {
   })
 
   test('actaSheetRows: one row per candidate with place, votes, share and result', () => {
-    const target = round({ participationCount: 3, eligibleCount: 4, ...counted([['Elías', 2], ['Eliseo', 1]]), outcome: outcome(3, ['Elías']), officialResult: official(['Elías']) })
+    const target = round({ participationCount: 3, eligibleCount: 4, ...counted([['Elías', 2], ['Eliseo', 1]]), outcome: outcome(3, ['Elías'], [], 1, 4), officialResult: official(['Elías']) })
 
     const rows = actaSheetRows([target], statuses).slice(1)
 
@@ -426,7 +455,7 @@ describe('actaSheetRows', () => {
       participationCount: 10,
       eligibleCount: 10,
       ...counted([['Elías', 7], ['Eliseo', 5], ['Isaías', 5], ['Jeremías', 3]]),
-      outcome: outcome(6, ['Elías'], ['Eliseo', 'Isaías'], 3),
+      outcome: outcome(6, ['Elías'], ['Eliseo', 'Isaías'], 3, 10),
       officialResult: official(['Elías', 'Isaías', 'Eliseo']),
     })
     const last = committee({
@@ -439,7 +468,7 @@ describe('actaSheetRows', () => {
       eligibleCount: 11,
       regionalSecretaryVotes: true,
       ...counted([['Isaías', 7], ['Eliseo', 6]]),
-      outcome: outcome(6, ['Isaías', 'Eliseo'], [], 2),
+      outcome: outcome(6, ['Isaías', 'Eliseo'], [], 2, 11),
     })
 
     test('actaSheetRows: each row says what its own vote decided', () => {
@@ -479,6 +508,10 @@ describe('actaKind', () => {
     assert.deepEqual(actaKind(round({ voteNumber: 2, runoff: true })), { text: 'DESEMPATE · 2.ª VOTACIÓN', tone: 'vote' })
   })
 
+  test('actaKind: a repeat after an annulled vote is numbered without the runoff label', () => {
+    assert.equal(actaKind(round({ voteNumber: 2 })).text, '2.ª VOTACIÓN')
+  })
+
   test('actaKind: the vote number can be passed in', () => {
     assert.equal(actaKind(committee({ voteNumber: 3 }), 1).text, '1.ª VOTACIÓN')
   })
@@ -487,9 +520,15 @@ describe('actaKind', () => {
     assert.deepEqual(actaKind(round({ status: 'annulled' })), { text: 'ANULADA', tone: 'annulled' })
   })
 
-  test('actaKind: a decision shows whether it was approved', () => {
+  test('actaKind: an approved decision is marked approved', () => {
     assert.deepEqual(actaKind(decision()), { text: 'DECISIÓN · APROBADA', tone: 'approved' })
+  })
+
+  test('actaKind: a rejected decision is marked rejected', () => {
     assert.deepEqual(actaKind(decision({ outcome: { ...outcome(29, []), approved: false } })), { text: 'DECISIÓN · NO APROBADA', tone: 'rejected' })
+  })
+
+  test('actaKind: a decision without a result shows only DECISIÓN', () => {
     assert.equal(actaKind(decision({ outcome: undefined })).text, 'DECISIÓN')
   })
 })
@@ -499,8 +538,11 @@ describe('actaMetaText', () => {
     assert.equal(actaMetaText(round({ outcome: outcome(20, []) })), '36 de 38 votaron · 2 no votaron · Mayoría: 20')
   })
 
-  test('actaMetaText: a committee starts with its members, and its runoff with the seats left', () => {
+  test('actaMetaText: a committee starts with its members', () => {
     assert.equal(actaMetaText(committee({ outcome: outcome(20, [], [], 3) })), '3 integrantes · 36 de 38 votaron · 2 no votaron · Mayoría: 20')
+  })
+
+  test('actaMetaText: a committee runoff starts with the seats left', () => {
     assert.equal(actaMetaText(committee({ runoff: true, outcome: outcome(20, [], [], 2) })), '2 puestos · 36 de 38 votaron · 2 no votaron · Mayoría: 20')
   })
 
@@ -514,6 +556,9 @@ describe('actaMetaText', () => {
 
   test('actaMetaText: an annulled vote shows only its reason', () => {
     assert.equal(actaMetaText(round({ status: 'annulled', annulReason: 'Error en la papeleta' })), 'Error en la papeleta')
+  })
+
+  test('actaMetaText: an annulled vote without a reason shows nothing', () => {
     assert.equal(actaMetaText(round({ status: 'annulled', annulReason: null })), '')
   })
 
