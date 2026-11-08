@@ -22,6 +22,24 @@ test('the 3/4 rule rounds up and counts the same base', () => {
   assert.equal(meetsThreshold(29, 38, 'three_quarters'), true)
 })
 
+test('the 2/3 rule rounds up and counts the same base', () => {
+  assert.equal(thresholdVotes(28, 'two_thirds'), 19)
+  assert.equal(thresholdVotes(30, 'two_thirds'), 20)
+  assert.equal(thresholdVotes(1, 'two_thirds'), 1)
+  assert.equal(thresholdVotes(0, 'two_thirds'), 1, 'with nobody in the room, nobody can reach it')
+  assert.equal(meetsThreshold(18, 28, 'two_thirds'), false)
+  assert.equal(meetsThreshold(19, 28, 'two_thirds'), true)
+})
+
+test('2/3 never asks for fewer votes than a majority, nor more than 3/4', () => {
+  for (let base = 0; base <= 200; base++) {
+    const twoThirds = thresholdVotes(base, 'two_thirds')
+    assert.ok(twoThirds >= thresholdVotes(base), `base ${base}`)
+    assert.ok(twoThirds <= thresholdVotes(base, 'three_quarters'), `base ${base}`)
+    assert.ok(twoThirds * 3 >= base * 2 && (twoThirds - 1) * 3 < base * 2 || twoThirds === 1, `base ${base}`)
+  }
+})
+
 test('case 1 · office: A 35 of 60 is elected', () => {
   const outcome = electionOutcome(tallies({ A: 35, B: 20, C: 5 }), 1, 60)
   assert.deepEqual(outcome, { seats: 1, base: 60, threshold: 31, elected: ['A'], runoff: [], openSeats: 0 })
@@ -121,6 +139,25 @@ test('decision A favor / En contra · 3/4: 29 of 38 approves, 28 does not, and n
   assert.equal(rejected.approved, false)
   assert.deepEqual(rejected.runoff, [])
   assert.equal(rejected.openSeats, 0)
+})
+
+test('decision A favor / En contra · 2/3: 19 of 28 approves, 18 does not, and abstentions count in the base', () => {
+  assert.deepEqual(decisionOutcome(tallies({ favor: 19, contra: 9 }), 'boolean', 28, 'two_thirds'), {
+    seats: 1, base: 28, threshold: 19, elected: [], runoff: [], openSeats: 0, rule: 'two_thirds', approved: true,
+  })
+  const short = decisionOutcome(tallies({ favor: 18, contra: 0 }), 'boolean', 28, 'two_thirds')
+  assert.equal(short.approved, false, '18 for, none against and 10 abstaining is short of 2/3')
+  assert.deepEqual(short.runoff, [])
+})
+
+test('decision with options · 2/3: without the threshold it repeats between the top 2', () => {
+  const outcome = decisionOutcome(tallies({ Tegucigalpa: 9, SPS: 18, Ceiba: 1 }), 'options', 28, 'two_thirds')
+  assert.equal(outcome.threshold, 19)
+  assert.equal(outcome.approved, false)
+  assert.deepEqual(outcome.runoff, ['SPS', 'Tegucigalpa'])
+  const won = decisionOutcome(tallies({ Tegucigalpa: 8, SPS: 19, Ceiba: 1 }), 'options', 28, 'two_thirds')
+  assert.deepEqual(won.elected, ['SPS'])
+  assert.equal(won.approved, true)
 })
 
 test('decision A favor / En contra: a 50/50 tie is not approved', () => {

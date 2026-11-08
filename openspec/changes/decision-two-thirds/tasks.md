@@ -1,0 +1,22 @@
+## 1. Engine
+
+- [x] 1.1 Write failing unit tests for `thresholdVotes` and `meetsThreshold` under `two_thirds`, covering 28 → 19, 30 → 20, base 0 and the invariant that the 2/3 threshold sits between simple majority and 3/4. Implement and verify
+- [x] 1.2 Write failing unit tests for `decisionOutcome` under `two_thirds` for both formats. Verify they pass
+
+## 2. API and database
+
+- [ ] 2.1 Write a failing integration test that a decision accepts `two_thirds`, an election rejects it, and the database rejects an unknown rule. Add the DTO value and the check constraint migration, and verify
+- [ ] 2.2 Write a failing integration test that the participant state carries `approvalThreshold` for an open decision. Implement and verify
+
+## 3. Web
+
+- [ ] 3.1 Write a failing unit test that `approvalText` names «2/3». Implement and verify
+- [ ] 3.2 Add «2/3» to the mesa rule selector, and verify with a mocked E2E test that the request carries `two_thirds`
+- [ ] 3.3 Show the rule and the votes needed on the phone ballot, and verify with a mocked E2E test
+- [ ] 3.4 Verify with mocked E2E tests that the results, projector and acta show «2/3» and the votes needed
+
+## 4. Docs and verification
+
+- [ ] 4.1 Update the 2/3 row in `docs/rules.md` and the decision rules in `docs/scope.md`, leaving the 3/4 wording as it is
+- [ ] 4.2 Add a real-stack E2E test for a 2/3 decision
+- [ ] 4.3 Run `npm run typecheck`, API tests with `TEST_DATABASE_URL`, `npm run test:e2e` and `npm run test:e2e:integration`, and verify all pass
