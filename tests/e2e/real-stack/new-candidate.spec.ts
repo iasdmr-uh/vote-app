@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { api, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * C. A new candidate (#40). The mesa may add one from the 3rd vote on, never in the first runoff. Five
@@ -62,7 +62,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(3)
     await expect(phone.page.getByLabel('Elena Castro', { exact: true })).toBeVisible()
   }
@@ -76,5 +76,5 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   await expectBadge(projectorRow(projector, 'Elena Castro'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Elena Castro')
   await expect(projector.locator('.pj-status')).toHaveText(/DESEMPATE · 3\.ª VOTACIÓN/)
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Elena Castro')
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

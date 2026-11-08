@@ -19,19 +19,21 @@ function openEngine(ws: WebSocketRoute) {
   ws.send(`0${JSON.stringify({ sid: 'synthetic-engine', upgrades: [], pingInterval: 25_000, pingTimeout: 20_000, maxPayload: 1_000_000 })}`)
 }
 
-async function acceptSocket(ws: WebSocketRoute) {
+async function acceptSocket(ws: WebSocketRoute, onJoin = () => {}) {
   openEngine(ws)
   ws.onMessage((message) => {
-    if (String(message).startsWith('40/events')) ws.send('40/events,{"sid":"synthetic-socket"}')
+    if (!String(message).startsWith('40/events')) return
+    ws.send('40/events,{"sid":"synthetic-socket"}')
+    onJoin()
   })
 }
 
 async function mockSocket(page: Page) {
-  const link = { online: true, current: null as WebSocketRoute | null }
+  const link = { online: true, joins: 0, current: null as WebSocketRoute | null }
   await page.routeWebSocket(socketPath, async (ws) => {
     if (!link.online) { openEngine(ws); await ws.close(); return }
     link.current = ws
-    await acceptSocket(ws)
+    await acceptSocket(ws, () => { link.joins += 1 })
   })
   return link
 }
@@ -47,11 +49,17 @@ async function joinAsPhone(page: Page, state: () => Record<string, unknown>) {
 
 const notice = 'Conexión interrumpida'
 
-test('el teléfono muestra «Conectado» durante la votación y no el aviso de conexión', async ({ page }) => {
-  await mockSocket(page)
+async function expectBallotWithoutStatus(page: Page) {
+  await expect(page.getByRole('heading', { name: 'Presidencia' })).toBeVisible()
+  await expect(page.getByText('Conectado', { exact: true })).toHaveCount(0)
+}
+
+test('el teléfono no muestra «Conectado» durante la votación ni el aviso de conexión', async ({ page }) => {
+  const link = await mockSocket(page)
   await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect.poll(() => link.joins).toBe(1)
+  await expectBallotWithoutStatus(page)
   await expect(page.getByText(notice)).toHaveCount(0)
 })
 
@@ -60,21 +68,20 @@ test('un corte breve no cambia lo que muestra el teléfono; uno largo muestra el
   const link = await mockSocket(page)
   await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect.poll(() => link.joins).toBe(1)
 
   link.online = false
   await link.current!.close()
   await page.clock.runFor(2_500)
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expectBallotWithoutStatus(page)
   await expect(page.getByText(notice)).toHaveCount(0)
 
   await page.clock.runFor(1_000)
   await expect(page.getByText(notice)).toBeVisible()
-  await expect(page.getByText('Conectado', { exact: true })).toHaveCount(0)
 
   link.online = true
   await page.clock.runFor(12_000)
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect.poll(() => link.joins).toBe(2)
   await expect(page.getByText(notice)).toHaveCount(0)
 })
 
@@ -83,13 +90,13 @@ test('un corte que se recupera dentro del margen no muestra el aviso', async ({ 
   const link = await mockSocket(page)
   await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect.poll(() => link.joins).toBe(1)
 
   await link.current!.close()
   await page.clock.runFor(2_000)
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expectBallotWithoutStatus(page)
   await page.clock.runFor(4_000)
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expectBallotWithoutStatus(page)
   await expect(page.getByText(notice)).toHaveCount(0)
 })
 
@@ -193,15 +200,16 @@ test('un corte cuyo primer reintento falla se recupera dentro del margen sin avi
   await page.addInitScript(() => { Math.random = () => 0.999 })
   let attempts = 0
   let first: WebSocketRoute | null = null
+  let joins = 0
   await page.routeWebSocket(socketPath, async (ws) => {
     attempts += 1
     if (attempts === 2) { ws.send('x'); return }
     if (attempts === 1) first = ws
-    await acceptSocket(ws)
+    await acceptSocket(ws, () => { joins += 1 })
   })
   await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect.poll(() => joins).toBe(1)
   await page.evaluate((text) => {
     const seen = document.createElement('meta')
     seen.id = 'notice-seen'
@@ -213,6 +221,7 @@ test('un corte cuyo primer reintento falla se recupera dentro del margen sin avi
   await first!.close()
   await expect.poll(() => attempts, { timeout: 6_000 }).toBe(3)
   await page.waitForTimeout(3_500)
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect.poll(() => joins).toBe(2)
+  await expectBallotWithoutStatus(page)
   await expect(page.locator('#notice-seen')).not.toHaveAttribute('content', 'yes')
 })

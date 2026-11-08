@@ -43,43 +43,39 @@ async function refreshByPolling(page: Page) {
   await request
 }
 
-test('el teléfono dice que el resultado se prepara y luego muestra el resultado final con todos los electos', async ({ page }) => {
+async function expectNoPhoneResult(page: Page, status: 'closed' | 'published', hidden: RegExp) {
+  await expect(page.locator(`.phone-screen[data-round-status="${status}"]`)).toBeVisible()
+  await expect(page.locator('.result-summary, .ranked-rows')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText(hidden)
+}
+
+test('el teléfono no muestra el resultado al cerrar ni al publicar con todos los electos', async ({ page }) => {
   await page.clock.install()
   let status = 'closed'
   await phoneWith(page, () => status === 'closed'
     ? { currentRound: { ...committee, status, options } }
     : { currentRound: { ...committee, status, options }, ...counts, outcome: finalOutcome, final: { elected: options.slice(0, 3).map(({ id, label }) => ({ optionId: id, label })), approved: null } })
 
-  await expect(page.getByText('Preparando el resultado')).toBeVisible()
-  await expect(page.getByText('RESULTADOS', { exact: true })).toHaveCount(0)
+  await expectNoPhoneResult(page, 'closed', /resultado|Isaías/i)
 
   status = 'published'
   await refreshByPolling(page)
-  const card = page.locator('.result-summary')
-  await expect(card).toContainText('Resultado final')
-  await expect(card).toContainText('Electos')
-  await expect(card).toContainText('Isaías · Jeremías · Ezequiel')
-  await expect(page.getByText('Preparando el resultado')).toHaveCount(0)
+  await expectNoPhoneResult(page, 'published', /resultado|Electos|Isaías|Jeremías|Ezequiel/i)
 })
 
-test('el teléfono dice quiénes pasan a la siguiente votación', async ({ page }) => {
+test('el teléfono no dice quiénes pasan a la siguiente votación', async ({ page }) => {
   await phoneWith(page, () => ({ currentRound: { ...committee, status: 'published', options }, ...counts, outcome: runoffOutcome, continuing: [{ optionId: 'o1', label: 'Jeremías' }, { optionId: 'o2', label: 'Ezequiel' }] }))
-  const card = page.locator('.result-summary')
-  await expect(card).toContainText('Pasan a la siguiente votación')
-  await expect(card).toContainText('Jeremías · Ezequiel')
-  await expect(card).not.toContainText('Resultado final')
+  await expectNoPhoneResult(page, 'published', /Pasan a la siguiente votación|Isaías|Jeremías|Ezequiel/i)
 })
 
-test('el teléfono dice resultado final y no aprobada en una decisión', async ({ page }) => {
+test('el teléfono no muestra el resultado de una decisión', async ({ page }) => {
   await phoneWith(page, () => ({
     currentRound: { ...decision, status: 'published', options: [{ id: 'f', label: 'A favor' }, { id: 'c', label: 'En contra' }] },
     results: [{ optionId: 'f', label: 'A favor', count: 1 }, { optionId: 'c', label: 'En contra', count: 2 }],
     outcome: { seats: 1, base: 3, threshold: 2, elected: [], runoff: [], openSeats: 0, rule: 'simple', approved: false },
     final: { elected: [], approved: false },
   }))
-  const card = page.locator('.result-summary')
-  await expect(card).toContainText('Resultado final')
-  await expect(card).toContainText('No aprobada')
+  await expectNoPhoneResult(page, 'published', /resultado|aprobada|A favor|En contra/i)
 })
 
 test('el proyector dice que el resultado se prepara, luego quiénes pasan, y una votación anulada', async ({ page }) => {
@@ -217,9 +213,8 @@ for (const item of finals) {
   })
 }
 
-test('el teléfono no suma la opción aprobada al resultado final', async ({ page }) => {
+test('el teléfono no muestra el resultado final de una decisión con opciones', async ({ page }) => {
   const item = finals[1]
   await phoneWith(page, () => ({ currentRound: item.round, results: item.results, outcome: item.outcome, officialResult: null, final: item.final, recordedCount: 4, eligibleCount: 4 }))
-  await expect(page.getByText('RESULTADOS', { exact: true })).toBeVisible()
-  await expect(page.locator('.result-summary', { hasText: 'San Pedro Sula' })).toHaveCount(0)
+  await expectNoPhoneResult(page, 'published', /resultado|San Pedro Sula|Tegucigalpa|aprobada/i)
 })

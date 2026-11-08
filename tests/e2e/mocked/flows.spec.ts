@@ -166,7 +166,7 @@ test('en un desempate se marcan exactamente los puestos que faltan y la papeleta
   })
 
   await page.goto('/')
-  await expect(page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
   const review = page.getByRole('button', { name: 'Revisar mi voto' })
@@ -251,7 +251,7 @@ test('moderador anula una papeleta con motivo y la repite con las mismas opcione
   expect(repeated).toEqual({ optionIds: ['x', 'y'] })
 })
 
-test('el teléfono muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
+test('el teléfono no muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'declared-session'))
   await page.route(api, async (route) => {
     const url = new URL(route.request().url())
@@ -259,9 +259,9 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
       await route.fulfill({ json: {
         assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
         participationStatus: 'recorded',
-        openRound: { roundId: 'repeat', title: 'Presidencia — nueva votación', status: 'closed', format: 'single_choice', options: [] },
-        officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: 'Electa por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
-        final: { elected: [{ optionId: 'm', label: 'María López' }], approved: null },
+        openRound: { roundId: 'repeat', title: 'Presidencia, nueva votación', status: 'closed', format: 'single_choice', options: [] },
+        officialResult: { elected: [{ optionId: 'e', label: 'Ezequiel' }], note: 'Electo por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
+        final: { elected: [{ optionId: 'e', label: 'Ezequiel' }], approved: null },
       } })
       return
     }
@@ -269,11 +269,9 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
   })
 
   await page.goto('/')
-  const official = page.locator('.official-card')
-  await expect(official.getByText('RESULTADO OFICIAL', { exact: true })).toBeVisible()
-  await expect(official).toContainText('María López')
-  await expect(official).toContainText('Electa por la Asamblea')
-  await expect(page.locator('.ranked-rows')).toHaveCount(0)
+  await expect(page.locator('.phone-screen[data-round-status="closed"]')).toBeVisible()
+  await expect(page.locator('.result-summary, .ranked-rows')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText(/Ezequiel|Electo|resultado/i)
 })
 
 test('la mesa prepara una comisión escribiendo los candidatos y cuántos integrantes quedarán', async ({ page }) => {
@@ -1013,7 +1011,7 @@ test('el proyector muestra la dirección de la red que da el servidor, no la de 
   await expect(page.locator('.pj')).not.toContainText('127.0.0.1')
 })
 
-test('delegado y proyector ven que la Asamblea concluyó y conservan resultados publicados', async ({ page }) => {
+test('delegado y proyector ven que la Asamblea concluyó y solo el proyector conserva resultados publicados', async ({ page }) => {
   const completedAt = '2026-10-02T18:30:00.000Z'
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-participant-token')
@@ -1046,7 +1044,7 @@ test('delegado y proyector ven que la Asamblea concluyó y conservan resultados 
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
-  await expect(page.locator('.phone-results')).toContainText('Opción declarada')
+  await expect(page.getByText('Opción declarada')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toHaveCount(0)
   await expect(page.getByText('Espera la siguiente papeleta')).toHaveCount(0)
 
@@ -1734,7 +1732,7 @@ test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toHaveCount(0)
 })
 
-test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate', async ({ page }) => {
+test('un delegado inhabilitado en un desempate ve el rótulo de votación abierta sin el número de votación', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-session-token')
     localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
@@ -1751,5 +1749,5 @@ test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate'
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toBeVisible()
-  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · DESEMPATE · 2.ª VOTACIÓN')
+  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · VOTACIÓN ABIERTA')
 })
