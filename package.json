@@ -12,7 +12,7 @@
     "dev:api": "npm run start:dev --workspace @asdmr/api",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspace @asdmr/api",
+    "test": "npm test --workspaces --if-present",
     "test:integration": "npm run test:integration --workspace @asdmr/api",
     "test:integration:local": "npm run test:db:up && TEST_DATABASE_URL=\"$npm_package_config_testDatabaseUrl\" npm run test:integration",
     "test:e2e": "playwright test",

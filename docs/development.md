@@ -50,7 +50,7 @@ Si falla antes de `pg_ctl ... stop`, detén explícitamente el clúster con el m
 
 La API implementa el flujo esencial de Asamblea, sesiones, rondas, votos, cierre y publicación. La conexión en tiempo real es una capa separada; no usar datos personales reales en desarrollo.
 
-Unit tests y suite de Socket.IO: `npm test --workspace @asdmr/api`. Las pruebas de integración se ejecutan con `npm run test:integration --workspace @asdmr/api` y fallan si `TEST_DATABASE_URL` no apunta a una base PostgreSQL desechable con la migración aplicada; usa esa base únicamente para pruebas.
+Unit tests de API y web, y suite de Socket.IO: `npm test`. Las pruebas de integración se ejecutan con `npm run test:integration --workspace @asdmr/api` y fallan si `TEST_DATABASE_URL` no apunta a una base PostgreSQL desechable con la migración aplicada; usa esa base únicamente para pruebas.
 
 ## Variables
 

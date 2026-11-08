@@ -26,7 +26,7 @@ Requires Node `^22.22.3 || ^24.15.0`. CI uses 24.15.0. Local setup is in `docs/d
 | Integration tests | `npm run test:integration` |
 | One API test file | `cd apps/api && node --import tsx --test test/unit/committee-ballot.spec.ts` |
 | Mocked E2E | `npm run test:e2e` |
-| One E2E file | `npx playwright test tests/e2e/mocked/resultados.spec.ts --project=chromium` |
+| One E2E file | `npx playwright test tests/e2e/mocked/acta.spec.ts --project=chromium` |
 | Real-stack E2E | `npm run test:e2e:real-stack` |
 | Scenarios in the browser | `npm run test:scenarios:browser:headed` |
 | Load test | `npm run test:load` |
