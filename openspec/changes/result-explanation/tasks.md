@@ -1,9 +1,9 @@
 ## 1. Engine reports the rule and the reasons
 
-- [ ] 1.1 Failing engine tests for every reason scenario in the spec: elected, no majority, tied at the cut, added for choice, out
-- [ ] 1.2 Failing engine tests: elections report «Mayoría simple», decisions report their rule, an A favor / En contra decision reports no reasons
-- [ ] 1.3 Failing invariant tests: every option has one reason, the elected never exceed the seats, no option is both elected and continuing, and recomputing from rule, seats, base and counts gives the same outcome, including base 0
-- [ ] 1.4 Add `rule` and `reasons` to the outcome in `electionOutcome` and `decisionOutcome`
+- [x] 1.1 Failing engine tests for every reason scenario in the spec: elected, no majority, tied at the cut, added for choice, out
+- [x] 1.2 Failing engine tests: elections report «Mayoría simple», decisions report their rule, an A favor / En contra decision reports no reasons
+- [x] 1.3 Failing invariant tests: every option has one reason, the elected never exceed the seats, no option is both elected and continuing, and recomputing from rule, seats, base and counts gives the same outcome, including base 0
+- [x] 1.4 Add `rule` and `reasons` to the outcome in `electionOutcome` and `decisionOutcome`
 
 ## 2. Base records the regional secretary
 

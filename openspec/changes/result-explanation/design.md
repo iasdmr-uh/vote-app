@@ -25,9 +25,9 @@
 
 ### D1. The engine reports the rule and the reasons
 
-- `ElectionOutcome` gains `rule` and `reasons`, a map from option id to `elected`, `tied_at_cut`, `no_majority`, `added_for_choice` or `out`.
-- `electionOutcome` fills `reasons` in the same pass that decides `elected` and `runoff`, so the two never disagree.
-- An A favor / En contra decision reports an empty `reasons`, because `approved` already says everything.
+- The engine classifies each option once, as `elected`, `tied_at_cut`, `no_majority`, `added_for_choice` or `out`. `electionOutcome` and a new `electionReasons` both read that classification, so they never disagree.
+- The outcome keeps its current shape. The states carry a separate `explanation` object with `rule`, `reasons` and the base composition, so existing outcome expectations stay as they are.
+- An A favor / En contra decision reports empty `reasons`, because `approved` already says everything.
 - Alternative: derive reasons on the web from `elected`, `runoff` and the counts. Rejected because #58 forbids screens from working out a result, and the tie-at-cut versus no-majority split needs the engine's cut.
 
 ### D2. The round records the secretary at freeze
