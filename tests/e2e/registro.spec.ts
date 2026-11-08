@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mockCompletedAssembly } from './acta-fixture'
+import { actaPositions, mockCompletedAssembly } from './acta-fixture'
 
 const logFile = '﻿"Hora","Tipo","Acción"\r\n"2026-11-08 14:15:30","Datos","Registro descargado"\r\n'
 
@@ -30,6 +30,17 @@ test('«Descargar registro» baja el archivo del registro', async ({ page }) => 
   await page.getByRole('button', { name: 'Descargar registro' }).click()
   expect((await download).suggestedFilename()).toBe('registro-iv-asamblea-reorganizativa-2026.csv')
   expect(calls).toEqual([{ method: 'POST', path: 'log', body: { purpose: 'review' } }])
+})
+
+test('el nombre del archivo no empieza ni termina con guion', async ({ page }) => {
+  const calls: Array<{ method: string; path: string; body: unknown }> = []
+  await mockCompletedAssembly(page, { period: '2027–2029', positions: actaPositions, name: '¡Asamblea 2026!' })
+  await mockLog(page, calls)
+  await page.goto('/moderator')
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Descargar registro' }).click()
+  expect((await download).suggestedFilename()).toBe('registro-asamblea-2026.csv')
 })
 
 test('«Borrar datos» primero descarga el registro para borrar y luego pide confirmar', async ({ page }) => {

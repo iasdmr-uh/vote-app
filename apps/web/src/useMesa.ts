@@ -422,7 +422,7 @@ async function printActa() {
 }
 
 function assemblyFileSlug() {
-  return (state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')
+  return (state.value?.assembly?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'asamblea'
 }
 
 function downloadActaSpreadsheet() {
