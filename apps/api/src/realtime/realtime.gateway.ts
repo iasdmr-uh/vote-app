@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import {
   OnGatewayConnection,
+  OnGatewayDisconnect,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets'
@@ -18,6 +19,8 @@ import {
 } from './realtime.types.js'
 import { isAllowedWebOrigin } from '../config/origins.js'
 import { isModeratorChannelAllowed } from '../config/moderator-channel.js'
+import { ConnectionPresence, scheduleWithTimers } from './connection-presence.js'
+import { HEARTBEAT_MS } from './connection-timing.js'
 
 export type RealtimeServer = Server<
   RealtimeClientToServerEvents,
@@ -55,16 +58,21 @@ function identityMatchesCredential(identity: RealtimeIdentity, credentials: Real
 
 @WebSocketGateway({
   namespace: '/events',
+  pingInterval: HEARTBEAT_MS,
+  pingTimeout: HEARTBEAT_MS,
   cors: { origin: (origin, callback) => callback(null, isAllowedWebOrigin(origin)), credentials: false },
 })
 @Injectable()
-export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
+export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnGatewayDisconnect<RealtimeSocket> {
   @WebSocketServer()
   private server!: RealtimeServer
 
   private readonly logger = new Logger(RealtimeGateway.name)
 
-  constructor(@Inject(REALTIME_AUTHORIZER) private readonly authorizer: RealtimeAuthorizer) {}
+  constructor(
+    @Inject(REALTIME_AUTHORIZER) private readonly authorizer: RealtimeAuthorizer,
+    @Optional() private readonly presence: ConnectionPresence = new ConnectionPresence(scheduleWithTimers),
+  ) {}
 
   async handleConnection(client: RealtimeSocket): Promise<void> {
     const credentials = readCredentials(client.handshake.auth)
@@ -85,12 +93,18 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
       await client.join(roomFor(identity))
       if (identity.audience === 'participant') {
         await client.join(participantBroadcastRoom(identity.assemblyId))
+        if (!client.disconnected) this.presence.connect(identity.assemblyId, identity.sessionId)
       }
     } catch {
       // Do not log credentials, tokens, or auth-provider error bodies.
       this.logger.warn('Rejected unauthenticated realtime connection')
       client.disconnect(true)
     }
+  }
+
+  handleDisconnect(client: RealtimeSocket): void {
+    const identity = client.data.identity
+    if (identity?.audience === 'participant') this.presence.disconnect(identity.assemblyId, identity.sessionId)
   }
 
   publisher(): RealtimePublisher {
