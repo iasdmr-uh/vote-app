@@ -40,7 +40,7 @@ The base counts people, never marks. A delegate can mark a candidate only once, 
 | Each delegate marks exactly the open seats | Committees and their later votes | Project decision, 2 Nov 2026 |
 | New candidate allowed from the 3rd vote | Offices, committees | Project decision, 2 Nov 2026, explained by the union representatives |
 | Regional secretary joins as one more secret voter, base + 1 | Offices, committees and Opciones decisions, from the 4th vote, after a tie at the cut. Stays for the later votes of that election while in the room | Reglamento 05-09 02: «El representante de la Conferencia General tendrá derecho a voto dirimente, cuando persiste un empate en las votaciones hasta tres votaciones.» 03-06 06 names the Secretario Regional as that representative. Mechanism is a project decision, 6 Nov 2026 |
-| 3/4 of the base, rounded up | Decisions, when the ballot asks for it | Board decision, final, 8 Nov 2026 |
+| 3/4 of the base, rounded up | Decisions, when the ballot asks for it | Board decision, final, 8 Nov 2026, #88 |
 | A result is official only when its election is complete, with every seat filled. Until then it is preliminary | Offices, committees | Project decision, 8 Nov 2026 |
 | 2/3 of the base, rounded up | Decisions, when the ballot asks for it. Not implemented yet | Reglamento 01-02 03: «sólo pueden ser modificados con las 2/3 partes de los votos de la Asamblea». Planned in #87 |
 
