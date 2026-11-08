@@ -186,7 +186,7 @@ test('el teléfono vota una decisión A favor / En contra con una sola opción (
 
   published = true
   await page.reload()
-  await expect(page.getByText('Espera la siguiente papeleta')).toBeVisible()
+  await expect(page.locator('.phone-screen[data-round-status="published"]')).toBeVisible()
   await expect(page.locator('body')).not.toContainText(/Aprobada|A favor|30 votos|resultado/i)
 })
 

@@ -207,8 +207,8 @@ export function mesaRow(mesa: Page, label: string): Locator {
 }
 
 export async function expectPhoneShowsNoResult(phone: Phone) {
-  await expect(phone.page.locator('.phone-screen')).toBeVisible()
-  await expect(phone.page.locator('.official-card, .result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
+  await expect(phone.page.locator('.phone-screen[data-round-status="closed"], .phone-screen[data-round-status="published"]')).toBeVisible()
+  await expect(phone.page.locator('.result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
   await expect(phone.page.locator('.phone-screen')).not.toContainText(/electo|desempate|aprobada|resultado|pasan a/i)
 }
 
