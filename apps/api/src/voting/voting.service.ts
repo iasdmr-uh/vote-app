@@ -1132,10 +1132,10 @@ export class VotingService implements OnModuleInit {
       if (!await this.previousVoteTied(tx, round.chain, roundId)) throw new ConflictException('La secretaría regional solo se agrega si la votación anterior terminó en empate')
       const existing = await tx.participantSession.findFirst({ where: { assemblyId: round.assemblyId, isRegionalSecretary: true }, select: { id: true } })
       const person = existing
-        ? await tx.participantSession.update({ where: { id: existing.id }, data: { ...session, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true } })
-        : await tx.participantSession.create({ data: { ...session, assemblyId: round.assemblyId, isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true } })
+        ? await tx.participantSession.update({ where: { id: existing.id }, data: { ...session, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true, firstName: true, lastName: true } })
+        : await tx.participantSession.create({ data: { ...session, assemblyId: round.assemblyId, isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true, firstName: true, lastName: true } })
       await tx.round.update({ where: { id: roundId }, data: { regionalSecretaryVotes: true } })
-      await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.regional_secretary_added', metadata: { participantId: person.id, voteNumber: round.voteNumber } } })
+      await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.regional_secretary_added', metadata: { participantId: person.id, personName: `${person.firstName} ${person.lastName}`, voteNumber: round.voteNumber } } })
       return { ...person, replaced: Boolean(existing) }
     })
     if (secretary.replaced) this.realtime.participantSessionReplaced(secretary.id)
