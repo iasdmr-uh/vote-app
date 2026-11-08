@@ -23,6 +23,8 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 | `POST /moderator/rounds/:roundId/annul` · `POST .../repeat` | Moderador autorizado | Anular la última votación de una elección (`{reason}`); repetir solo una votación anulada. |
 | `POST /moderator/rounds/:roundId/candidates` · `DELETE .../candidates/:optionId` | Moderador autorizado | Agregar (`{label}`) o quitar un candidato nuevo en el borrador de un desempate, desde la 3.ª votación. |
 | `POST /moderator/participants/:participantId/disable-voting` · `.../enable-voting` | Moderador autorizado | Inhabilitar o habilitar el voto; sigue en la base de mayoría. Auditado. |
+| `POST /moderator/assemblies/:assemblyId/log` | Moderador autorizado | Descargar el registro de la mesa (`{purpose: "review" \| "delete"}`) como CSV. La descarga se registra antes de generar el archivo, así que es su última entrada. |
+| `DELETE /moderator/assemblies/:assemblyId` | Moderador autorizado | Borrar una Asamblea finalizada (`{confirmation: true}`). `409` si la última entrada del registro no es una descarga para «Borrar datos» con todas las entradas registradas hasta entonces. |
 
 Errores previsibles: `400` validación, `401` sesión no autenticada, `403` rol/acción no autorizada, `404` recurso desconocido, `409` estado incompatible o participación duplicada, `429` límite de frecuencia. Respuestas de error no deben incluir payloads de voto ni secretos. Las acciones administrativas requieren autorización en cada llamada; el QR público no concede privilegios.
 
