@@ -5,7 +5,7 @@ import { ConflictException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
-import { removeOrganization } from '../support/seed.js'
+import { removeOrganization, seedAssembly } from '../support/seed.js'
 import { buildProviders } from '../support/providers.js'
 
 async function setup(label: string) {
@@ -104,4 +104,69 @@ test('the mesa cannot register an election while a vote is open, and can once it
     await prisma.round.update({ where: { id: open.id }, data: { status: 'annulled', annulledAt: new Date(), votesUnlinkedAt: new Date() } })
     assert.ok((await roster.register(election.id)).registeredAt)
   } finally { await cleanup() }
+})
+
+test('the mesa cannot prepare anything while a vote is open, and can once it ends', async () => {
+  const prisma = await connectDatabase()
+  const { gateway, events } = gatewayStub()
+  const { voting, room } = buildProviders(prisma, gateway)
+  const seeded = await seedAssembly(prisma, room, { label: 'prepare-open-vote', delegates: ['Amós', 'Joel'] })
+  const { assemblyId, people } = seeded
+  const refused = (error: unknown) => error instanceof ConflictException && /votación abierta/.test(error.message)
+  try {
+    const annulled = await voting.createRound(assemblyId, { title: 'Secretaría', category: 'office', format: 'single_choice', options: [{ label: 'Daniel' }, { label: 'Esdras' }] })
+    await voting.openRound(annulled.id)
+    await voting.annulRound(annulled.id, 'Papeleta con un error')
+
+    const first = await voting.createRound(assemblyId, { title: 'Presidencia', category: 'office', format: 'single_choice', options: [{ label: 'Elías' }, { label: 'Eliseo' }] })
+    let current: { id: string; options: Array<{ id: string; label: string }> } = first
+    for (let vote = 1; vote <= 3; vote += 1) {
+      await voting.openRound(current.id)
+      await voting.castVote(people.Amós!.id, current.id, current.options.find((option) => option.label === 'Elías')!.id)
+      await voting.castVote(people.Joel!.id, current.id, current.options.find((option) => option.label === 'Eliseo')!.id)
+      await voting.closeRound(current.id)
+      const next = (await voting.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === current.id && round.status === 'draft')
+      assert.ok(next, `the tie in vote ${vote} prepares the next one`)
+      current = next
+    }
+    const fourth = current
+    const added = (await voting.addCandidate(fourth.id, 'Nahúm')).option
+
+    const open = await prisma.round.create({ data: {
+      assemblyId, title: 'Moción', countingRule: { kind: 'count_only' }, status: 'open', openedAt: new Date(),
+      options: { create: [{ label: 'A', order: 0 }, { label: 'B', order: 1 }] },
+    } })
+    const snapshot = async () => ({
+      rounds: await prisma.round.count({ where: { assemblyId } }),
+      positions: await prisma.position.count({ where: { assemblyId } }),
+      options: await prisma.ballotOption.findMany({ where: { roundId: fourth.id }, select: { label: true }, orderBy: { order: 'asc' } }),
+      secretaryVotes: (await prisma.round.findUniqueOrThrow({ where: { id: fourth.id } })).regionalSecretaryVotes,
+      secretaries: await prisma.participantSession.count({ where: { assemblyId, isRegionalSecretary: true } }),
+      audits: await prisma.auditEvent.count({ where: { assemblyId } }),
+    })
+    const before = await snapshot()
+    events.length = 0
+
+    await assert.rejects(voting.createRound(assemblyId, { title: 'Tesorería', category: 'office', format: 'single_choice', options: [{ label: 'Hageo' }] }), refused)
+    await assert.rejects(voting.addPosition(assemblyId, 'Mayordomía'), refused)
+    await assert.rejects(voting.repeatRound(annulled.id, { optionIds: annulled.options.map((option) => option.id) }), refused)
+    await assert.rejects(voting.addCandidate(fourth.id, 'Abdías'), refused)
+    await assert.rejects(voting.removeCandidate(fourth.id, added.id), refused)
+    await assert.rejects(voting.addRegionalSecretary(fourth.id, { firstName: 'Débora', lastName: 'Regional' }), refused)
+    await assert.rejects(voting.removeRegionalSecretary(fourth.id), refused)
+    assert.deepEqual(await snapshot(), before)
+    assert.equal(events.length, 0)
+
+    await prisma.round.update({ where: { id: open.id }, data: { status: 'annulled', annulledAt: new Date(), votesUnlinkedAt: new Date() } })
+    await voting.addCandidate(fourth.id, 'Abdías')
+    await voting.removeCandidate(fourth.id, added.id)
+    await voting.addRegionalSecretary(fourth.id, { firstName: 'Débora', lastName: 'Regional' })
+    await voting.removeRegionalSecretary(fourth.id)
+    await voting.addPosition(assemblyId, 'Mayordomía')
+    await voting.createRound(assemblyId, { title: 'Tesorería', category: 'office', format: 'single_choice', options: [{ label: 'Hageo' }] })
+    await voting.repeatRound(annulled.id, { optionIds: annulled.options.map((option) => option.id) })
+  } finally {
+    await seeded.cleanup()
+    await prisma.$disconnect()
+  }
 })

@@ -31,6 +31,7 @@ export const DEFAULT_DEPARTMENT_POSITIONS = [
   'Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia',
   'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción',
 ] as const
+const PREPARE_AFTER_OPEN_VOTE = 'Prepara la siguiente votación cuando cierre la votación abierta'
 
 @Injectable()
 export class VotingService implements OnModuleInit {
@@ -105,6 +106,7 @@ export class VotingService implements OnModuleInit {
       const assembly = await lockAssembly(tx, assemblyId)
       if (!assembly) throw new NotFoundException('Asamblea no encontrada')
       assertNotCompleted(assembly.status)
+      await assertNoOpenRound(tx, assemblyId, PREPARE_AFTER_OPEN_VOTE)
       const existing = await tx.position.findMany({ where: { assemblyId }, select: { label: true, group: true, sortOrder: true } })
       const key = name.toLocaleLowerCase('es')
       if (existing.some((item) => item.label.toLocaleLowerCase('es') === key)) throw new UnprocessableEntityException('Ese puesto ya está en la lista')
@@ -553,6 +555,7 @@ export class VotingService implements OnModuleInit {
       if (!assembly) throw new NotFoundException('Asamblea no encontrada')
       if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten nuevas papeletas')
       if (!['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('Cierra el ingreso antes de preparar una papeleta')
+      await assertNoOpenRound(tx, assemblyId, PREPARE_AFTER_OPEN_VOTE)
       const position = input.positionId ? await tx.position.findFirst({ where: { id: input.positionId, assemblyId }, select: { id: true, label: true } }) : null
       if (input.positionId && !position) throw new UnprocessableEntityException('Ese puesto no está en la lista de esta Asamblea')
       if (position) {
@@ -808,6 +811,7 @@ export class VotingService implements OnModuleInit {
       const assembly = await tx.assembly.findUnique({ where: { id: source.assemblyId }, select: { status: true } })
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten nuevas papeletas')
       if (!['lobby_closed', 'in_progress'].includes(assembly?.status ?? '')) throw new ConflictException('Cierra el ingreso antes de preparar una papeleta')
+      await assertNoOpenRound(tx, source.assemblyId, PREPARE_AFTER_OPEN_VOTE)
       if (source.status !== 'annulled') throw new ConflictException('Solo se puede repetir una papeleta anulada; los desempates se preparan solos')
       const rootId = source.committeeRootRoundId ?? source.id
       const later = await tx.round.count({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }], createdAt: { gt: source.createdAt }, status: { not: 'annulled' } } })
@@ -902,6 +906,7 @@ export class VotingService implements OnModuleInit {
     if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus papeletas')
     const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, category: true, committeeRootRoundId: true, countingRule: true } })
     if (round.status !== 'draft') throw new ConflictException(notDraftMessage)
+    await assertNoOpenRound(tx, rows[0].assembly_id, PREPARE_AFTER_OPEN_VOTE)
     const rootId = round.committeeRootRoundId ?? round.id
     // Counted as chainPosition counts it, so the server agrees with the "N.ª VOTACIÓN" the mesa sees.
     const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true } })
