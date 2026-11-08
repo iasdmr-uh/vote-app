@@ -22,6 +22,10 @@ export function turnoutOf(source?: Turnout | null) {
   return { recorded: source?.recordedCount ?? source?.participationCount ?? 0, eligible: source?.eligibleCount ?? 0 }
 }
 
+export function connectedText(connected: number, base: number) {
+  return `${connected} de ${base} conectados`
+}
+
 export function votedText(recorded: number, eligible?: number | null) {
   const verb = recorded === 1 ? 'votó' : 'votaron'
   return eligible ? `${recorded} de ${eligible} ${verb}` : `${recorded} ${verb}`

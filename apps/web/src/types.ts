@@ -14,6 +14,8 @@ export type Position = { id: string; group: PositionGroup; label: string; sortOr
 export type PresentationSlide = 0 | 1 | 2
 export type Presentation = { active: boolean; slide: PresentationSlide }
 
+export type ConnectionCount = { roundId: string; connected: number; base: number }
+
 export type PublicState = {
   /** Public and projector state. */
   assemblyName?: string
@@ -33,6 +35,8 @@ export type PublicState = {
   recordedCount?: number
   eligibleCount?: number
   participationStatus?: 'pending' | 'recorded'
+  connectionGraceMs?: number
+  connection?: ConnectionCount
   votingDisabled?: boolean
   currentRound?: { id: string; title: string; status: string; positionId?: string | null; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; regionalSecretaryVotes?: boolean; options?: Array<{ id: string; label: string }>; participationCount?: number; recordedCount?: number; eligibleCount?: number; annulReason?: string | null }
   results?: Array<{ optionId?: string; label: string; count: number }>

@@ -4,8 +4,7 @@ const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? '5173'
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${webPort}`
 
 export default defineConfig({
-  testDir: './tests/e2e',
-  testIgnore: '**/integration/**',
+  testDir: './tests/e2e/mocked',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

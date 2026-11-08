@@ -42,6 +42,12 @@ export interface ParticipationCountEvent {
   eligible: number
 }
 
+export interface ConnectionCountEvent {
+  roundId: string
+  connected: number
+  base: number
+}
+
 export interface ParticipantSummaryEvent {
   participantId: string
   firstName: string
@@ -90,6 +96,7 @@ export interface RealtimeServerToClientEvents {
   'round.opened': (payload: RoundStateEvent & { options: Array<{ optionId: string; label: string }> }) => void
   'round.closed': (payload: { roundId: string }) => void
   'participation.count': (payload: ParticipationCountEvent) => void
+  'connection.count': (payload: ConnectionCountEvent) => void
   'results.published': (payload: PublishedResultsEvent) => void
   'results.registered': (payload: { roundId: string }) => void
   'presentation.state': (payload: PresentationStateEvent) => void

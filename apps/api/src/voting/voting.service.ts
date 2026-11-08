@@ -1395,10 +1395,21 @@ export class VotingService implements OnModuleInit {
 
   private async liveEligibleCounts(client: Prisma.TransactionClient, assemblyId: string) {
     // Sequential: an interactive transaction runs on one connection.
-    const active = await client.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })
+    const people = await this.basePeople(client, assemblyId)
     const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, regionalSecretaryVotes: true } })
-    const secretary = await client.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { status: true } })
-    return new Map(rounds.map((round) => [round.id, active + (round.regionalSecretaryVotes && secretary?.status === 'active' ? 1 : 0)]))
+    return new Map(rounds.map((round) => [round.id, baseOf(round, people).length]))
+  }
+
+  async openRoundBase(assemblyId: string) {
+    const round = await this.prisma.round.findFirst({ where: { assemblyId, status: 'open' }, select: { id: true, regionalSecretaryVotes: true } })
+    if (!round) return null
+    return { roundId: round.id, participantIds: baseOf(round, await this.basePeople(this.prisma, assemblyId)) }
+  }
+
+  private async basePeople(client: Prisma.TransactionClient, assemblyId: string) {
+    const delegates = await client.participantSession.findMany({ where: { assemblyId, status: 'active', isRegionalSecretary: false }, select: { id: true } })
+    const secretary = await client.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { id: true, status: true } })
+    return { delegates: delegates.map(({ id }) => id), secretary }
   }
 
   private async eligibleCount(assemblyId: string, roundId: string) {
@@ -1436,6 +1447,10 @@ export class VotingService implements OnModuleInit {
       .map((option) => ({ optionId: option.id, label: option.label, count: countByOption.get(option.id) ?? 0 }))
       .sort((a, b) => b.count - a.count)
   }
+}
+
+function baseOf(round: { regionalSecretaryVotes: boolean }, people: { delegates: string[]; secretary: { id: string; status: string } | null }) {
+  return round.regionalSecretaryVotes && people.secretary?.status === 'active' ? [...people.delegates, people.secretary.id] : people.delegates
 }
 
 /** Seats one vote fills: an office fills one; a runoff asks for the seats still open. */

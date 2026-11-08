@@ -18,6 +18,8 @@ import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
+import { ConnectionCountService } from './connection-count.service.js'
+import { CONNECTION_GRACE_MS } from '../realtime/connection-timing.js'
 import { OperatorLogService } from './operator-log.service.js'
 import { OfficialRosterService } from './official-roster.service.js'
 import {
@@ -44,23 +46,28 @@ function sessionId(request: SessionRequest): string {
   return request[PARTICIPANT_ID]
 }
 
+function withConnection<T extends object>(state: T, connection: Awaited<ReturnType<ConnectionCountService['current']>>) {
+  return connection ? { ...state, connection } : state
+}
+
 @Controller('assemblies')
 export class PublicAssemblyController {
-  constructor(private readonly voting: VotingService) {}
+  constructor(private readonly voting: VotingService, private readonly connections: ConnectionCountService) {}
 
   @Post('resume')
-  resume(@Body() input: ResumeSessionDto) {
-    return this.voting.redeemResumeCode(input.resumeCode)
+  async resume(@Body() input: ResumeSessionDto) {
+    return { ...await this.voting.redeemResumeCode(input.resumeCode), connectionGraceMs: CONNECTION_GRACE_MS }
   }
 
   @Post(':assemblyCode/join')
-  join(@Param('assemblyCode') assemblyCode: string, @Body() input: JoinAssemblyDto) {
-    return this.voting.joinAssembly(assemblyCode, input.firstName, input.lastName)
+  async join(@Param('assemblyCode') assemblyCode: string, @Body() input: JoinAssemblyDto) {
+    return { ...await this.voting.joinAssembly(assemblyCode, input.firstName, input.lastName), connectionGraceMs: CONNECTION_GRACE_MS }
   }
 
   @Get(':assemblyCode/public-state')
-  publicState(@Param('assemblyCode') assemblyCode: string) {
-    return this.voting.publicState(assemblyCode)
+  async publicState(@Param('assemblyCode') assemblyCode: string) {
+    const state = await this.voting.publicState(assemblyCode)
+    return withConnection(state, await this.connections.current(state.assembly.id))
   }
 }
 
@@ -70,8 +77,8 @@ export class ParticipantController {
   constructor(private readonly voting: VotingService) {}
 
   @Get('me')
-  me(@Req() request: SessionRequest) {
-    return this.voting.participantState(sessionId(request))
+  async me(@Req() request: SessionRequest) {
+    return { ...await this.voting.participantState(sessionId(request)), connectionGraceMs: CONNECTION_GRACE_MS }
   }
 
   @Post('rounds/:roundId/vote')
@@ -95,7 +102,13 @@ export class ParticipantLeaveController {
 @Controller('moderator')
 @UseGuards(ModeratorGuard)
 export class ModeratorController {
-  constructor(private readonly voting: VotingService, private readonly presentation: PresentationService, private readonly operatorLog: OperatorLogService, private readonly roster: OfficialRosterService) {}
+  constructor(
+    private readonly voting: VotingService,
+    private readonly presentation: PresentationService,
+    private readonly connections: ConnectionCountService,
+    private readonly operatorLog: OperatorLogService,
+    private readonly roster: OfficialRosterService,
+  ) {}
 
   @Get('session')
   session() {
@@ -140,8 +153,9 @@ export class ModeratorController {
   }
 
   @Get('assemblies/:assemblyId')
-  assembly(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
-    return this.voting.moderatorAssembly(assemblyId)
+  async assembly(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
+    const [state, connection] = await Promise.all([this.voting.moderatorAssembly(assemblyId), this.connections.current(assemblyId)])
+    return withConnection(state, connection)
   }
 
   @Patch('assemblies/:assemblyId/lobby')
