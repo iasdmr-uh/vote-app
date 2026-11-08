@@ -14,9 +14,9 @@ The app does not determine quorum, interpret rules or proclaim anyone elected.
 
 ## P2. Ballots are secret
 
-No screen or function shows who voted for what. A stored vote carries no voter ID.
+No screen or function shows who voted for what. The mesa sees how many voted, never who. A stored vote carries no voter ID.
 
-- **Source:** §9
+- **Source:** §9, issue #55
 - **Accepted limit:** someone who controls the database and logs could still try to link votes by timing. "Secret" does not mean cryptographically anonymous.
 - **Accepted limit:** when the regional secretary's vote breaks a tie, such as 5-5 becoming 6-5, the arithmetic can reveal their vote.
 
@@ -68,4 +68,3 @@ Phones can reconnect, and the mesa can move to paper.
 
 - **Casting vote:** whether the Presiding Officer casts it inside or outside the tool. Milestone 1 decides this.
 - **Election date:** not yet recorded. It decides how much of the backfill fits before the election.
-- **Who voted, as seen by the mesa:** the scope says the mesa sees who has voted, but commit `d17388a` removed those dots from the participant list. The spec must say which is intended.
