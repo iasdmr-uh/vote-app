@@ -41,7 +41,10 @@ test('H · la mesa retira a alguien de la sala entre votaciones, lo regresa y lo
   const { resumeUrl } = await (await issued).json()
 
   await rosa.page.goto(resumeUrl)
-  await expect.poll(async () => (await rosa.page.evaluate(() => localStorage.getItem('participantSessionToken'))) !== oldToken).toBe(true)
+  await expect.poll(async () => {
+    const token = await rosa.page.evaluate(() => localStorage.getItem('participantSessionToken'))
+    return Boolean(token) && token !== oldToken
+  }).toBe(true)
   const newToken = (await rosa.page.evaluate(() => localStorage.getItem('participantSessionToken')))!
   const state = await participantState(request, newToken)
   expect(state.votingDisabled).toBe(false)
