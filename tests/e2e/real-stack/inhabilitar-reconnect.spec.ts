@@ -26,7 +26,7 @@ test('H · la mesa retira a alguien de la sala, lo regresa y lo reconecta con el
   expect((await moderatorState(request, assemblyId)).rounds[0].eligibleCount).toBe(3)
 
   await confirm(mesa, 'Cerrar votación')
-  await expect(mesa.locator('.ballot-card')).toContainText('VOTACIÓN CERRADA')
+  await expect(mesa.locator('.ballot-card')).toContainText('CONTEO PUBLICADO')
   await mesa.locator('.out-of-room').getByRole('button', { name: 'Regresar a la sala' }).click()
   await expect(mesa.locator('.out-of-room')).toHaveCount(0)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('3')

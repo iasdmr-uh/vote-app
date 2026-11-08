@@ -52,6 +52,7 @@ const CATALOGUE: Record<string, { kind: LogKind; describe: Describe }> = {
   'round.candidate_added': { kind: 'Votación', describe: (meta, round) => `${titled('Candidato agregado', text(meta.label))}${round ? ` en ${round}` : ''}` },
   'round.candidate_removed': { kind: 'Votación', describe: (meta, round) => `${titled('Candidato quitado', text(meta.label))}${round ? ` de ${round}` : ''}` },
   'round.results_published': { kind: 'Resultados', describe: (_meta, round) => titled('Resultados publicados', round) },
+  'results.registered': { kind: 'Resultados', describe: (_meta, round) => titled('Agregado a oficiales', round) },
   'presentation.changed': {
     kind: 'Resultados',
     describe: (meta) => (meta.active === true ? 'Pantalla pública: presentación de oficiales' : 'Pantalla pública: presentación cerrada'),

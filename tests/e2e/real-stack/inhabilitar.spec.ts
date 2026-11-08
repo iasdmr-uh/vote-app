@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { castVoteByApi, closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, vote, voteAll } from './helpers'
+import { castVoteByApi, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, vote, voteAll } from './helpers'
 
 /**
  * D. Inhabilitar (#43) during an open vote. Six habilitados: the inhabilitado keeps counting in the base,
@@ -61,7 +61,7 @@ test('D · inhabilitar durante una votación: el teléfono no recibe la papeleta
   await voteAll([juan, elena], [['Ana Ruiz'], ['Ana Ruiz']])
   await expect(summary.locator(':scope > span')).toHaveText(['4 votaron', '1 falta', '1 inhabilitado'])
   await expect(projector.locator('.pj-progress')).toContainText('de 6 ya votaron')
-  await closeAndPublish(room)
+  await closeAndShow(room)
 
   // Rosa still counts: the majority of 6 is 4, so Ana's 3 do not elect her, and 2 did not vote.
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 4')

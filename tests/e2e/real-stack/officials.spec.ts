@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { confirm, openRoom, prepareBallot, runVote, voteAll } from './helpers'
+import { addToOfficials, confirm, openRoom, prepareBallot, runVote, voteAll } from './helpers'
 
 const BLANK_BOARD = ['Vicepresidente', 'Secretario', 'Vocal 1', 'Vocal 2', 'Vocal 3']
 
@@ -23,16 +23,19 @@ test('los puestos electos llegan a «Presentar oficiales» y al organigrama del 
   await voteAll(room.phones, [['María López'], ['María López'], ['Carlos Gómez']])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('3')
   await confirm(mesa, 'Cerrar votación')
-  await confirm(mesa, 'Publicar conteo')
   await expect(projector.locator('.slide-office .office-name')).toHaveText('María López')
 
+  await addToOfficials(mesa)
   // Tesorero, a custom departamento and a committee.
   await prepareBallot(mesa, { kind: 'office', title: 'Tesorero', candidates: ['Ana Ruiz', 'Juan Mora'] })
   await runVote(room, [['Ana Ruiz'], ['Ana Ruiz'], ['Juan Mora']])
+  await addToOfficials(mesa)
   await prepareBallot(mesa, { kind: 'office', title: 'Educación', candidates: ['Elena Castro', 'Pedro Vargas'] })
   await runVote(room, [['Elena Castro'], ['Elena Castro'], ['Pedro Vargas']])
+  await addToOfficials(mesa)
   await prepareBallot(mesa, { kind: 'committee', title: 'Comisión de Finanzas', seats: 2, candidates: ['Ana Ruiz', 'Luis Pérez', 'Rosa Díaz'] })
   await runVote(room, [['Ana Ruiz', 'Luis Pérez'], ['Ana Ruiz', 'Luis Pérez'], ['Ana Ruiz', 'Rosa Díaz']])
+  await addToOfficials(mesa)
 
   // «Presentar oficiales»: cover, Junta directiva (P4) and Departamentos (P5) with the published puestos.
   const bar = mesa.getByRole('region', { name: 'Presentar oficiales' })

@@ -29,7 +29,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Mostrar al moderador y en la pantalla del proyector qué personas se han unido mediante nombre y apellido.
 - Permitir al moderador preparar cargos, preguntas y opciones/candidatos antes de abrir cada votación.
 - Actualizar en tiempo real el estado de la papeleta y el conteo de participación, sin revelar resultados parciales.
-- Permitir votar sin cronómetro, cerrar la votación bajo decisión del moderador y publicar resultados únicamente cuando este lo indique.
+- Permitir votar sin cronómetro, cerrar la votación bajo decisión del moderador y mostrar el resultado a todos a la vez cuando los votos se separan.
 - Calcular automáticamente electos, desempates y decisiones con mayoría sobre los participantes habilitados.
 - Separar técnicamente identidad/participación de la selección emitida para proteger el secreto del voto.
 - Dejar el modelo de datos listo para organizaciones y asambleas de la Unión y asociaciones, sin habilitar iglesias en V1.
@@ -39,9 +39,9 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 | Usuario | Necesidad y responsabilidad |
 |---|---|
 | Delegado | Ingresar con nombre y apellido, esperar la papeleta, revisar su selección, confirmarla y recibir confirmación. |
-| Moderador / mesa autorizada | Abrir la sesión, revisar e inhabilitar/habilitar participantes, cerrar ingreso, configurar, abrir, cerrar y anular votaciones, y publicar resultados. No elige ganadores. |
+| Moderador / mesa autorizada | Abrir la sesión, revisar e inhabilitar/habilitar participantes, cerrar ingreso, configurar, abrir, cerrar y anular votaciones, y agregar resultados finales a oficiales. No elige ganadores. |
 | Secretaría | Apoyar la verificación presencial de asistentes y quórum conforme al Reglamento; puede asistir en la revisión de nombres. El sistema no certifica oficialmente la calidad de delegado. |
-| Asamblea / pantalla pública | Ver la sala de espera, el estado general de la votación y los resultados después de su publicación. |
+| Asamblea / pantalla pública | Ver la sala de espera, el estado general de la votación y los resultados cuando se muestran al cerrar. |
 
 ## 6. Alcance de la V1
 
@@ -55,8 +55,9 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Sin límite de tiempo para votar. El moderador decide cuándo cerrar; el sistema no fuerza el cierre al llegar a cero.
 - Resultado automático al cerrar: electos, desempates y decisiones según las reglas 11–16 de la sección 8.
 - Indicador de votos recibidos/participantes habilitados para el moderador; durante una votación no se presentan totales por candidato ni selecciones individuales.
-- Resultados retenidos hasta que el moderador seleccione **Publicar resultados**.
-- Registro de eventos administrativos relevantes (por ejemplo, apertura/cierre y publicación) sin guardar una asociación consultable entre identidad y opción votada.
+- Resultado visible para todos al cerrar, una vez separados los votos de los participantes. Mientras tanto, teléfonos, proyector y mesa muestran «Preparando el resultado» (texto sin confirmar).
+- Cada resultado dice si es final o quiénes pasan a la siguiente votación. La mesa agrega cada resultado final a la lista de oficiales con **Agregar a oficiales** (texto sin confirmar), y una vez agregado no cambia.
+- Registro de eventos administrativos relevantes (por ejemplo, apertura/cierre y registro en oficiales) sin guardar una asociación consultable entre identidad y opción votada.
 - Estructura de organización configurable que permita incorporar asociaciones posteriormente.
 
 ## 7. Flujo principal
@@ -70,7 +71,8 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 7. La papeleta aparece en los teléfonos. El delegado selecciona, revisa y confirma. Puede emitir una sola respuesta en esa ronda.
 8. El moderador ve el progreso de participación, sin resultados parciales. No hay cronómetro.
 9. El moderador cierra la ronda cuando corresponda. El sistema deja de aceptar respuestas y calcula el resultado configurado.
-10. El moderador verifica y publica los resultados; estos aparecen en el proyector. Si quedan puestos sin cubrir, el sistema deja preparado el desempate como borrador y la mesa lo abre. Los participantes regresan al estado de espera para la siguiente ronda.
+10. Al separarse los votos, el resultado aparece a la vez en teléfonos, proyector y mesa. Si quedan puestos sin cubrir, el sistema deja preparado el desempate como borrador y la mesa lo abre. Los participantes regresan al estado de espera para la siguiente ronda.
+11. Cuando la elección tiene resultado final, la mesa lo agrega a oficiales. Otra elección no se abre mientras haya un resultado final sin agregar o un desempate pendiente. «Presentar oficiales» muestra solo los resultados agregados.
 
 ## 8. Reglas funcionales
 
@@ -81,15 +83,15 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 5. **Inmutabilidad de ronda abierta:** no editar candidatos/opciones después de abrir una votación. Si existe un error, el moderador debe cerrar/anular según decisión de la mesa y crear una nueva ronda; conservar el evento en el historial.
 6. **Un voto por ronda:** el servidor acepta como máximo una respuesta por sesión participante y ronda. Una respuesta confirmada no puede editarse desde el dispositivo.
 7. **Tiempo:** no existe vencimiento automático. Solo el moderador cierra la papeleta.
-8. **Resultados:** no mostrar conteos de opciones antes del cierre; no publicar hasta que el moderador lo ordene.
-9. **Autoridad:** quórum, elegibilidad oficial, validez de una ronda y proclamación corresponden a las instancias designadas por el Reglamento/Asamblea. El resultado es 100 % automático según las reglas 11–17: la mesa solo abre, cierra, publica y puede anular; nunca elige ganadores.
+8. **Resultados:** no mostrar conteos de opciones antes del cierre. Al cerrar, nadie ve conteos, ni siquiera la mesa, hasta que los votos se separan; entonces todos los ven a la vez.
+9. **Autoridad:** quórum, elegibilidad oficial, validez de una ronda y proclamación corresponden a las instancias designadas por el Reglamento/Asamblea. El resultado es 100 % automático según las reglas 11–17: la mesa solo abre, cierra, agrega resultados finales a oficiales y puede anular; nunca elige ganadores. No se puede anular una votación cuando ya se abrió la siguiente de su elección o cuando la elección ya está en oficiales.
 10. **Tipos de procedimiento:** V1 se concentra en papeletas electrónicas secretas. Aclamación, votación a mano alzada y otros métodos pueden registrarse en futuras fases, no se simulan como papeleta secreta.
 11. **Mayoría y electos (cargos y comisiones):** la base son los participantes habilitados congelados al abrir la votación (`eligibleCount`); los inhabilitados y quienes no votan cuentan en ella. Mayoría = más del 50 % de la base (38 → 20); la mitad exacta no es mayoría. Un cargo tiene N = 1; una comisión, N puestos. Queda electo quien está entre los N primeros **y** tiene mayoría. Si hay más candidatos con mayoría que puestos, quedan los más votados; un empate en el corte va a desempate solo entre los empatados.
 12. **Desempates:** pasan los que están entre los N primeros sin mayoría y los empatados en el corte. Si así no hay más candidatos que puestos libres, entra también el siguiente (y sus empatados); en un cargo, los 2 primeros más los empatados con el 2.º. En el desempate se exige de nuevo mayoría y se repite hasta cubrir los puestos. Mientras quedan puestos abiertos, el resultado es preliminar y quienes ya quedaron electos aparecen como «Electo/a». El resultado es oficial solo cuando la elección está completa, con todos los puestos cubiertos (decisión del 8 de noviembre de 2026). El sistema prepara cada desempate como borrador; la mesa lo abre. Ejemplo: comisión de 3, el 1.º con mayoría, el 2.º sin mayoría, el 3.º y el 4.º empatados → queda el 1.º; el 2.º, el 3.º y el 4.º van a desempate por 2 puestos.
 13. **Selección exacta y candidato nuevo:** en comisiones y desempates cada delegado marca exactamente los puestos abiertos, ni más ni menos; el servidor también lo valida. Desde la 3.ª votación (2.º desempate en adelante) la mesa puede agregar un candidato nuevo; nunca en el primer desempate.
 14. **Decisiones:** formato A favor / En contra u Opciones (se elige una), con regla de mayoría simple (más de 1/2 de la base) o 3/4 (al menos 3/4 de la base, redondeado hacia arriba: 38 → 29; regla de la Junta, definitiva desde el 8 de noviembre de 2026, ver #88). Base = participantes habilitados; sin abstención. A favor / En contra: aprobada si «A favor» alcanza el umbral; si no, no aprobada (50/50 = no aprobada). Opciones: la ganadora debe alcanzar el umbral; si ninguna lo logra, se repite entre las 2 más votadas y las empatadas.
 15. **Salir de la sala, Retirar de la sala e Inhabilitar:** el delegado no puede salir de la sala por su cuenta; el teléfono no tiene botón Salir y el servidor rechaza la petición, para evitar salidas por error. Si alguien deja la sala, la mesa lo retira con «Retirar de la sala». La persona queda en «Fuera de la sala», su sesión deja de funcionar y no cuenta en la base. La mesa puede regresarla con «Regresar a la sala» cuando no hay una votación abierta, y reconectar su dispositivo con un código de un solo uso. Retirar y regresar quedan en el historial. El cambio cuenta desde la siguiente votación: la votación abierta conserva la base con la que se abrió, y las papeletas en borrador usan la lista nueva. **Inhabilitar** es otra acción, para quien sigue presente pero no debe votar: sigue en la sala y en la lista, no recibe papeletas, el servidor rechaza su voto y sigue contando en la base. Es reversible (Habilitar) y queda en el historial. Un voto ya emitido se conserva. **Línea de quórum:** la mesa ve «En sala X de Y · quórum Z» junto a la lista de participantes. Quedan acreditadas todas las personas que entraron por el QR, excepto la Secretaría Regional (que la mesa ve en la lista como «Secretario regional» y retira con la misma acción, sin «Regresar a la sala» ni «Inhabilitar»; ver la regla 17), y las que fueron retiradas por error antes de votar no cuentan. Están en sala las acreditadas que no fueron retiradas de la sala. El quórum es dos tercios de las acreditadas, redondeado hacia arriba (Reglamento 05-04 5). Si en sala hay menos que el quórum, la línea se pone en rojo con «Sin quórum» y la confirmación para abrir una votación repite el aviso. Solo avisa, nunca impide abrir la votación.
-16. **Conteo publicado:** muestra los votos de cada candidato/opción y cuántos no votaron (base − votos emitidos).
+16. **Conteo publicado:** se muestra al separarse los votos, con los votos de cada candidato/opción y cuántos no votaron (base − votos emitidos).
 17. **Empate persistente (Reglamento 05-09 02):** desde la 4.ª votación, si la votación anterior empató en el corte, la mesa puede agregar a la secretaría regional, representante de la Asociación General, como un votante secreto más. Aplica a cargos, comisiones y decisiones con Opciones. Entra con un código de un solo uso, suma 1 a la base solo en esas votaciones y sigue en las siguientes de esa misma elección mientras esté en la sala. La mesa la ve en la lista de participantes como «Secretario regional», sin ver nunca cómo votó, y puede retirarla con «Retirar de la sala» y la misma confirmación. Desde la siguiente votación ya no cuenta en la base ni recibe papeleta, y la votación abierta conserva la base con la que se abrió. No tiene «Regresar a la sala» ni «Inhabilitar»; para que vuelva, la mesa la agrega de nuevo con la acción de esta regla, que conserva las condiciones del Reglamento 05-09 02 y le da un código nuevo. No recibe otras papeletas. La pantalla y el acta dicen «Con la secretaría regional». Si el empate era 5-5 y queda 6-5, la aritmética puede revelar su voto.
 
 ## 9. Seguridad y privacidad
@@ -156,7 +158,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 
 - Delegados con distintos niveles de habilidad pueden ingresar escaneando el QR y completando nombre y apellido con instrucciones mínimas.
 - El proyector refleja oportunamente los nombres unidos en sala de espera y cambia correctamente de vista durante la papeleta.
-- El moderador puede completar el ciclo preparar → abrir → recibir votos → cerrar → publicar sin asistencia técnica continua.
+- El moderador puede completar el ciclo preparar → abrir → recibir votos → cerrar → agregar a oficiales sin asistencia técnica continua.
 - No hay cronómetro; los votos se reciben hasta el cierre manual.
 - El sistema bloquea votos repetidos de la misma sesión en la misma ronda y no presenta resultados parciales.
 - Electos, desempates y decisiones calculados coinciden con las reglas 11–16 en todos los casos de prueba.
@@ -176,11 +178,11 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 | Interpretación incorrecta del Reglamento o reglas electorales | Reglas confirmadas con la mesa (2 de noviembre de 2026), cálculo con pruebas por caso y anulación por la mesa; no automatizar quórum en V1. |
 | Falla del dispositivo o sesión desconectada | Diseñar reconexión segura sin permitir segundo voto; definir cómo la mesa resolverá casos excepcionales. |
 | «X de Y conectados» leído como asistencia | El conteo indica solo teléfonos conectados. Un teléfono con la pantalla bloqueada puede perder la conexión y contar como no conectado, y un teléfono conectado no prueba que su dueño esté en la sala. |
-| Resultados publicados antes de validación | Estado de resultados retenidos y acción explícita de publicación por el moderador. |
+| Resultados publicados antes de validación | Nadie, ni siquiera la mesa, ve conteos antes de que los votos se separen. Un resultado entra a oficiales solo cuando la mesa lo agrega. |
 
 ## 16. Fases futuras
 
-1. **V1 – Asamblea de la Unión:** ingreso por QR común, nombres visibles, papeletas secretas, control del moderador y publicación manual de resultados.
+1. **V1 – Asamblea de la Unión:** ingreso por QR común, nombres visibles, papeletas secretas, control del moderador, resultados visibles al cerrar y lista de oficiales.
 2. **V1.x – Estabilización:** mejoras basadas en el simulacro y el uso real; reportes operativos y refinamiento de accesibilidad/contingencias.
 3. **V2 – Credenciales individuales:** padrón oficial, credenciales únicas emitidas por Secretaría, check-in/validación y controles robustos de elegibilidad y voto único.
 4. **V3 – Asociaciones:** habilitar múltiples organizaciones tipo asociación, administración independiente y configuración institucional por Asamblea.
@@ -193,7 +195,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - El proceso actual es principalmente mediante papeleta secreta.
 - El delegado ingresa escaneando un QR común, sin cuenta, e introduce nombre y apellido.
 - Los nombres de quienes se unen se muestran en la sala de espera/proyector para facilitar el control visual.
-- Existe un moderador que prepara las opciones/candidatos, abre y cierra cada votación y publica resultados.
+- Existe un moderador que prepara las opciones/candidatos, abre y cierra cada votación y agrega los resultados finales a oficiales (#76).
 - Los resultados son automáticos: mayoría sobre habilitados, desempates encadenados, selección exacta, decisiones (simple o 3/4, esta fijada por la Junta, ver #88) e inhabilitación (reglas 11–16, 2 de noviembre de 2026).
 - No hay límite de tiempo para votar.
 - Se protege el secreto: no se debe relacionar el nombre con la opción elegida.

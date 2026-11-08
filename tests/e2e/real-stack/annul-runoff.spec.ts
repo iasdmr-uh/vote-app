@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
+import { api, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
 
 /**
  * F. Annulling a first runoff (regression). The repeated runoff is still the 2.ª votación: same label on
@@ -49,7 +49,7 @@ test('F · anular el primer desempate y repetirlo: sigue siendo la 2.ª votació
   // The earlier vote of phone 0 was annulled with its ballot, so that phone votes again.
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez']])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await closeAndShow(room)
 
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   await expect(mesa.locator('.ballot-card .eyebrow-row .badge-info')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')

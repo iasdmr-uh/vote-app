@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  castVoteByApi, closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, openRoom, participantState, phoneRow, prepareBallot, projectorRow, voteAll,
+  castVoteByApi, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, participantState, phoneRow, prepareBallot, projectorRow, voteAll,
 } from './helpers'
 
 /**
@@ -63,7 +63,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   // 4 of 6 vote: Ana 4 (majority), Bruno 3, Carla 2, Diego 2, Elsa 1.
   await voteAll(phones, [null, ['Ana Ruiz', 'Bruno Díaz', 'Diego Paz'], ['Ana Ruiz', 'Bruno Díaz', 'Elsa Vega'], ['Ana Ruiz', 'Carla Mora', 'Diego Paz'], null, null])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('4')
-  await closeAndPublish(room)
+  await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('3 integrantes · Mayoría: 4')
   await expect(mesa.locator('.ballot-card .voters-total')).toContainText('votaron · 2 no votaron')
@@ -105,7 +105,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   // Bruno 5 is elected; Carla 3 lacks the majority of 4, so Carla and Diego go to a 3rd vote for 1 seat.
   await voteAll(phones, [null, ['Bruno Díaz', 'Carla Mora'], ['Bruno Díaz', 'Carla Mora'], ['Bruno Díaz', 'Diego Paz'], ['Bruno Díaz', 'Diego Paz'], null])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await closeAndShow(room)
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('2 puestos · Mayoría: 4')
   await expectBadge(mesaRow(mesa, 'Bruno Díaz'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Carla Mora'), 'Desempate')
@@ -124,7 +124,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   }
   await voteAll(phones, [['Carla Mora'], ['Carla Mora'], ['Carla Mora'], ['Carla Mora'], ['Diego Paz'], ['Diego Paz']])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('6')
-  await closeAndPublish(room)
+  await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('1 puesto · Mayoría: 4')
   await expectBadge(mesaRow(mesa, 'Carla Mora'), 'Electo/a')

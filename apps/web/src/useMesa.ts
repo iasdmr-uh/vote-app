@@ -1,7 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
-import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
+import { RESULT_WORDING, actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -264,8 +264,6 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown, on
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
           : path.endsWith('/repeat')
             ? { title: '¿Repetir la votación?', consequence: 'Se prepara una papeleta con las mismas opciones.', label: 'Repetir votación' }
-          : path.endsWith('/publish')
-            ? { title: '¿Publicar el conteo?', consequence: 'Teléfonos y proyector mostrarán el conteo y los electos.', label: 'Publicar conteo' }
             : removed
               ? { title: '¿Retirar a esta persona?', consequence: 'Ya no podrá participar desde esta sesión.', label: 'Retirar participante' }
               : { title: '¿Guardar los cambios?', consequence: 'Se actualizarán los datos de esta persona en la lista.', label: 'Guardar cambios' }
@@ -292,6 +290,21 @@ async function confirmModeratorAction() {
   finally { loading.value = false }
   if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.'
   if (succeeded) await refresh(true)
+}
+
+function registerOfficial(record: RoundRecord) {
+  const root = rootRoundOf(record) ?? record
+  const result = root.officialResult
+  const named = result?.approved === null || result?.approved === undefined
+    ? result?.elected.map((person) => person.label).join(' · ') ?? ''
+    : `${root.title}: ${result.approved ? RESULT_WORDING.approved : RESULT_WORDING.notApproved}`
+  moderationConfirmation.value = {
+    title: `¿${RESULT_WORDING.register}?`,
+    consequence: `${named}. No se podrá deshacer.`,
+    label: RESULT_WORDING.register,
+    path: `/moderator/elections/${encodeURIComponent(root.id)}/register`,
+    method: 'POST',
+  }
 }
 
 function rotateJoinCode() {
@@ -585,7 +598,7 @@ export function useMesa() {
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
-    annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
+    annulRound, registerOfficial, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData,
     createAssembly, editParticipant, createRound, signInModerator,
