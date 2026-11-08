@@ -1,7 +1,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
-import { actaSheetRows, isTied, percentOf } from './resultados'
+import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -32,7 +32,9 @@ const committeeMemberCount = ref<number | null>(null)
 const decisionFormat = ref<DecisionFormat>('boolean')
 const approvalRule = ref<ApprovalRule>('simple')
 const showNextBallotForm = ref(false)
-const resumeQr = ref<{ name: string; image: string; url: string; expiresAt: string } | null>(null)
+const resumeQr = ref<{ heading?: string; name: string; image: string; url: string; expiresAt: string } | null>(null)
+const regionalSecretaryFirstName = ref('')
+const regionalSecretaryLastName = ref('')
 const ballotCandidates = ref<string[]>([])
 const newBallotCandidate = ref('')
 /** The runoff draft from the 3rd vote on that the mesa is preparing (M22) before opening it. */
@@ -71,11 +73,23 @@ function runoffOf(target: RoundRecord) {
 function acceptsNewCandidates(target: RoundRecord) {
   return target.status === 'draft' && target.category !== 'decision' && Boolean(target.runoff) && voteNumber(target) >= 3
 }
+function acceptsRegionalSecretary(target: RoundRecord) {
+  if (target.status !== 'draft' || !target.runoff || voteNumber(target) < 4) return false
+  if (target.regionalSecretaryVotes) return true
+  const chain = roundChain(rootRoundOf(target) || target)
+  const counted = chain.slice(0, chain.findIndex((item) => item.id === target.id)).filter((item) => item.status === 'closed' || item.status === 'published')
+  const previous = counted.at(-1)
+  return Boolean(previous && decisionTie(previous))
+}
+function needsPreparation(target: RoundRecord) {
+  return acceptsNewCandidates(target) || acceptsRegionalSecretary(target)
+}
 const preparedRunoff = computed(() => {
   const chosen = state.value?.rounds?.find((item) => item.id === preparingRunoffId.value)
-  if (chosen && acceptsNewCandidates(chosen)) return chosen
-  return currentRoundRecord.value && acceptsNewCandidates(currentRoundRecord.value) ? currentRoundRecord.value : undefined
+  if (chosen && needsPreparation(chosen)) return chosen
+  return currentRoundRecord.value && needsPreparation(currentRoundRecord.value) ? currentRoundRecord.value : undefined
 })
+const regionalSecretaryInBallot = computed(() => Boolean((preparedRunoff.value ?? currentRoundRecord.value)?.regionalSecretaryVotes && state.value?.regionalSecretary))
 const currentRoundComplete = computed(() => Boolean(currentRoundRecord.value && electionComplete(currentRoundRecord.value)))
 const moderatorWorkflowStep = computed(() => {
   if (preparedRunoff.value) return 1
@@ -139,8 +153,7 @@ function repeatAllOptions(target: RoundRecord | undefined) {
 function openRunoff(target: RoundRecord) {
   const runoff = runoffOf(target)
   if (!runoff) return
-  // From the 3rd vote on the mesa first sees the ballot, where it may add a candidate.
-  if (acceptsNewCandidates(runoff)) { preparingRunoffId.value = runoff.id; newRunoffCandidate.value = ''; return }
+  if (needsPreparation(runoff)) { preparingRunoffId.value = runoff.id; newRunoffCandidate.value = ''; return }
   void moderatorAction(`/moderator/rounds/${encodeURIComponent(runoff.id)}/open`)
 }
 
@@ -190,6 +203,29 @@ async function addRunoffCandidate() {
 function removeRunoffCandidate(optionId: string) {
   const runoff = preparedRunoff.value
   if (runoff) void changeRunoffCandidates(`/moderator/rounds/${encodeURIComponent(runoff.id)}/candidates/${encodeURIComponent(optionId)}`, 'DELETE')
+}
+
+async function addRegionalSecretary() {
+  const runoff = preparedRunoff.value
+  const known = state.value?.regionalSecretary
+  const firstName = (known?.firstName ?? regionalSecretaryFirstName.value).trim()
+  const lastName = (known?.lastName ?? regionalSecretaryLastName.value).trim()
+  if (!runoff || !firstName || !lastName || loading.value) return
+  error.value = ''
+  loading.value = true
+  try {
+    const result = await request<{ name: string; resumeUrl: string; expiresAt: string }>(`/moderator/rounds/${encodeURIComponent(runoff.id)}/regional-secretary`, { method: 'POST', body: JSON.stringify({ firstName, lastName }) }, moderatorToken.value)
+    resumeQr.value = { heading: `Ingreso de ${result.name}`, name: result.name, url: result.resumeUrl, expiresAt: result.expiresAt, image: await QRCode.toDataURL(result.resumeUrl, { width: 300, margin: 2 }) }
+    regionalSecretaryFirstName.value = ''
+    regionalSecretaryLastName.value = ''
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  await refresh(true)
+}
+
+function removeRegionalSecretary() {
+  const runoff = preparedRunoff.value
+  if (runoff) void changeRunoffCandidates(`/moderator/rounds/${encodeURIComponent(runoff.id)}/regional-secretary`, 'DELETE')
 }
 
 function addBallotCandidate() {
@@ -491,7 +527,7 @@ export function useMesa() {
   return {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
-    showNextBallotForm, resumeQr, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
+    showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, regionalSecretaryInBallot, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,

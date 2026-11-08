@@ -206,6 +206,16 @@ export class ModeratorController {
     return this.voting.removeCandidate(roundId, optionId)
   }
 
+  @Post('rounds/:roundId/regional-secretary')
+  addRegionalSecretary(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: JoinAssemblyDto) {
+    return this.voting.addRegionalSecretary(roundId, input)
+  }
+
+  @Delete('rounds/:roundId/regional-secretary')
+  removeRegionalSecretary(@Param('roundId', ParseUUIDPipe) roundId: string) {
+    return this.voting.removeRegionalSecretary(roundId)
+  }
+
   @Post('rounds/:roundId/repeat')
   repeatRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: RepeatRoundDto) {
     return this.voting.repeatRound(roundId, input)

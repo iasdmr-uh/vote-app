@@ -64,6 +64,13 @@ export function electionOutcome(tallies: Tally[], seats: number, base: number, r
   return { seats: wanted, base, threshold, elected: elected.map((item) => item.optionId), runoff: pool.map((item) => item.optionId), openSeats }
 }
 
+export function tiedAtCut(tallies: Tally[], seats: number) {
+  const wanted = Math.max(1, Math.trunc(seats))
+  const counts = tallies.map((tally) => tally.count).sort((a, b) => b - a)
+  const cut = counts[Math.min(wanted, counts.length) - 1] ?? 0
+  return counts.filter((count) => count >= cut).length > wanted
+}
+
 /** A decision: 'boolean' is A favor / En contra; with 'options' the mesa writes the choices. */
 export type DecisionFormat = 'boolean' | 'options'
 

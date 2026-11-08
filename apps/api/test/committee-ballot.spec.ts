@@ -54,7 +54,7 @@ function exactSeatsVoting(seats: { member_count: number | null; election_seats: 
     anonymousVote: { createMany: async ({ data }: { data: Array<{ optionId: string }> }) => { votes.push(data.map((vote) => vote.optionId)) } },
   }
   const database = {
-    participantSession: { findUnique: async () => ({ id: 'delegate', assemblyId: 'assembly', status: 'active' }), count: async () => 1, findMany: async () => [] },
+    participantSession: { findUnique: async () => ({ id: 'delegate', assemblyId: 'assembly', status: 'active' }), count: async () => 1, findMany: async () => [], findFirst: async () => null },
     participation: { count: async () => 1 },
     round: { findMany: async () => [{ id: 'round', committeeRootRoundId: null }] },
     $transaction: async (work: (value: unknown) => unknown) => work(tx),
@@ -108,7 +108,7 @@ test('the mesa sees who voted in the latest opened ballot, never what they chose
       return { id: 'closed-round', status: 'closed' }
     }, findMany: async () => [{ id: 'closed-round', committeeRootRoundId: null }] },
     participation: { findMany: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? [{ participantSessionId: 'ana' }] : [] },
-    participantSession: { count: async () => 2, findMany: async () => [] },
+    participantSession: { count: async () => 2, findMany: async () => [], findFirst: async () => null },
     position: { findMany: async () => [] },
   }
   const voting = new VotingService(database as never, {} as never)
@@ -122,7 +122,7 @@ test('before any ballot opens, nobody carries a voted flag', async () => {
     assembly: { findUnique: async () => ({ id: 'assembly', name: 'Asamblea', status: 'lobby_closed', completedAt: null, participants: [{ id: 'ana', firstName: 'Ana', lastName: 'Reyes' }], rounds: [] }) },
     round: { findFirst: async () => null, findMany: async () => [] },
     participation: { findMany: async () => assert.fail('no receipts to read') },
-    participantSession: { count: async () => 1, findMany: async () => [] },
+    participantSession: { count: async () => 1, findMany: async () => [], findFirst: async () => null },
     position: { findMany: async () => [] },
   }
   const state = await new VotingService(database as never, {} as never).moderatorAssembly('assembly')

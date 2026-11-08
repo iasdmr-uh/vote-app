@@ -745,8 +745,9 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
         participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1,
         rounds: [
-          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 3, eligibleCount: 4, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
-            results: [{ optionId: 'a', label: 'Rosa', count: 2 }, { optionId: 'b', label: 'Pedro', count: 1 }],
+          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 4, eligibleCount: 5, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
+            results: [{ optionId: 'a', label: 'Rosa', count: 3 }, { optionId: 'b', label: 'Pedro', count: 1 }],
+            outcome: { seats: 1, base: 5, threshold: 3, elected: ['a'], runoff: [], openSeats: 0 },
             officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
           { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
           { id: 'r3', title: 'Tesorería', status: 'published', participationCount: 1, options: [{ id: 'f', label: '=HYPERLINK("http://x","y")' }],
@@ -773,8 +774,8 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await page.getByRole('button', { name: 'Descargar hoja de cálculo' }).click()
   expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
   const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 1, 'Rosa', 2, 50, '', 'sí'])
-  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '3 de 4 votaron · 1 no votó', 2, 'Pedro', 1, 25, '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '4 de 5 votaron · 1 no votó', 1, 'Rosa', 3, 60, '', 'Electo/a'])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '4 de 5 votaron · 1 no votó', 2, 'Pedro', 1, 20, '', 'No continúa'])
   expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', '1 votó', '', '', '', '', '', ''])
   // A name typed as a formula is a text cell: no formula element exists, and re-saving keeps it as text.
   expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', '1 votó', 1, '=HYPERLINK("http://x","y")', 1, '', '', ''])
@@ -788,7 +789,7 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
   await page.emulateMedia({ media: 'print' })
   await expect(acta).toBeVisible()
   await expect(acta.getByRole('heading', { name: 'ACTA DE VOTACIONES' })).toBeVisible()
-  await expect(acta.locator('.acta-round').nth(0).locator('.acta-meta')).toHaveText('3 de 4 votaron · 1 no votó')
+  await expect(acta.locator('.acta-round').nth(0).locator('.acta-meta')).toHaveText('4 de 5 votaron · 1 no votó · Mayoría: 3')
   await expect(acta.locator('.acta-round').nth(1)).toContainText('ANULADA')
   await expect(acta.locator('.acta-round').nth(1).locator('.acta-meta')).toHaveText('Nombre mal escrito')
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeHidden()

@@ -66,6 +66,28 @@ export function electedText(_name?: string) {
   return 'Electo/a'
 }
 
+export const REGIONAL_SECRETARY_NOTE = 'Con la secretaría regional'
+
+export function voteResultText(target: RoundRecord, optionId?: string) {
+  const outcome = target.outcome
+  if (!outcome || !optionId || (isDecision(target) && target.decisionFormat === 'boolean')) return ''
+  if (outcome.elected.includes(optionId)) return winnerText(target, '')
+  return outcome.runoff.includes(optionId) ? 'Pasa' : 'No continúa'
+}
+
+export function electedInVote(target: RoundRecord) {
+  const elected = target.outcome?.elected ?? []
+  const counts = countsOf(target)
+  return elected.map((optionId) => counts.find((result) => result.optionId === optionId)?.label).filter((label): label is string => Boolean(label))
+}
+
+export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {
+  const root = rounds.find((item) => item.id === (target.committeeRootRoundId || target.id))
+  const members = root?.officialResult?.elected ?? []
+  if (root?.category !== 'committee' || members.length < Math.max(1, root.memberCount ?? 1)) return []
+  return target.outcome?.elected.includes(members.at(-1)!.optionId) ? members.map((person) => person.label) : []
+}
+
 /** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, nothing for the first vote. Annulled votes are not counted in the number. */
 export function voteLabel(target?: { voteNumber?: number; runoff?: boolean } | null) {
   const number = target?.voteNumber ?? 1
@@ -137,22 +159,25 @@ export function voteCountOf(target: RoundRecord, option: { id: string; label: st
   return (counts.find((result) => result.optionId === option.id) || counts.find((result) => result.label === option.label))?.count ?? 0
 }
 
-export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Electo/a']
+export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Resultado']
 
 export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string, string> = {}) {
   const rows: Cell[][] = [ACTA_SHEET_HEADER]
   for (const item of rounds) {
     const status = statusLabels[item.status] || item.status
+    const ballot = [item.title, voteLabel(item)].filter(Boolean).join(' · ')
     const { recorded, eligible } = turnoutOf(item)
-    const participation = item.recordedCount !== undefined || item.participationCount !== undefined ? [votedText(recorded, eligible), eligible ? notVotedText(recorded, eligible) : ''].filter(Boolean).join(' · ') : ''
-    const elected = new Set((item.officialResult?.elected || []).map((person) => person.optionId))
+    const counted = item.recordedCount !== undefined || item.participationCount !== undefined
+    const participation = counted ? [votedText(recorded, eligible), eligible ? notVotedText(recorded, eligible) : '', item.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · ') : ''
     const verdict = decisionVerdict(item, item.outcome, item.results)
+    const members = completedCommittee(item, rounds)
+    const state = [status, verdict, members.length ? `Comisión completa: ${members.join(', ')}` : ''].filter(Boolean).join(' · ')
     if (item.results?.length) {
       for (const result of rankedResults(item.results, eligible)) {
-        rows.push([item.title, verdict ? `${status} · ${verdict}` : status, participation, result.rank, result.label, result.count, eligible ? result.percent : '', result.tied ? 'sí' : '', elected.has(result.optionId) ? 'sí' : ''])
+        rows.push([ballot, state, participation, result.rank, result.label, result.count, eligible ? result.percent : '', result.tied ? 'sí' : '', voteResultText(item, result.optionId)])
       }
     } else {
-      rows.push([item.title, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, participation, '', '', '', '', '', (item.officialResult?.elected || []).map((person) => person.label).join('; ')])
+      rows.push([ballot, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, participation, '', '', '', '', '', ''])
     }
   }
   return rows
@@ -191,6 +216,7 @@ export function actaMetaText(target: RoundRecord) {
     parts.push(votedText(recorded, eligible))
     if (eligible) parts.push(notVotedText(recorded, eligible))
   }
+  if (target.regionalSecretaryVotes) parts.push(REGIONAL_SECRETARY_NOTE)
   if (target.outcome && !isDecision(target)) parts.push(`Mayoría: ${target.outcome.threshold}`)
   return parts.filter(Boolean).join(' · ')
 }
