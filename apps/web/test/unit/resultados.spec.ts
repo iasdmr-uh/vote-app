@@ -342,6 +342,16 @@ describe('labels', () => {
     assert.equal(approvalText(decision(), decision().outcome), 'Se aprueba con 3/4 · 29 votos')
   })
 
+  test('approvalText: names the 2/3 rule and the votes it needs', () => {
+    const amendment = decision({ approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(approvalText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
+  test('majorityText: a closed 2/3 decision names its rule before the count is published', () => {
+    const amendment = decision({ status: 'closed', approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(majorityText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
   test('approvalText: names the simple majority and uses the singular for one vote', () => {
     assert.equal(approvalText(decision({ approvalRule: 'simple' }), { ...outcome(1, []), rule: undefined }), 'Se aprueba con mayoría simple · 1 voto')
   })
