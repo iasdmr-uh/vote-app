@@ -29,6 +29,7 @@ const voteSubmitting = ref(false)
 const qrImage = ref('')
 const realtimeActive = ref(false)
 const realtimeConnected = ref(false)
+const phoneOnline = ref(false)
 const projectorFullscreen = ref(false)
 const printingActa = ref(false)
 const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
@@ -40,6 +41,7 @@ let lastRefreshAt = 0
 let incomingJoinChecked = false
 let refreshQueued = false
 let scheduledRefresh: number | undefined
+let phoneOfflineTimer: number | undefined
 const POLL_WHILE_DISCONNECTED_MS = 7_000
 const POLL_WHILE_CONNECTED_MS = 30_000
 
@@ -366,11 +368,30 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+function markLinkUp() {
+  realtimeConnected.value = true
+  window.clearTimeout(phoneOfflineTimer)
+  phoneOfflineTimer = undefined
+  phoneOnline.value = true
+}
+
+function markLinkDown() {
+  realtimeConnected.value = false
+  if (!phoneOnline.value || phoneOfflineTimer !== undefined) return
+  phoneOfflineTimer = window.setTimeout(() => {
+    phoneOfflineTimer = undefined
+    phoneOnline.value = false
+  }, state.value?.connectionGraceMs ?? 0)
+}
+
 function syncRealtime() {
   realtimeSocket?.disconnect()
   realtimeSocket = null
   realtimeActive.value = false
   realtimeConnected.value = false
+  window.clearTimeout(phoneOfflineTimer)
+  phoneOfflineTimer = undefined
+  phoneOnline.value = false
   let auth: Record<string, string> | null = null
   if (role.value === 'participant' && sessionToken.value) auth = { audience: 'participant', participantSessionToken: sessionToken.value }
   else if (role.value === 'moderator' && moderatorToken.value && assemblyId.value) auth = { audience: 'moderator', moderatorCredential: moderatorToken.value, assemblyId: assemblyId.value }
@@ -387,9 +408,9 @@ function syncRealtime() {
     if (state.value && payload) state.value = { ...state.value, presentation: { active: payload.active, slide: payload.slide } }
     scheduleRefresh()
   })
-  realtimeSocket.on('connect', () => { realtimeConnected.value = true; void refresh() })
-  realtimeSocket.on('disconnect', () => { realtimeConnected.value = false })
-  realtimeSocket.on('connect_error', () => { realtimeConnected.value = false })
+  realtimeSocket.on('connect', () => { markLinkUp(); void refresh() })
+  realtimeSocket.on('disconnect', markLinkDown)
+  realtimeSocket.on('connect_error', markLinkDown)
 }
 
 function startAssembly() {
@@ -418,6 +439,7 @@ function startAssembly() {
 function stopAssembly() {
   if (refreshTimer) window.clearInterval(refreshTimer)
   if (scheduledRefresh !== undefined) window.clearTimeout(scheduledRefresh)
+  window.clearTimeout(phoneOfflineTimer)
   realtimeSocket?.disconnect()
   document.removeEventListener('fullscreenchange', syncProjectorFullscreen)
 }
@@ -425,7 +447,7 @@ function stopAssembly() {
 export function useAssembly() {
   return {
     origin, route, loading, syncing, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode,
-    moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected,
+    moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected, phoneOnline,
     projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas,
     role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, completionTime, ballotMaxChoices, projectorJoinUrl,
     go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,

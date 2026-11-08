@@ -34,6 +34,7 @@ export type PublicState = {
   recordedCount?: number
   eligibleCount?: number
   participationStatus?: 'pending' | 'recorded'
+  connectionGraceMs?: number
   votingDisabled?: boolean
   currentRound?: { id: string; title: string; status: string; positionId?: string | null; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; regionalSecretaryVotes?: boolean; options?: Array<{ id: string; label: string }>; participationCount?: number; recordedCount?: number; eligibleCount?: number; annulReason?: string | null }
   results?: Array<{ optionId?: string; label: string; count: number }>
