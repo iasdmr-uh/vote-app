@@ -20,11 +20,22 @@ Transiciones previstas: `preparing → lobby_open → lobby_closed → in_progre
 |---|---|
 | `draft` | Configuración editable; no recibe votos. |
 | `open` | Configuración congelada; acepta una participación válida por sesión. |
-| `closed` | No acepta votos; resultado calculado (y desempate preparado como `draft` si quedan puestos), oculto hasta publicar. |
-| `published` | Resultados agregados autorizados visibles. |
+| `closed` | No acepta votos; resultado calculado (y desempate preparado como `draft` si quedan puestos). Nadie ve conteos mientras se separan los votos. |
+| `published` | Votos separados; resultados agregados visibles a la vez en teléfonos, proyector y mesa. |
 | `cancelled` | Estado reservado; su uso requiere decisión institucional. |
 
-Transiciones: `draft → open → closed → published`. `open → cancelled` y `closed → cancelled` quedan bloqueadas hasta definir anulación. `published` no vuelve a `open`. Una ronda `open` no cambia título, formato, opciones ni orden. Cierre y publicación son acciones distintas; cierre repetido y publicación repetida no deben producir efectos adicionales.
+Transiciones: `draft → open → closed → published`. `open → cancelled` y `closed → cancelled` quedan bloqueadas hasta definir anulación. `published` no vuelve a `open`. Una ronda `open` no cambia título, formato, opciones ni orden. `closed → published` ocurre sola cuando la separación de votos termina, al cerrar, al reintentar la limpieza o al arrancar la API. No existe una acción de publicar. Un cierre repetido no produce efectos adicionales.
+
+## Resultado oficial
+
+Cada elección tiene a lo sumo un resultado oficial, ligado a su primera votación.
+
+- La votación que deja la elección resuelta queda como `settled_round_id`. Una decisión guarda además `approved`.
+- Anular esa votación borra `settled_round_id`.
+- **Agregar a oficiales** fija `registered_at` cuando la votación resuelta está `published`. Repetirlo no cambia nada.
+- Con `registered_at` fijo, la base de datos rechaza cambiar el resultado, sus opciones o anular una votación de la elección. «Borrar datos» sí lo elimina.
+- Otra elección no abre mientras la última votación de una elección esté `closed` o `published` sin resultado agregado. Su propio desempate sí abre, y una última votación anulada no bloquea.
+- No se anula una votación cuando ya se abrió la siguiente de su elección.
 
 ## Invariantes de dominio
 
@@ -32,5 +43,5 @@ Transiciones: `draft → open → closed → published`. `open → cancelled` y 
 - Voto confirmado es inmutable. Solicitudes duplicadas no cambian la primera respuesta ni crean otra participación.
 - La base de datos impone unicidad `(round_id, participant_session_id)` en Participación.
 - El cierre impide nuevos votos a partir de la transacción que confirma el cierre.
-- No se devuelven conteos por opción antes de `published`.
+- No se devuelven conteos por opción antes de `published`, tampoco a la mesa.
 - Elegibilidad y quórum son determinaciones humanas/institucionales. Desde noviembre de 2026, mayoría, desempate y aprobación se calculan al cerrar (`results-engine.ts`); la mesa no elige ganadores.

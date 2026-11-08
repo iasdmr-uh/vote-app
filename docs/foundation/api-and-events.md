@@ -12,14 +12,14 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 | `GET /participant/me` | Sesión participante | Estado propio, papeleta actual/última y participación propia; resultados agregados solo si esa ronda ya fue publicada. Nunca lista ajena ni selección. |
 | `POST /participant/rounds/:roundId/vote` | Sesión participante | `{optionId, confirmation:true}` u `{optionIds}` con exactamente los puestos abiertos en comisiones; `403` si está inhabilitado; respuesta genérica `{accepted:true, participationStatus:"recorded"}`. No devuelve conteos. |
 | `GET /assemblies/:assemblyCode/public-state` | Público/proyector | Estado, QR/URL de sala y datos públicos permitidos por etapa; sin credenciales ni selecciones. Lista de nombres sujeta a decisión pendiente. |
-| `GET /moderator/assemblies/:assemblyId` | Moderador autorizado | Estado administrativo, lista operativa e indicadores agregados permitidos; sin selecciones/conteos por opción antes de publicar. |
+| `GET /moderator/assemblies/:assemblyId` | Moderador autorizado | Estado administrativo, lista operativa e indicadores agregados permitidos; sin selecciones/conteos por opción antes de `published`. Cada votación dice si es final, quiénes pasan a la siguiente y el estado de su resultado oficial. |
 | `POST /moderator/assemblies` | Moderador autorizado | Crear/abrir Asamblea; devuelve identificador y código aleatorio de ingreso. |
 | `PATCH /moderator/assemblies/:assemblyId/lobby` | Moderador autorizado | Abrir/cerrar lobby; cada transición registra auditoría. Reapertura condicionada a validación. |
 | `PATCH /moderator/participants/:participantId` | Moderador autorizado | Corregir o retirar nombre/sesión según política aprobada; auditar acción mínima. |
 | `POST /moderator/assemblies/:assemblyId/rounds` | Moderador autorizado | Crear borrador con título, formato, opciones y regla configurada explícitamente. |
 | `POST /moderator/rounds/:roundId/open` | Moderador autorizado | Congelar opciones y abrir papeleta. |
-| `POST /moderator/rounds/:roundId/close` | Moderador autorizado | Cerrar de forma idempotente; congela la base, calcula electos o aprobación y, si quedan puestos, prepara el desempate como borrador. No publica. |
-| `POST /moderator/rounds/:roundId/publish` | Moderador autorizado | Publicación explícita, autorizada y auditada de los resultados agregados permitidos. |
+| `POST /moderator/rounds/:roundId/close` | Moderador autorizado | Cerrar de forma idempotente; congela la base, calcula electos o aprobación y, si quedan puestos, prepara el desempate como borrador. Al separarse los votos, la votación pasa sola a `published`. |
+| `POST /moderator/elections/:rootRoundId/register` | Moderador autorizado | Agregar el resultado final de una elección a oficiales. `409` si no es final, si todavía se prepara o si fue anulada. Repetirlo no cambia nada. Auditado con tipo «Resultados». |
 | `POST /moderator/rounds/:roundId/annul` · `POST .../repeat` | Moderador autorizado | Anular la última votación de una elección (`{reason}`); repetir solo una votación anulada. |
 | `POST /moderator/rounds/:roundId/candidates` · `DELETE .../candidates/:optionId` | Moderador autorizado | Agregar (`{label}`) o quitar un candidato nuevo en el borrador de un desempate, desde la 3.ª votación. |
 | `POST /moderator/participants/:participantId/disable-voting` · `.../enable-voting` | Moderador autorizado | Inhabilitar o habilitar el voto; sigue en la base de mayoría. Auditado. |
@@ -34,11 +34,11 @@ La base de datos y el snapshot HTTP son fuente de verdad. Canal de conexión pú
 
 | Sala/audiencia | Eventos entrantes | Eventos salientes mínimos |
 |---|---|---|
-| `assembly:{id}:public` proyector/público | Ninguno que otorgue rol | `lobby.state`, `assembly.state`, `round.state`, `participation.count`, `results.published`; nombres solo si se valida la lista pública. |
-| `assembly:{id}:moderators` moderadores autorizados | Acciones se hacen por HTTP; no duplicar comandos | `participant.joined`, `participant.updated`, `lobby.state`, `round.state`, `participation.count`, auditoría mínima. Lista de quién participó requiere decisión de acceso. |
-| `participant:{sessionId}` sesión propia | Ninguno necesario | `participant.state`, `round.opened`, `round.closed`, `results.published` autorizado. Solo estado y papeleta propia; sin actividad individual ajena. |
+| `assembly:{id}:public` proyector/público | Ninguno que otorgue rol | `lobby.state`, `assembly.state`, `round.state`, `participation.count`, `results.published`, `results.registered`; nombres solo si se valida la lista pública. |
+| `assembly:{id}:moderators` moderadores autorizados | Acciones se hacen por HTTP; no duplicar comandos | `participant.joined`, `participant.updated`, `lobby.state`, `round.state`, `participation.count`, `results.published`, `results.registered`, auditoría mínima. Lista de quién participó requiere decisión de acceso. |
+| `participant:{sessionId}` sesión propia | Ninguno necesario | `participant.state`, `round.opened`, `round.closed`, `results.published`, `results.registered`. Solo estado y papeleta propia; sin actividad individual ajena. |
 
-Los eventos no contienen conjuntamente identidad y selección; no se emite selección individual. Los conteos de participación son agregados, sin totales por opción antes de publicar. Tras reconexión el cliente solicita snapshot HTTP y luego retoma eventos; no confía en eventos perdidos ni marca un voto confirmado sin respuesta del servidor. Reintentos no producen segunda participación.
+Los eventos no contienen conjuntamente identidad y selección; no se emite selección individual. Los conteos de participación son agregados, sin totales por opción antes de `published`. Tras reconexión el cliente solicita snapshot HTTP y luego retoma eventos; no confía en eventos perdidos ni marca un voto confirmado sin respuesta del servidor. Reintentos no producen segunda participación.
 
 ## Privacidad del transporte
 
