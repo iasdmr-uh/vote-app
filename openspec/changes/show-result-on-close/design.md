@@ -88,6 +88,7 @@ Proposed Spanish text, UNCONFIRMED until the coordinator or the user confirms it
 |---|---|
 | Separation pending | «Preparando el resultado» |
 | Vote did not settle | «Pasan a la siguiente votación» |
+| Seats still open | «Electos hasta ahora · 3 de 5», each name marked «Electo/a» |
 | Vote settled an election | «Resultado final» and «Electos» |
 | Vote settled a decision | «Resultado final» and «Aprobada» or «No aprobada» |
 | Roster action | «Agregar a oficiales» |
