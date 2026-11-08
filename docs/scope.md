@@ -55,8 +55,8 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Sin límite de tiempo para votar. La votación se cierra sola cuando votaron todos los de la base que pueden votar (#83). Si falta alguien, el moderador decide cuándo cerrar por indicación de la presidencia.
 - Resultado automático al cerrar: electos, desempates y decisiones según las reglas 11–16 de la sección 8.
 - Indicador de votos recibidos/participantes habilitados para el moderador; durante una votación no se presentan totales por candidato ni selecciones individuales.
-- Resultado visible para todos al cerrar, una vez separados los votos de los participantes. Mientras tanto, teléfonos, proyector y mesa muestran «Preparando el resultado» (texto sin confirmar).
-- Cada resultado dice si es final o quiénes pasan a la siguiente votación. La mesa agrega cada resultado final a la lista de oficiales con **Agregar a oficiales** (texto sin confirmar), y una vez agregado no cambia.
+- Resultado visible para todos al cerrar, una vez separados los votos de los participantes. Mientras tanto, teléfonos, proyector y mesa muestran «Preparando el resultado» (texto sin confirmar). Desde el 8 de noviembre de 2026, el proyector abre cada resultado publicado en el conteo (filas, «No votaron», la suma de la base y la explicación), con el «Resultado final» después de las filas; «Ver resultado» muestra la diapositiva del electo o de la decisión.
+- Cada resultado dice si es final o quiénes pasan a la siguiente votación. La mesa agrega cada resultado final a la lista de oficiales con **Agregar a oficiales** (texto sin confirmar), y una vez agregado no cambia. Desde el 8 de noviembre de 2026, mientras un resultado final siga sin agregar, la mesa lo ve en el aviso «Agrega a oficiales antes de abrir otra elección», con su botón **Agregar a oficiales**, aunque ya esté preparando otra papeleta.
 - Registro de eventos administrativos relevantes (por ejemplo, apertura/cierre y registro en oficiales) sin guardar una asociación consultable entre identidad y opción votada.
 - Estructura de organización configurable que permita incorporar asociaciones posteriormente.
 

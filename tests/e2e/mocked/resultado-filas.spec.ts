@@ -155,7 +155,6 @@ test('the projector shows the base sum and the names each ballot marks', async (
 test('the projector orders a decision by votes and never marks an even split as tied', async ({ page }) => {
   for (const [round, expected] of [[decision, ['En contra', 'A favor', 'No votaron']], [evenDecision, ['A favor', 'En contra', 'No votaron']]] as const) {
     await projectorWith(page, round)
-    await page.getByRole('button', { name: 'Ver conteo' }).click()
     await expect(page.locator('.pj-results li .pj-label')).toHaveText([...expected])
     await expect(page.locator('.pj-results .pj-tie')).toHaveCount(0)
     await expect(page.getByText(/Cada papeleta marca/)).toHaveCount(0)

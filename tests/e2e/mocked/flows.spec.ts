@@ -1799,14 +1799,14 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
-  // The settled office opens on its slide (P2, #48); the detailed count is behind «Ver conteo».
-  await expect(page.locator('.slide-office .office-name')).toHaveText('María López')
-  await page.getByRole('button', { name: 'Ver conteo' }).click()
+  // The settled office opens on its count (8 de noviembre de 2026); the slide (P2, #48) is behind «Ver resultado».
   await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
   await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
   await expect(page.locator('.result-summary')).toContainText('María López')
   await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
+  await page.getByRole('button', { name: 'Ver resultado' }).click()
+  await expect(page.locator('.slide-office .office-name')).toHaveText('María López')
 })
 
 test('la mesa inhabilita y habilita entre votaciones: badge gris y «N inhabilitados», sin «faltan» tras cerrar', async ({ page }) => {

@@ -10,11 +10,12 @@ test('el proyector muestra el electo al publicar y sigue «Presentar oficiales»
   for (const phone of phones) await vote(phone, ['María López'])
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
   await expect(mesa.getByRole('button', { name: 'Cerrar votación' })).toHaveCount(0)
+  // The published result opens on its count (8 de noviembre de 2026); «Ver resultado» shows the slide.
+  await expect(projector.locator('.pj-results li:not(.pj-not-voted)')).toHaveCount(2)
+  await projector.getByRole('button', { name: 'Ver resultado' }).click()
   const office = projector.locator('.slide-office')
   await expect(office.locator('.office-name')).toHaveText('María López')
   await expect(office.locator('.office-votes')).toHaveText('2 de 2 votos · 100 %')
-  await projector.getByRole('button', { name: 'Ver conteo' }).click()
-  await expect(projector.locator('.pj-results li:not(.pj-not-voted)')).toHaveCount(2)
   await addToOfficials(mesa)
 
   const bar = mesa.getByRole('region', { name: 'Presentar oficiales' })

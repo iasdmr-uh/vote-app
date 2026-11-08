@@ -98,7 +98,7 @@ test('el proyector dice que el resultado se prepara, luego quiénes pasan, y una
   await expect(page.locator('.pj-status')).toHaveText('Votación anulada')
 })
 
-test('el proyector dice resultado final sobre la diapositiva del electo', async ({ page }) => {
+test('el proyector dice resultado final después del conteo y sobre la diapositiva del electo', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await projectorWith(page, () => ({
     round: { id: 'p1', title: 'Presidente', status: 'published', category: 'office' },
@@ -107,6 +107,10 @@ test('el proyector dice resultado final sobre la diapositiva del electo', async 
     officialResult: { elected: [{ optionId: 'i', label: 'Isaías' }], note: null, declaredAt: '2026-11-08T10:00:00.000Z' },
     final: { elected: [{ optionId: 'i', label: 'Isaías' }], approved: null },
   }))
+  // It opens on the count, with «Resultado final» after the rows (8 de noviembre de 2026).
+  await expect(page.locator('.pj-results li')).toHaveCount(3)
+  await expect(page.locator('.result-summary')).toContainText('Resultado final')
+  await page.getByRole('button', { name: 'Ver resultado' }).click()
   await expect(page.locator('.result-summary')).toContainText('Resultado final')
   await expect(page.locator('.slide-office .office-name')).toHaveText('Isaías')
 })
@@ -205,10 +209,11 @@ for (const item of finals) {
   test(`el proyector muestra una vez el resultado final de ${item.kind}`, async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 })
     await projectorWith(page, () => ({ round: item.round, results: item.results, outcome: item.outcome, officialResult, final: item.final }))
-    await page.getByRole('button', { name: 'Ver conteo' }).click()
     await expect(page.locator('.pj-results li')).toHaveCount(3)
     await expect(page.locator('.result-summary')).toHaveCount(1)
     await expect(page.locator('.result-summary')).toContainText(item.shown)
+    // The summary follows the rows (8 de noviembre de 2026).
+    expect(await page.locator('.pj-results').evaluate((rows) => Boolean(rows.compareDocumentPosition(document.querySelector('.result-summary')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true)
     await expect(page.locator('.pj-elected')).toHaveCount(0)
   })
 }
