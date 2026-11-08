@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
-import type { Presentation, PublicState } from './types'
+import type { ConnectionCount, Presentation, PublicState } from './types'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 const origin = window.location.origin
@@ -55,6 +55,10 @@ const eligibleVotes = computed(() => state.value?.eligibleCount ?? state.value?.
 const completionTime = computed(() => assemblyCompletedAt.value
   ? new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(assemblyCompletedAt.value))
   : '')
+const connectionCount = computed(() => {
+  const connection = state.value?.connection
+  return connection && round.value?.status === 'open' && connection.roundId === round.value.id ? connection : null
+})
 const ballotMaxChoices = computed(() => round.value?.electionSeats ?? round.value?.memberCount ?? null)
 const projectorJoinUrl = computed(() => {
   if (state.value?.joinUrl) return state.value.joinUrl
@@ -408,6 +412,9 @@ function syncRealtime() {
     if (state.value && payload) state.value = { ...state.value, presentation: { active: payload.active, slide: payload.slide } }
     scheduleRefresh()
   })
+  realtimeSocket.on('connection.count', (payload: ConnectionCount | undefined) => {
+    if (state.value && payload) state.value = { ...state.value, connection: { roundId: payload.roundId, connected: payload.connected, base: payload.base } }
+  })
   realtimeSocket.on('connect', () => { markLinkUp(); void refresh() })
   realtimeSocket.on('disconnect', markLinkDown)
   realtimeSocket.on('connect_error', markLinkDown)
@@ -449,7 +456,7 @@ export function useAssembly() {
     origin, route, loading, syncing, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode,
     moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected, phoneOnline,
     projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas,
-    role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, completionTime, ballotMaxChoices, projectorJoinUrl,
+    role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, connectionCount, completionTime, ballotMaxChoices, projectorJoinUrl,
     go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
     setBrowsingActas, selectAssembly, loadAssemblyLists, recoverActiveAssembly, rememberJoinCode, refreshQr, formatDateTime,
     syncRealtime, startAssembly, stopAssembly,

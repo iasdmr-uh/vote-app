@@ -100,3 +100,79 @@ test('sin votación abierta el teléfono no muestra «Conectado»', async ({ pag
   await expect(page.getByRole('heading', { name: 'Sala de espera' })).toBeVisible()
   await expect(page.getByText('Conectado', { exact: true })).toHaveCount(0)
 })
+
+function projectorState(round: Record<string, unknown>, connection?: Record<string, unknown>) {
+  return {
+    assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress' }, lobbyStatus: 'lobby_closed',
+    participantCount: 50, recordedCount: 12, eligibleCount: 50,
+    round: { category: 'office', voteNumber: 1, ...round },
+    ...(connection ? { connection } : {}),
+  }
+}
+
+const connectedCount = /\d+ de \d+ conectados/
+
+test('el proyector muestra cuántos teléfonos de la base están conectados y sigue los cambios', async ({ page }) => {
+  const link = await mockSocket(page)
+  await page.route(api, (route) => route.fulfill({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'open' }, { roundId: 'v1', connected: 47, base: 50 }) }))
+  await page.goto('/projector?code=synthetic')
+  await expect(page.getByText('47 de 50 conectados')).toBeVisible()
+  await expect(page.locator('.pj-progress')).toContainText('de 50 ya votaron')
+
+  link.current!.send('42/events,["connection.count",{"roundId":"v1","connected":48,"base":50}]')
+  await expect(page.getByText('48 de 50 conectados')).toBeVisible()
+})
+
+test('el proyector oculta el conteo de conectados al cerrar la votación', async ({ page }) => {
+  let status = 'open'
+  const link = await mockSocket(page)
+  await page.route(api, (route) => route.fulfill({ json: status === 'open'
+    ? projectorState({ id: 'v1', title: 'Presidencia', status }, { roundId: 'v1', connected: 47, base: 50 })
+    : projectorState({ id: 'v1', title: 'Presidencia', status, annulReason: status === 'annulled' ? 'Error' : null }) }))
+  await page.goto('/projector?code=synthetic')
+  await expect(page.getByText('47 de 50 conectados')).toBeVisible()
+
+  status = 'closed'
+  link.current!.send('42/events,["round.state",{"roundId":"v1","status":"closed"}]')
+  await expect(page.getByText(connectedCount)).toHaveCount(0)
+
+  link.current!.send('42/events,["connection.count",{"roundId":"v1","connected":46,"base":50}]')
+  await page.waitForTimeout(300)
+  await expect(page.getByText(connectedCount)).toHaveCount(0)
+})
+
+test('el proyector no muestra el conteo de una votación anulada', async ({ page }) => {
+  await mockSocket(page)
+  await page.route(api, (route) => route.fulfill({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'annulled', annulReason: 'Error' }) }))
+  await page.goto('/projector?code=synthetic')
+  await expect(page.locator('.pj-status-annulled')).toBeVisible()
+  await expect(page.getByText(connectedCount)).toHaveCount(0)
+})
+
+test('la mesa muestra solo el conteo de conectados, sin marcar a nadie', async ({ page }) => {
+  await mockSocket(page)
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', eligibleCount: 3, recordedCount: 1,
+        participants: [
+          { id: 'p1', firstName: 'Isaías', lastName: 'Delegado 1', voted: true },
+          { id: 'p2', firstName: 'Jeremías', lastName: 'Delegado 2', voted: false },
+          { id: 'p3', firstName: 'Ester', lastName: 'Delegada 3', voted: false },
+        ],
+        rounds: [{ id: 'v1', title: 'Presidencia', status: 'open', options: [{ id: 'a', label: 'Daniel' }, { id: 'b', label: 'Ezequiel' }], officialResult: null }],
+        connection: { roundId: 'v1', connected: 2, base: 3 },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for connected phones test' } })
+  })
+  await page.goto('/moderator')
+  await expect(page.locator('.ballot-card').getByText('2 de 3 conectados')).toBeVisible()
+  await expect(page.getByText(/conectad/i)).toHaveCount(1)
+})

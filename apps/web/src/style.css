@@ -304,6 +304,7 @@ label .hint { font-weight: 500; }
 .vote-progress strong { color: var(--blue); font-size: clamp(4rem, 9vw, 6rem); line-height: 1; letter-spacing: -.04em; }
 .vote-progress-bar { display: block; height: .8rem; overflow: hidden; border-radius: 999px; background: #e6ecf7; }
 .vote-progress-bar span { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width .2s ease; }
+.vote-connected { margin: .75rem 0 0; color: var(--muted); font-weight: 600; }
 .ballot-actions { margin-top: 2rem; }
 .ranked-rows { display: grid; gap: .6rem; margin: 0 0 1rem; padding: 0; list-style: none; }
 .ranked-rows li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: .45rem .75rem; padding: .8rem 1rem; border-radius: .75rem; background: #f4f7fc; }

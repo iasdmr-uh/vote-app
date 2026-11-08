@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { REGIONAL_SECRETARY_NOTE, voteLabel } from '../resultados'
+import { REGIONAL_SECRETARY_NOTE, connectedText, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
@@ -8,7 +8,7 @@ import ProjectorLobby from './ProjectorLobby.vue'
 import ProjectorResults from './ProjectorResults.vue'
 
 const {
-  error, state, code, realtimeActive, realtimeConnected, projectorFullscreen, assemblyStatus, lobbyStatus, round, completionTime, go,
+  error, state, code, realtimeActive, realtimeConnected, projectorFullscreen, assemblyStatus, lobbyStatus, round, connectionCount, completionTime, go,
 } = useAssembly()
 
 const eligible = computed(() => state.value?.eligibleCount ?? state.value?.participantCount ?? 0)
@@ -78,6 +78,7 @@ async function toggleProjectorFullscreen() {
       <div class="pj-progress" aria-live="polite">
         <p><strong>{{ recorded }}</strong><span>de {{ eligible }} ya votaron</span></p>
         <div class="pj-track" role="progressbar" :aria-valuenow="recorded" :aria-valuemin="0" :aria-valuemax="eligible" aria-label="Personas que ya votaron"><span :style="{ width: `${progressPercent}%` }"></span></div>
+        <p v-if="connectionCount" class="pj-connected">{{ connectedText(connectionCount.connected, connectionCount.base) }}</p>
       </div>
     </template>
 
@@ -130,6 +131,7 @@ async function toggleProjectorFullscreen() {
 .pj-progress p { display: flex; align-items: baseline; gap: calc(var(--u) * 36); }
 .pj-progress strong { color: var(--blue); font-size: calc(var(--u) * 300); font-weight: 900; letter-spacing: -.04em; line-height: .85; }
 .pj-progress span { color: var(--muted); font-size: calc(var(--u) * 64); font-weight: 600; }
+.pj-progress .pj-connected { display: block; margin-top: calc(var(--u) * 28); color: var(--muted); font-size: calc(var(--u) * 52); font-weight: 600; }
 .pj-track { height: calc(var(--u) * 40); margin-top: calc(var(--u) * 64); overflow: hidden; border-radius: 999px; background: var(--soft); }
 .pj-track span { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width .3s ease; }
 
