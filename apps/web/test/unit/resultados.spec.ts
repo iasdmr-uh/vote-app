@@ -628,7 +628,7 @@ describe('actaRows', () => {
   test('actaRows: without a computed result only a tie is marked, and without a base there is no share', () => {
     const target = round({ eligibleCount: undefined, ...counted([['Elías', 2], ['Eliseo', 2]]) })
 
-    assert.deepEqual(actaRows(target).map(({ tag, percent }) => [tag, percent]), [['Empate', null], ['Empate', null]])
+    assert.deepEqual(actaRows(target).map(({ tag, percent }) => [tag, percent]), [['Desempate', null], ['Desempate', null]])
   })
 })
 

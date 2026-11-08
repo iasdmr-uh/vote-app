@@ -29,7 +29,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Mostrar al moderador y en la pantalla del proyector qué personas se han unido mediante nombre y apellido.
 - Permitir al moderador preparar cargos, preguntas y opciones/candidatos antes de abrir cada votación.
 - Actualizar en tiempo real el estado de la papeleta y el conteo de participación, sin revelar resultados parciales.
-- Permitir votar sin cronómetro, cerrar la votación bajo decisión del moderador y mostrar el resultado a todos a la vez cuando los votos se separan.
+- Permitir votar sin cronómetro, cerrar la votación sola cuando votaron todos los que pueden votar o bajo decisión del moderador, y mostrar el resultado a todos a la vez cuando los votos se separan.
 - Calcular automáticamente electos, desempates y decisiones con mayoría sobre los participantes habilitados.
 - Separar técnicamente identidad/participación de la selección emitida para proteger el secreto del voto.
 - Dejar el modelo de datos listo para organizaciones y asambleas de la Unión y asociaciones, sin habilitar iglesias en V1.
@@ -52,7 +52,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 - Herramientas del moderador para revisar, corregir o retirar nombres antes de iniciar votaciones, cerrar el ingreso y gestionar las rondas.
 - Papeletas configuradas por el moderador, con candidatos/opciones ingresados por este.
 - Voto secreto, una participación por sesión de participante y ronda; confirmación explícita antes de emitir el voto.
-- Sin límite de tiempo para votar. El moderador decide cuándo cerrar; el sistema no fuerza el cierre al llegar a cero.
+- Sin límite de tiempo para votar. La votación se cierra sola cuando votaron todos los de la base que pueden votar (#83). Si falta alguien, el moderador decide cuándo cerrar por indicación de la presidencia.
 - Resultado automático al cerrar: electos, desempates y decisiones según las reglas 11–16 de la sección 8.
 - Indicador de votos recibidos/participantes habilitados para el moderador; durante una votación no se presentan totales por candidato ni selecciones individuales.
 - Resultado visible para todos al cerrar, una vez separados los votos de los participantes. Mientras tanto, teléfonos, proyector y mesa muestran «Preparando el resultado» (texto sin confirmar).
@@ -70,7 +70,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 6. El moderador configura el cargo/pregunta y sus candidatos u opciones, y abre la papeleta.
 7. La papeleta aparece en los teléfonos. El delegado selecciona, revisa y confirma. Puede emitir una sola respuesta en esa ronda.
 8. El moderador ve el progreso de participación, sin resultados parciales. No hay cronómetro.
-9. El moderador cierra la ronda cuando corresponda. El sistema deja de aceptar respuestas y calcula el resultado configurado.
+9. La ronda se cierra sola cuando votaron todos los que pueden votar; si falta alguien, el moderador la cierra cuando corresponda. El sistema deja de aceptar respuestas y calcula el resultado configurado.
 10. Al separarse los votos, el resultado aparece a la vez en teléfonos, proyector y mesa. Si quedan puestos sin cubrir, el sistema deja preparado el desempate como borrador y la mesa lo abre. Los participantes regresan al estado de espera para la siguiente ronda.
 11. Cuando la elección tiene resultado final, la mesa lo agrega a oficiales. Otra elección no se abre mientras haya un resultado final sin agregar o un desempate pendiente. «Presentar oficiales» muestra solo los resultados agregados.
 
@@ -82,7 +82,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 4. **Configuración de papeleta:** el moderador define el título, el tipo (Cargo, Comisión o Decisión), los candidatos/opciones, los puestos de una comisión (N) y, en decisiones, la regla de aprobación (mayoría simple; 2/3, Reglamento 01-02 03, ver #87; o 3/4, regla de la Junta, ver #88).
 5. **Inmutabilidad de ronda abierta:** no editar candidatos/opciones después de abrir una votación. Si existe un error, el moderador debe cerrar/anular según decisión de la mesa y crear una nueva ronda; conservar el evento en el historial. Desde el 8 de noviembre de 2026 (#78), mientras hay una votación abierta la mesa no puede «Presentar oficiales», agregar una elección a la lista de oficiales ni reintentar la limpieza del secreto del voto (cerrar la votación la ejecuta). Tampoco puede preparar la siguiente votación: crear una papeleta, agregar un departamento, repetir una votación anulada, agregar o quitar candidatos de un borrador, ni agregar o quitar a la secretaría regional. El servidor lo rechaza y la mesa no muestra esos controles; lo hace al cerrar o anular la votación.
 6. **Un voto por ronda:** el servidor acepta como máximo una respuesta por sesión participante y ronda. Una respuesta confirmada no puede editarse desde el dispositivo.
-7. **Tiempo:** no existe vencimiento automático. Solo el moderador cierra la papeleta.
+7. **Tiempo:** no existe vencimiento automático ni cuenta regresiva. La papeleta se cierra sola justo después del último voto cuando votaron todas las personas de la base que pueden votar; los inhabilitados siguen en la base pero no la mantienen abierta. Si nadie de la base puede votar, no se cierra sola. En cualquier otro caso la cierra el moderador por indicación de la presidencia. El historial registra al sistema como quien cerró, con el motivo «todos votaron», y la mesa puede anularla como cualquier otra (#83).
 8. **Resultados:** no mostrar conteos de opciones antes del cierre. Al cerrar, nadie ve conteos, ni siquiera la mesa, hasta que los votos se separan; entonces todos los ven a la vez.
 9. **Autoridad:** quórum, elegibilidad oficial, validez de una ronda y proclamación corresponden a las instancias designadas por el Reglamento/Asamblea. El resultado es 100 % automático según las reglas 11–17: la mesa solo abre, cierra, agrega resultados finales a oficiales y puede anular; nunca elige ganadores. No se puede anular una votación cuando ya se abrió la siguiente de su elección o cuando la elección ya está en oficiales.
 10. **Tipos de procedimiento:** V1 se concentra en papeletas electrónicas secretas. Aclamación, votación a mano alzada y otros métodos pueden registrarse en futuras fases, no se simulan como papeleta secreta.
@@ -159,7 +159,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - Delegados con distintos niveles de habilidad pueden ingresar escaneando el QR y completando nombre y apellido con instrucciones mínimas.
 - El proyector refleja oportunamente los nombres unidos en sala de espera y cambia correctamente de vista durante la papeleta.
 - El moderador puede completar el ciclo preparar → abrir → recibir votos → cerrar → agregar a oficiales sin asistencia técnica continua.
-- No hay cronómetro; los votos se reciben hasta el cierre manual.
+- No hay cronómetro. Los votos se reciben hasta que votan todos los que pueden votar o hasta que el moderador cierra la votación.
 - El sistema bloquea votos repetidos de la misma sesión en la misma ronda y no presenta resultados parciales.
 - Electos, desempates y decisiones calculados coinciden con las reglas 11–16 en todos los casos de prueba.
 - La interfaz no permite vincular desde sus vistas operativas un nombre con su opción elegida.

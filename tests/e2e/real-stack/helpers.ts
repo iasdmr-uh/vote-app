@@ -183,13 +183,19 @@ export async function runVote(room: Room, ballots: Array<string[] | null>) {
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   await voteAll(room.phones, ballots)
   const cast = ballots.filter(Boolean).length
-  await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
+  if (cast === room.phones.length) await expectClosedByItself(mesa)
+  else await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
   await closeAndShow(room)
 }
 
+export async function expectClosedByItself(mesa: Page) {
+  await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
+}
+
 export async function closeAndShow(room: Room) {
-  const { mesa, projector } = room
-  await confirm(mesa, 'Cerrar votación')
+  const { mesa, projector, assemblyId } = room
+  const { rounds } = await moderatorState(mesa.request, assemblyId)
+  if (rounds.some((round: { status: string }) => round.status === 'open')) await confirm(mesa, 'Cerrar votación')
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
   await expect(projector.locator('.pj-results, .slide').first()).toBeVisible()
   if (await projector.locator('.slide').isVisible()) await projector.getByRole('button', { name: 'Ver conteo' }).click()

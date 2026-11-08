@@ -67,7 +67,7 @@ The server gives every option in an election or an Opciones decision one reason:
 |---|---|---|
 | Elected | Inside the seats and with a majority. In an Opciones decision, the approved option | «Electo/a», or «Aprobada» for a decision |
 | No majority | Inside the seats but short of the majority | «Sin mayoría» |
-| Tied at the cut | In the group tied for the last seat | «Empate en el último puesto» |
+| Tied at the cut | In the group tied for the last seat | «Desempate en el último puesto» |
 | Added for choice | Added so the next vote offers a choice | «Se agrega para que haya opción» |
 | Out | None of the above | Not listed |
 

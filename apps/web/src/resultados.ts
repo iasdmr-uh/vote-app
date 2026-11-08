@@ -200,7 +200,7 @@ export function displayOrder<T extends { label: string; count: number }>(target:
 
 const EXPLANATION_RULES: Record<string, string> = { simple: 'Mayoría simple', ...RULE_LABELS }
 
-const REASON_GROUPS: Array<[OptionReason, string]> = [['elected', 'Electo/a'], ['no_majority', 'Sin mayoría'], ['tied_at_cut', 'Empate en el último puesto'], ['added_for_choice', 'Se agrega para que haya opción']]
+const REASON_GROUPS: Array<[OptionReason, string]> = [['elected', 'Electo/a'], ['no_majority', 'Sin mayoría'], ['tied_at_cut', 'Desempate en el último puesto'], ['added_for_choice', 'Se agrega para que haya opción']]
 
 export function explanationText(target: DecisionTarget, outcome?: Outcome, explanation?: Explanation, results: Array<{ optionId?: string; label: string; count: number }> = []) {
   if (!outcome || !explanation) return ''
@@ -300,7 +300,7 @@ export function actaMetaText(target: RoundRecord) {
   return parts.filter(Boolean).join(' · ')
 }
 
-export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: 'Electo/a' | 'Aprobada' | 'Desempate' | 'Empate' | null; winner: boolean }
+export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: 'Electo/a' | 'Aprobada' | 'Desempate' | null; winner: boolean }
 
 /** Counted options of a vote, in acta order, with votes, % of the habilitados and their tag. */
 export function actaRows(target: RoundRecord): ActaRow[] {
@@ -313,7 +313,7 @@ export function actaRows(target: RoundRecord): ActaRow[] {
     const outcome = outcomeTag(target.outcome, result.optionId)
     const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === 'A favor')
     const tied = !target.outcome && isTied(byVotes, byVotes.indexOf(result))
-    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' ? 'Desempate' : tied ? 'Empate' : null
+    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' || tied ? 'Desempate' : null
     return { key: result.optionId || result.label, rank: index + 1, label: result.label, count: result.count, percent: eligible ? percentOf(result.count, eligible) : null, tag, winner }
   })
 }
