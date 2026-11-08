@@ -22,7 +22,7 @@
 | HTTP | `apps/api/test/http/` | Nest in the test process, through `fetch` | Access, request validation and the moderator channel | Local, CI |
 | Scenarios | `apps/api/test/scenarios/` | Data replayed by other levels | Whole sessions give the same result at every level | With the level that replays them |
 | Mocked end-to-end | `tests/e2e/mocked/` | The browser, with the API intercepted | What each screen shows | Local, CI |
-| Real-stack end-to-end | `tests/e2e/real-stack/` | The browser, API and PostgreSQL | Flows across the phone, mesa and projector | Local only |
+| Real-stack end-to-end | `tests/e2e/real-stack/` | The browser, API and PostgreSQL | Flows across the phone, mesa and projector | Local, merge queue |
 | Load | `tests/load/` | k6 against a running stack | 50 to 70 concurrent sessions | Local only |
 
 ## Choosing a level

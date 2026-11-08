@@ -142,7 +142,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run real-stack Playwright tests
-        run: npm run test:e2e:integration
+        run: npm run test:e2e:real-stack
 
       - name: Upload Playwright report on failure
         if: failure()
