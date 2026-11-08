@@ -22,6 +22,12 @@ Source: issue #55, owner decision of 8 Nov 2026, principle P2. This replaces the
 - **WHEN** the operator looks at the participant list during or after a vote
 - **THEN** no person, including the regional secretary, is marked as having voted or not
 
+#### Scenario: Console summary after a vote closes
+
+- **WHEN** a vote has closed and the operator then disables someone who voted
+- **THEN** the console still shows how many voted and how many are disabled now
+- **AND** it no longer shows how many are still to vote
+
 ### Requirement: No counts per option while a vote is open
 
 While a vote is open, the moderator assembly state and the public screen state SHALL NOT include votes per candidate or option.

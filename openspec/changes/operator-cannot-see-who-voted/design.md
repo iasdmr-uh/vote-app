@@ -5,7 +5,7 @@ Commit d17388a already removed the per-person dots from the participant list. Th
 ## Decisions
 
 - **Remove the field at the source.** `moderatorAssembly` stops reading participation receipts per person. It keeps `attendanceRound` with `votedCount` and `eligibleCount`, which come from counting receipts. Hiding the field only in the web client would leave it in the API.
-- **Aggregate summary.** The console counts disabled delegates from `votingDisabled` and computes «falta/faltan» as `eligibleCount − votedCount − disabled`. This holds because nobody can be disabled or re-enabled during an open vote, so a disabled delegate never has a receipt in that vote.
+- **Aggregate summary.** The console counts disabled delegates from `votingDisabled`. While the vote is open it also shows «falta/faltan» as `eligibleCount − votedCount − disabled`. This holds because nobody can be disabled, re-enabled or taken out during an open vote, so the roster matches the frozen base and a disabled delegate has no receipt in that vote. After the vote closes the mesa can change the roster again, so the console drops «falta/faltan» and keeps «votó/votaron» and the current disabled count. The ballot card already shows «no votaron» for the closed vote.
 - **Refusal check.** `setVotingDisabled` (disable and re-enable) and `changeRoomPresence` (take-out) check for an open round inside the existing transaction, after the assembly row lock, as `returnToRoom` already does. The error is a 409 Conflict with a Spanish message.
 - **Console.** «Inhabilitar», «Habilitar» and «Retirar de la sala» are hidden while a vote is open, so the operator is not offered a refused action.
 

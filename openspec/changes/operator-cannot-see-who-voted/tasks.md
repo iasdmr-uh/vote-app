@@ -12,6 +12,7 @@
 - [x] 2.2 Add the open-round check to `setVotingDisabled` (disable and re-enable) and to take-out
 - [x] 2.3 Console hides «Inhabilitar», «Habilitar» and «Retirar de la sala» while a vote is open
 - [x] 2.4 E2E: the menu has no «Inhabilitar», «Habilitar» or «Retirar de la sala» while a vote is open
+- [x] 2.5 Console: «falta/faltan» shows only while the vote is open, and the roster actions stay hidden while any vote is open, even when a newer draft exists
 
 ## 3. One vote per person
 
