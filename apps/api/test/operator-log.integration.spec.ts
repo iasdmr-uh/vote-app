@@ -94,10 +94,35 @@ test('the download is the last entry of its own file, and the file keeps votes s
     assert.ok(actions.includes('Votación anulada: Presidente. Motivo: Error en la papeleta'))
     for (const id of voters) assert.ok(!csv.includes(id), 'no participant id')
     assert.ok(!/Delegado [123]/.test(csv), 'no entry names a voter')
-    assert.ok(!/vot[óo] por|Isaías|Jeremías/.test(csv.replace('Votación', '')), 'no choice')
+    assert.ok(!/vot[óo] por|Isaías|Jeremías/.test(csv), 'no choice')
 
     const download = await prisma.auditEvent.findFirstOrThrow({ where: { assemblyId, action: 'log.downloaded' } })
     assert.deepEqual(download.metadata, { purpose: 'delete', entryCount: actions.length })
+  } finally {
+    await cleanup()
+  }
+})
+
+test('a refused action is not logged', { skip }, async () => {
+  const { prisma, voting, assemblyId, cleanup } = await setup()
+  try {
+    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await voting.completeAssembly(assemblyId, true)
+    const before = await prisma.auditEvent.count({ where: { assemblyId } })
+    await assert.rejects(voting.changeLobby(assemblyId, 'lobby_open'))
+    assert.equal(await prisma.auditEvent.count({ where: { assemblyId } }), before)
+  } finally {
+    await cleanup()
+  }
+})
+
+test('a delegate joining is not logged', { skip }, async () => {
+  const { voting, log, assemblyId, join, cleanup } = await setup()
+  try {
+    await join(1)
+    await join(2)
+    const { csv } = await log.download(assemblyId, 'review')
+    assert.deepEqual(actionsOf(csv), ['Registro descargado'])
   } finally {
     await cleanup()
   }
