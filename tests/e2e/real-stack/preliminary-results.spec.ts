@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, openRoom, prepareBallot, projectorRow, voteAll } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, voteAll } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -46,6 +46,6 @@ test('comisión de 5: a 3 de 5 el resultado es preliminar y a 5 de 5 es oficial'
     await expect(page.locator('.result-so-far')).toHaveCount(0)
     await expect(page.locator('.result-summary')).toContainText('Resultado final')
   }
-  await expect(projector.locator('.pj-elected h2')).toHaveText(`✓ ${everyone}`)
+  await expectProjectorFinal(projector, everyone)
   for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

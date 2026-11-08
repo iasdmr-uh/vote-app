@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  castVoteByApi, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, voteAll,
+  castVoteByApi, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, voteAll,
 } from './helpers'
 
 /**
@@ -129,7 +129,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await expectBadge(mesaRow(mesa, 'Diego Paz'), null)
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
   await expectBadge(projectorRow(projector, 'Carla Mora'), '✓ Electo/a')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz · Bruno Díaz · Carla Mora')
+  await expectProjectorFinal(projector, 'Ana Ruiz · Bruno Díaz · Carla Mora')
   await expectPhoneShowsNoResult(phones[5])
 
   // Every seat is filled: no draft is left and the official result holds the three.

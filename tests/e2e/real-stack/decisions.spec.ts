@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll, type Room } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll, type Room } from './helpers'
 
 /**
  * E. Decisions (#42). Six habilitados: mayoría simple is 4 and 3/4 is 5 (ceil of 4.5). A favor / En
@@ -16,10 +16,8 @@ async function expectVerdict(room: Room, verdict: 'Aprobada' | 'No aprobada', ru
   const { mesa, projector, phones } = room
   await expect(mesa.locator('.ballot-card .decision-verdict')).toHaveText(verdict)
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText(rule)
-  // P21: the banner and the rule on the projector; the phones get the verdict too.
-  await expect(projector.locator('.pj-elected h2')).toHaveText(verdict === 'Aprobada' ? '✓ Aprobada' : 'No aprobada')
-  if (verdict === 'Aprobada') await expect(projector.locator('.pj-elected')).not.toHaveClass(/pj-rejected/)
-  else await expect(projector.locator('.pj-elected')).toHaveClass(/pj-rejected/)
+  // P21: the final summary and the rule on the projector; the phones show no result.
+  await expectProjectorFinal(projector, verdict)
   await expect(projector.locator('.pj-subtitle')).toHaveText(rule)
   for (const phone of phones) await expectPhoneShowsNoResult(phone)
   // A favor / En contra never repeats.
@@ -49,7 +47,7 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   await expectVerdict(room, 'Aprobada', 'Se aprueba con 3/4 · 5 votos')
   await projectorShares(projector, [['A favor', '5 votos', '83 %'], ['En contra', '1 voto', '17 %']])
   // A favor stays first on the projector, unranked.
-  await expect(projector.locator('.pj-results li .pj-label')).toHaveText(['A favor', 'En contra'])
+  await expect(projector.locator('.pj-results li .pj-label')).toHaveText(['A favor', 'En contra', 'No votaron'])
   await expect(projector.locator('.pj-rank')).toHaveCount(0)
 
   await addToOfficials(mesa)
@@ -96,6 +94,6 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
   await expectBadge(projectorRow(projector, 'Tegucigalpa'), '✓ Aprobada')
   await expect(projector.locator('.pj-subtitle')).toHaveText('Se aprueba con mayoría simple · 4 votos')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Tegucigalpa')
+  await expectProjectorFinal(projector, 'Tegucigalpa')
   for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

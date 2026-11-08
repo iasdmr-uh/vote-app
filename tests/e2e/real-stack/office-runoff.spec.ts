@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * A. An office without majority (#37, #38, #41). Five habilitados, so the majority is 3. Nobody reaches
@@ -58,7 +58,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
 
   await expect(projector.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/)
   await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
+  await expectProjectorFinal(projector, 'Ana Ruiz')
 
   for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

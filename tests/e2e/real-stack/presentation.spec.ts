@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, openRoom, prepareBallot, vote } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectProjectorFinal, openRoom, prepareBallot, vote } from './helpers'
 
 /** #48 on the real stack: the projector shows the elected office's slide, then follows the mesa's presentation over realtime. */
 test('el proyector muestra el electo al publicar y sigue «Presentar oficiales» de la mesa', async ({ browser, request }) => {
@@ -14,7 +14,7 @@ test('el proyector muestra el electo al publicar y sigue «Presentar oficiales»
   await expect(office.locator('.office-name')).toHaveText('María López')
   await expect(office.locator('.office-votes')).toHaveText('2 de 2 votos · 100 %')
   await projector.getByRole('button', { name: 'Ver conteo' }).click()
-  await expect(projector.locator('.pj-results li')).toHaveCount(2)
+  await expect(projector.locator('.pj-results li:not(.pj-not-voted)')).toHaveCount(2)
   await addToOfficials(mesa)
 
   const bar = mesa.getByRole('region', { name: 'Presentar oficiales' })
@@ -33,5 +33,5 @@ test('el proyector muestra el electo al publicar y sigue «Presentar oficiales»
   await confirm(mesa, 'Abrir votación')
   for (const phone of phones) await vote(phone, ['Juan Mora'])
   await closeAndShow(room)
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Juan Mora')
+  await expectProjectorFinal(projector, 'Juan Mora')
 })
