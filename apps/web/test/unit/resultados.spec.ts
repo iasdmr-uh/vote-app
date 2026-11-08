@@ -10,6 +10,7 @@ import {
   approvalText,
   completedCommittee,
   connectedText,
+  marksPerPersonText,
   countsOf,
   decisionTie,
   decisionVerdict,
@@ -172,6 +173,16 @@ describe('connectedText', () => {
 
   test('shows an empty base', () => {
     assert.equal(connectedText(0, 0), '0 de 0 conectados')
+  })
+})
+
+describe('marksPerPersonText', () => {
+  test('asks each person for exactly the open seats', () => {
+    assert.equal(marksPerPersonText(5), 'Cada persona marca exactamente 5')
+  })
+
+  test('asks for exactly one when one seat is open', () => {
+    assert.equal(marksPerPersonText(1), 'Cada persona marca exactamente 1')
   })
 })
 
