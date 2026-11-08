@@ -5,6 +5,7 @@ import { RealtimeModule } from '../realtime/realtime.module.js'
 import { ModeratorController, ParticipantController, ParticipantLeaveController, PublicAssemblyController } from './voting.controller.js'
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
+import { ConnectionCountService } from './connection-count.service.js'
 import { OperatorLogService } from './operator-log.service.js'
 
 @Module({
@@ -16,6 +17,7 @@ import { OperatorLogService } from './operator-log.service.js'
     PublicAssemblyController,
   ],
   providers: [
+    ConnectionCountService,
     OperatorLogService,
     PresentationService,
     VotingService,

@@ -11,6 +11,13 @@
 - `participant.joined` y cambios con nombres se emiten solo a moderadores. Mientras el lobby está abierto, el proyector autorizado por el código público recupera nombres activos y el total mediante `public-state`; al iniciar una papeleta, esa respuesta deja de incluir la lista. El canal público solo recibe eventos agregados.
 - La UI pública no recibe la lista operativa de quién emitió un voto. `participation.count` transporta solo totales agregados a público y moderación; los nombres del lobby no incluyen estado de participación.
 
+## Teléfonos conectados
+
+- El gateway registra en memoria qué participantes tienen al menos un socket abierto. Varios dispositivos de una misma sesión cuentan como una persona. No guarda nada en la base de datos ni en logs.
+- Un participante cuenta como desconectado solo después de `CONNECTION_GRACE_MS` sin ningún socket. Una reconexión dentro de ese margen no cambia nada.
+- El latido de Socket.IO (`pingInterval` y `pingTimeout`) se deriva de `CONNECTION_GRACE_MS` y `CONNECTION_LOSS_LIMIT_MS` en `connection-timing.ts`, para que una caída silenciosa se note dentro del límite.
+- Mientras hay una votación abierta, `connection.count` envía `{ roundId, connected, base }` a público y moderación cuando el valor cambia. `base` es la misma base de «ya votaron». Ningún evento dice quién está conectado.
+
 ## Contrato de conexión
 
 Conectar a namespace `/events` con una credencial en `socket.handshake.auth`:
