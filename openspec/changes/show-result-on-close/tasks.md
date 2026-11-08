@@ -40,5 +40,5 @@
 - [x] 6.1 Update `docs/scope.md` sections 6, 7 and 14 and section 8 rules 8, 9 and 16
 - [ ] 6.2 Update principles P4 and P5 in `docs/principles.md`
 - [x] 6.3 Update `docs/foundation/state-transitions.md` and `docs/foundation/api-and-events.md` for the removed publish step and the roster
-- [ ] 6.4 Run `db:generate`, `typecheck`, API tests on a disposable database, `test:e2e` and `test:e2e:integration`
+- [x] 6.4 Run `db:generate`, `typecheck`, API tests on a disposable database, `test:e2e` and `test:e2e:integration`
 - [x] 6.5 Scan the branch diff for added code comments
