@@ -43,7 +43,6 @@ test('D · inhabilitar antes de una votación: el teléfono no recibe la papelet
   await voteAll([juan, elena], [['Ana Ruiz'], ['Ana Ruiz']])
   await expect(summary.locator(':scope > span')).toHaveText(['3 votaron', '1 falta', '2 inhabilitados'])
   await expect(projector.locator('.pj-progress')).toContainText('de 6 ya votaron')
-  // The two inhabilitados stay in the base but do not hold the vote open, so the last ballot closes it.
   await vote(pedro, ['Juan Mora'])
   await expectClosedByItself(mesa)
   await closeAndShow(room)
