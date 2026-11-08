@@ -45,7 +45,7 @@
 | A test shows only the setup that matters to it, and builders make the rest. Builders used by several files live in `support/`, and the rest stay in their spec | Meszaros, Obscure Test; Pryce, Test Data Builder |
 | Readable repetition beats clever sharing | Google ch. 12, DAMP |
 | `describe` groups tests by unit or story | Goldberg 1.12 |
-| Data looks real, with Spanish names and real offices | Goldberg 1.6 |
+| Data looks real. Candidates are Old Testament prophets in Spanish, delegates are numbered, and offices are real | Goldberg 1.6 |
 | Errors are expected with `assert.rejects` or `assert.throws`, never caught | Goldberg 1.10 |
 | Collaborators come in through the constructor, replaced by stubs or spies | Goldberg 1.5 |
 | Tests never sleep, and wait for events or advance `page.clock` | Goldberg 3.4 |
