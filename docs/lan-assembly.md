@@ -10,7 +10,7 @@ La aplicación no necesita Internet durante la Asamblea. Si Starlink pierde la s
 | --- | --- | --- |
 | Teléfonos de los delegados | Wi-Fi de Starlink | `http://<dirección-de-la-laptop>` (por QR) |
 | Panel de la mesa | Solo en la laptop servidor | `http://localhost:8081/moderator` |
-| Proyector | Ventana abierta desde el panel, en la laptop | la abre el botón «Abrir proyector en otra ventana» |
+| Proyector | Ventana abierta desde el panel, en la laptop | la abre el enlace «Abrir proyector» del panel |
 
 El panel de la mesa **solo funciona en la laptop servidor**. Desde el Wi-Fi, la dirección `/moderator` devuelve a la página de ingreso y la API de moderación no responde, aunque alguien tenga la clave. Por eso el proyector debe conectarse a la laptop (HDMI o similar). La mesa trabaja en esa misma laptop.
 
@@ -61,8 +61,9 @@ Hazlo al menos un día antes, con la laptop que se usará.
    scripts/lan.sh credencial
    ```
 
-4. Crea la Asamblea y pulsa «Abrir proyector en otra ventana». Lleva esa ventana a la pantalla del proyector y pulsa «Iniciar proyección». El proyector muestra el QR y, debajo, la dirección por si algún teléfono no puede escanearlo.
-5. **Prueba con un teléfono** antes de abrir el ingreso a todos: conéctalo al Wi-Fi, escanea el QR y comprueba que aparece en la lista.
+4. Crea la Asamblea y pulsa el enlace «Abrir proyector» en la barra superior del panel. Se abre otra ventana. Llévala a la pantalla del proyector y pulsa «Pantalla completa», el botón tenue de la esquina inferior derecha, o usa la pantalla completa del navegador. El proyector muestra el QR en cuanto se abre y, debajo, la dirección por si algún teléfono no puede escanearlo.
+5. **Comparte solo el QR del proyector** o la dirección que aparece debajo de él. El panel de la mesa también muestra un QR con un enlace de texto debajo, y ese texto empieza con `http://localhost:8081`. Esa dirección solo funciona en la laptop, así que nunca la leas en voz alta ni la copies para los teléfonos.
+6. **Prueba con un teléfono** antes de abrir el ingreso a todos: conéctalo al Wi-Fi, escanea el QR y comprueba que aparece en la lista.
 
 ### Si algo falla
 
@@ -71,6 +72,26 @@ Hazlo al menos un día antes, con la laptop que se usará.
 - **La dirección de la laptop cambió** (por ejemplo, tras reiniciar el router): ejecuta `scripts/lan.sh iniciar` de nuevo. Cierra y vuelve a abrir el proyector desde el panel para que muestre el QR nuevo. Los teléfonos que ya se habían unido deben volver a escanearlo; si el ingreso ya estaba cerrado, la mesa decide si reabrirlo.
 - **Registros para diagnosticar:** `scripts/lan.sh registros`.
 - **Reiniciar la laptop a mitad de la Asamblea:** los datos se conservan. Vuelve a ejecutar `scripts/lan.sh iniciar`.
+
+### Copia de seguridad
+
+Haz una copia después de cerrar una votación, por ejemplo tras cada cargo electo. Nunca la hagas con una papeleta abierta. El script se niega si encuentra una abierta, porque en ese momento los votos todavía pueden vincularse con quien votó.
+
+Desde la carpeta del repositorio:
+
+```sh
+COMPOSE_ENV_FILE=$PWD/.env.lan APP_DOMAIN=unused.invalid COMPOSE_PROJECT_NAME=asdmr-lan scripts/candidate-backup.sh
+```
+
+Las tres variables dirigen el script a la base de esta laptop. `APP_DOMAIN` no se usa en la red local, pero el script lo exige. La copia queda en `backups/candidate/asdmr-candidate-<fecha y hora UTC>.dump` y solo tu usuario puede leerla. Contiene nombres, votos y resultados.
+
+Para comprobar que la copia se puede restaurar:
+
+```sh
+COMPOSE_ENV_FILE=$PWD/.env.lan APP_DOMAIN=unused.invalid COMPOSE_PROJECT_NAME=asdmr-lan scripts/candidate-verify-restore.sh backups/candidate/<archivo>.dump
+```
+
+El script restaura la copia en una base temporal del mismo PostgreSQL, comprueba que estén las tablas principales y borra esa base. Si todo salió bien, termina con `Restore verified in disposable database ...`.
 
 ## Después de la Asamblea
 
@@ -82,16 +103,22 @@ Por decisión de Secretaría, los datos solo se guardan durante la Asamblea; des
    2. **Descargar hoja de cálculo** (opcional): los mismos conteos en un archivo de Excel (`.xlsx`). Los nombres van como texto, así que nada de lo que un participante haya escrito puede ejecutarse como fórmula.
    3. Entrega el acta a Secretaría.
    4. Si todavía no vas a borrar, pulsa «Cerrar el acta sin borrar». La Asamblea queda en «Asambleas finalizadas con datos guardados» para volver luego.
-   5. **Borrar datos de la Asamblea:** escribe `BORRAR` para confirmar. Se eliminan nombres, votos, resultados y registros, y se compacta la base para que no queden en sus archivos.
+   5. **Borrar datos de la Asamblea:** antes de pedir la confirmación, el panel descarga el registro de la mesa (`registro-<asamblea>.csv`). Después escribe `BORRAR` para confirmar. Se eliminan nombres, votos, resultados y registros de esta Asamblea, y se compacta la base para que no queden en sus archivos. Una base restaurada aparte en el mismo PostgreSQL no se toca.
 3. Al apagar, borra la base de datos completa y las claves:
 
    ```sh
    scripts/lan.sh borrar-todo
    ```
 
-   Pide escribir `BORRAR`. Elimina el volumen de PostgreSQL, que también contiene los registros internos de la base. La siguiente Asamblea empieza otra vez con `scripts/lan.sh preparar`.
+   Pide escribir `BORRAR`. Elimina el volumen de PostgreSQL con todas sus bases, incluida cualquier base restaurada, y los registros internos. También borra `.env.lan`. La siguiente Asamblea empieza otra vez con `scripts/lan.sh preparar`.
 
-Si guardaste el acta en PDF o la hoja de cálculo en la laptop, entrégalos a Secretaría y bórralos también de la laptop.
+4. `borrar-todo` no borra archivos de la laptop. Entrega a Secretaría lo que corresponda y después borra:
+   - las copias de seguridad de `backups/candidate/`, con `rm -f backups/candidate/*.dump` desde la carpeta del repositorio
+   - el acta en PDF, si la guardaste
+   - la hoja de cálculo (`acta-<asamblea>.xlsx`)
+   - el registro de la mesa (`registro-<asamblea>.csv`), que se descarga al borrar los datos o con «Descargar registro»
+
+   Revisa también la carpeta de descargas del navegador y la papelera.
 
 ## Seguridad en esta red
 
