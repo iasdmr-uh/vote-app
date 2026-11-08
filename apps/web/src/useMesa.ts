@@ -51,9 +51,8 @@ const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
   const participants = state.value?.participants || []
-  // An inhabilitado still counts in the base, but no longer "falta"; one who already voted counts only in "votaron".
-  const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
-  const disabled = participants.filter((person) => person.votingDisabled && !person.voted).length
+  const disabled = participants.filter((person) => person.votingDisabled).length
+  const pending = record.status === 'open' ? Math.max(0, (record.eligibleCount ?? participants.length) - record.votedCount - disabled) : null
   return { ...record, pending, disabled }
 })
 const roomWarning = computed(() => {
