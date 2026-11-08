@@ -30,5 +30,5 @@ None. `openspec/specs/` is empty.
 
 - API: `VotingService.moderatorAssembly` in `apps/api/src/voting/voting.service.ts`, and `RoomService.setVotingDisabled` and `changeRoomPresence` in `apps/api/src/voting/room.service.ts`.
 - Web: `apps/web/src/components/ModeratorParticipants.vue`, `apps/web/src/useMesa.ts`, `apps/web/src/types.ts`.
-- Tests that assert the per-person flag change their expected results, because #55 reverses that rule: `apps/api/test/voting.integration.spec.ts`, `committee-ballot.spec.ts`, `regional-secretary.integration.spec.ts`, and matching E2E fixtures. Tests that disabled or took out people mid-vote now do it between votes.
+- Tests that assert the per-person flag change their expected results, because #55 reverses that rule: `apps/api/test/integration/voting.spec.ts`, `apps/api/test/unit/committee-ballot.spec.ts`, `apps/api/test/integration/regional-secretary.spec.ts`, and matching E2E fixtures. Tests that disabled or took out people mid-vote now do it between votes.
 - Docs: `docs/scope.md`, `docs/principles.md`.

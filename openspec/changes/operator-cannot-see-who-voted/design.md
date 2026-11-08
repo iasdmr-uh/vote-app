@@ -11,6 +11,6 @@ Commit d17388a already removed the per-person dots from the participant list. Th
 
 ## Findings
 
-- `voting-disabled.integration.spec.ts` expects disabling and re-enabling to work during an open vote. Its expected results change to refusals, per the requirement on actions during an open vote.
+- `apps/api/test/integration/voting-disabled.spec.ts` expects disabling and re-enabling to work during an open vote. Its expected results change to refusals, per the requirement on actions during an open vote.
 - `docs/principles.md` had an open question on whether the mesa sees who voted. #55 settles it, so P2 now covers it and the question is gone.
 - `participation.count` events still let the operator see the count rise in real time. #80 does not list it yet. It belongs in that list of limits.

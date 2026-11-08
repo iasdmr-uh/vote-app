@@ -16,7 +16,7 @@
 
 ## 3. One vote per person
 
-- [x] 3.1 Confirm existing tests cover a second ballot refused and a repeat after annulment; add any that are missing (covered by `voting.integration.spec.ts` and `annulment.integration.spec.ts`)
+- [x] 3.1 Confirm existing tests cover a second ballot refused and a repeat after annulment; add any that are missing (covered by `test/integration/voting.spec.ts` and `test/integration/annulment.spec.ts`)
 
 ## 4. Docs
 
@@ -25,4 +25,4 @@
 
 ## 5. Verify
 
-- [x] 5.1 `npm run db:generate --workspace @asdmr/api`, `npm run typecheck`, API tests with `TEST_DATABASE_URL`, `npm run test:e2e`, `npm run test:e2e:integration`
+- [x] 5.1 `npm run db:generate --workspace @asdmr/api`, `npm run typecheck`, API unit tests, `npm run test:integration` with `TEST_DATABASE_URL`, web unit tests, `npm run test:e2e`, `npm run test:e2e:real-stack`
