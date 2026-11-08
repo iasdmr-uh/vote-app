@@ -37,6 +37,8 @@ export async function roundBase(client: Prisma.TransactionClient, assemblyId: st
 }
 
 export async function freezeRoundBase(tx: Prisma.TransactionClient, assemblyId: string, roundId: string) {
-  const eligibleCount = (await liveRoundBases(tx, assemblyId)).get(roundId) ?? 0
-  await tx.round.update({ where: { id: roundId }, data: { eligibleCount } })
+  const people = await basePeople(tx, assemblyId)
+  const round = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { regionalSecretaryVotes: true } })
+  const base = baseOf(round, people)
+  await tx.round.update({ where: { id: roundId }, data: { eligibleCount: base.length, regionalSecretaryInBase: base.length > people.delegates.length } })
 }

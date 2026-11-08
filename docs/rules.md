@@ -59,6 +59,23 @@ Reglamento 05-12 03 is written for the comisión de nombramiento. The tool appli
 
 Everyone else below the line is out. The next vote asks for the seats still open and needs a majority again.
 
+## How a result is explained
+
+The server gives every option in an election or an Opciones decision one reason:
+
+| Reason | Meaning | On screen |
+|---|---|---|
+| Elected | Inside the seats and with a majority. In an Opciones decision, the approved option | «Electo/a», or «Aprobada» for a decision |
+| No majority | Inside the seats but short of the majority | «Sin mayoría» |
+| Tied at the cut | In the group tied for the last seat | «Empate en el último puesto» |
+| Added for choice | Added so the next vote offers a choice | «Se agrega para que haya opción» |
+| Out | None of the above | Not listed |
+
+- An A favor / En contra decision has no reasons. Its paragraph gives the A favor votes and whether it passed.
+- The paragraph starts with the rule, the base and the votes needed, such as «Mayoría simple de 38 habilitados = 20 votos.»
+- When the regional secretary was in the base, the base reads «29 habilitados (28 + secretaría regional)». The round records this when its base freezes.
+- The mesa shows the paragraph behind «¿Cómo se decidió?». The projector shows it under the majority line. The phone shows none of it.
+
 ## Examples
 
 All examples have 28 delegates in the room, so the base is 28 and the majority is 15.

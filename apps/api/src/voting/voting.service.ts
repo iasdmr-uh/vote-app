@@ -20,10 +20,10 @@ import { presentationOf } from './presentation.service.js'
 import { tiedAtCut, type ThresholdRule } from './results-engine.js'
 import { roomNumbers } from './room.js'
 import { appUrl } from './app-url.js'
-import { assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
+import { assertNoOpenRound, assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
 import { baseOf, basePeople, countInRoom, freezeRoundBase, roundBase, roundBases } from './base-count.js'
 import { ORGANIZATION_ID, RESULTS_ENGINE_ACTOR, RESUME_CODE_TTL_MS, SECRECY_CLEANUP_PENDING, VACUUM_LOCK_TIMEOUT_MS } from './constants.js'
-import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn, waitsForSourceResult } from './round-rules.js'
+import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, explanationOf, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn, waitsForSourceResult, type ExplanationRound } from './round-rules.js'
 
 /** The Unión Hondureña org chart, seeded in this order on every new Asamblea (Asamblea, Nov 2026). */
 export const DEFAULT_BOARD_POSITIONS = ['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3'] as const
@@ -148,12 +148,17 @@ export class VotingService implements OnModuleInit {
   async issueResumeCode(participantId: string) {
     const resumeCode = newOpaqueCredential()
     const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
+    const identity = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { assemblyId: true } })
+    if (!identity) throw new NotFoundException('Participante no encontrado')
     const participant = await this.prisma.$transaction(async (tx) => {
+      await lockAssembly(tx, identity.assemblyId)
       const current = await tx.participantSession.findUnique({
-        where: { id: participantId }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, assembly: { select: { status: true } } },
+        where: { id: participantId }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, isRegionalSecretary: true, assembly: { select: { status: true } } },
       })
       if (!current || current.status !== 'active') throw new NotFoundException('Participante no encontrado')
       assertNotCompleted(current.assembly.status)
+      if (current.isRegionalSecretary) throw new ConflictException('La secretaría regional no se reconecta; retírala de la sala y agrégala de nuevo')
+      await assertNoOpenRound(tx, current.assemblyId, 'Reconecta el dispositivo cuando cierre la votación abierta')
       await tx.participantSession.update({ where: { id: participantId }, data: { resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt } })
       await recordAudit(tx, { assemblyId: current.assemblyId, action: 'participant.resume_code_issued', metadata: { participantId, personName: `${current.firstName} ${current.lastName}` } })
       return current
@@ -169,13 +174,17 @@ export class VotingService implements OnModuleInit {
   async redeemResumeCode(resumeCode: string) {
     const participantSessionToken = newOpaqueCredential()
     const resumeCodeHash = hashCredential(resumeCode)
+    const identity = await this.prisma.participantSession.findUnique({ where: { resumeCodeHash }, select: { assemblyId: true } })
+    if (!identity) throw new NotFoundException('El código de reconexión no es válido o ya venció')
     const participant = await this.prisma.$transaction(async (tx) => {
+      await lockAssembly(tx, identity.assemblyId)
       const current = await tx.participantSession.findUnique({
         where: { resumeCodeHash }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, resumeExpiresAt: true },
       })
       if (!current || current.status !== 'active' || !current.resumeExpiresAt || current.resumeExpiresAt <= new Date()) {
         throw new NotFoundException('El código de reconexión no es válido o ya venció')
       }
+      await assertNoOpenRound(tx, current.assemblyId, 'Hay una votación en curso. Vuelve a escanear este código cuando termine.')
       // Conditional update makes the code single-use even if two devices redeem it at once.
       const claimed = await tx.participantSession.updateMany({
         where: { id: current.id, resumeCodeHash },
@@ -323,7 +332,9 @@ export class VotingService implements OnModuleInit {
     const [chain, ballot] = round
       ? await Promise.all([this.chainPosition(round), this.prisma.ballotOption.findMany({ where: { roundId: round.id }, orderBy: { order: 'asc' }, select: { id: true } })])
       : [null, []]
-    const outcome = result && round ? outcomeOf({ ...round, options: ballot }, result, eligibleCounts.get(round.id) ?? participantCount) : undefined
+    const resultBase = round ? eligibleCounts.get(round.id) ?? participantCount : 0
+    const outcome = result && round ? outcomeOf({ ...round, options: ballot }, result, resultBase) : undefined
+    const explanation = result && round ? explanationOf({ ...round, options: ballot }, result, resultBase) : undefined
     const positions = await this.positionsOf(assembly.id)
     return {
       assembly: { id: assembly.id, name: assembly.name, status: assembly.status, completedAt: assembly.completedAt?.toISOString() ?? null },
@@ -338,6 +349,7 @@ export class VotingService implements OnModuleInit {
       round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, regionalSecretaryVotes: round.regionalSecretaryVotes, positionId: await this.positionIdOf(round), ...decisionFields(round), ...chain } : null,
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
+      ...(explanation ? { explanation } : {}),
       ...(outcome && round ? await this.resultSummary(round.id, outcome.runoff) : {}),
       ...(officialResult ? { officialResult } : {}),
       presentation: presentationOf(assembly),
@@ -393,7 +405,7 @@ export class VotingService implements OnModuleInit {
       secrecyCleanupPending: (SETTLED_ROUND_STATUSES as readonly string[]).includes(round.status) && !round.votesUnlinkedAt,
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
       ...(round.status === 'published'
-        ? await this.moderatorSummary(round.id, outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length))
+        ? await this.moderatorResult(round, eligibleCounts.get(round.id) ?? assembly.participants.length)
         : {}),
       voteNumber: voteNumberIn(chains.get(round.committeeRootRoundId ?? round.id) ?? [], round.id),
       runoff: isRunoff(round.countingRule),
@@ -1033,6 +1045,11 @@ export class VotingService implements OnModuleInit {
       return { final: { elected: result.options.map(({ optionId, option }) => ({ optionId, label: option.label })), approved: result.approved } }
     }
     return { continuing: round.options.filter((option) => runoff.includes(option.id)).map((option) => ({ optionId: option.id, label: option.label })) }
+  }
+
+  private async moderatorResult(round: ExplanationRound & { id: string }, base: number) {
+    const counts = await this.rankedCounts(round.id)
+    return { ...(await this.moderatorSummary(round.id, outcomeOf(round, counts, base))), explanation: explanationOf(round, counts, base) }
   }
 
   private async moderatorSummary<T extends { runoff: string[] }>(roundId: string, outcome: T) {

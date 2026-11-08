@@ -9,6 +9,10 @@ export async function lockAssembly(tx: Prisma.TransactionClient, assemblyId: str
   return rows[0]
 }
 
+export async function assertNoOpenRound(tx: Prisma.TransactionClient, assemblyId: string, message: string) {
+  if (await tx.round.count({ where: { assemblyId, status: 'open' } }) > 0) throw new ConflictException(message)
+}
+
 export function assertNotCompleted(status: string) {
   if (status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
 }

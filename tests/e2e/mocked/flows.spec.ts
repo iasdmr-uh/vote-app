@@ -370,13 +370,14 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(secretaryRow).not.toContainText('Votó')
   await expect(secretaryRow).not.toContainText('Falta')
   await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
-  await page.getByLabel('Acciones para Luis Mejía').click()
+  await expect(secretaryRow.getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
   const luisMenu = page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })
-  await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(page.getByLabel('Acciones para Luis Mejía')).toHaveCount(0)
+  await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
   await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
   await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
-  await page.getByLabel('Acciones para Luis Mejía').click()
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Nuevo código' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
@@ -386,7 +387,9 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(summary).toContainText('1 inhabilitado')
   await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Nuevo código' })).toBeVisible()
   await page.getByLabel('Acciones para Luis Mejía').click()
+  await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
   await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toBeVisible()
   await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
   await page.getByLabel('Acciones para Luis Mejía').click()
@@ -422,9 +425,9 @@ test('la mesa no ve acciones sobre la lista mientras una votación está abierta
 
   await page.goto('/moderator')
   await expect(page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })).toBeVisible()
-  await page.getByLabel('Acciones para Ana Reyes').click()
   const ana = page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })
-  await expect(ana.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(page.getByLabel('Acciones para Ana Reyes')).toHaveCount(0)
+  await expect(ana.getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
   await expect(ana.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
   await expect(ana.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
@@ -531,6 +534,27 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('new-session-token')
+})
+
+test('el teléfono pide esperar si alguien intenta ingresar durante una votación abierta', async ({ page }) => {
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/DEMO-ROOM/join')) {
+      await route.fulfill({ status: 409, json: { message: 'Hay una votación en curso. Espera a que termine para ingresar.' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for join during vote test' } })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Código de sala').fill('DEMO-ROOM')
+  await page.getByLabel('Nombre').fill('Delegado')
+  await page.getByLabel('Apellido').fill('Tardío')
+  await page.getByRole('button', { name: 'Entrar a la sala' }).click()
+  await expect(page.getByRole('alert')).toContainText('Hay una votación en curso. Espera a que termine para ingresar.')
+  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
 })
 
 test('un error de red conserva la selección y permite revisar y reintentar', async ({ page }) => {
@@ -1209,6 +1233,23 @@ test('delegado reconecta su sesión en un dispositivo nuevo con el QR de la mesa
   expect(resumeBody).toEqual({ resumeCode: 'synthetic-resume-code-0123456789' })
   await expect(page).toHaveURL(/\/$/)
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('synthetic-resumed-token')
+})
+
+test('un QR de reconexión escaneado durante una votación abierta pide volver a escanearlo al terminar', async ({ page }) => {
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/resume')) {
+      await route.fulfill({ status: 409, json: { message: 'Hay una votación en curso. Vuelve a escanear este código cuando termine.' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for resume during vote test' } })
+  })
+
+  await page.goto('/?resume=synthetic-resume-code-0123456789')
+  await expect(page.getByRole('alert')).toContainText('Hay una votación en curso. Vuelve a escanear este código cuando termine.')
+  await expect(page).toHaveURL(/\/$/)
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
 })
 
 test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ page }) => {

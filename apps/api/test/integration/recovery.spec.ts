@@ -40,6 +40,8 @@ test('moderator and delegates can recover from lost devices without enabling a s
     await service.openRound(round.id)
     await assert.rejects(room.changeLobby(assemblyId, 'lobby_open'), ConflictException)
     await service.castVote(anaId, round.id, round.options[0]!.id)
+    await assert.rejects(service.issueResumeCode(anaId), ConflictException)
+    await service.closeRound(round.id)
 
     const issued = await service.issueResumeCode(anaId)
     const resumeCode = new URL(issued.resumeUrl).searchParams.get('resume')!
