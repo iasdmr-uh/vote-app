@@ -1316,6 +1316,45 @@ test('durante una votación abierta la mesa ve la limpieza pendiente sin poder r
   await expect(panel.getByRole('button', { name: 'Reintentar limpieza' })).toHaveCount(0)
 })
 
+test('durante una votación abierta la mesa no ofrece preparar la siguiente votación', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  const open = { id: 'open-round', title: 'Presidencia, de nuevo', status: 'open', options: [{ id: 'b', label: 'Opción Beta (prueba)' }, { id: 'c', label: 'Opción Gama (prueba)' }], participationCount: 0 }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético' }],
+        participantCount: 4,
+        eligibleCount: 4,
+        recordedCount: 0,
+        regionalSecretary: { firstName: 'Secretaría', lastName: 'Regional' },
+        currentRound: open,
+        rounds: [
+          { id: 'annulled-round', title: 'Presidencia', status: 'annulled', annulReason: 'Error de la mesa', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }], participationCount: 1 },
+          open,
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.locator('.ballot-card').getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
+  // Preparing covers a new ballot, its candidates and departments, repeating an annulled vote and the regional secretary.
+  await expect(page.getByRole('button', { name: 'Preparar otra papeleta' })).toHaveCount(0)
+  await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Repetir con las mismas opciones' })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del departamento')).toHaveCount(0)
+  await expect(page.getByLabel(/Agregar (candidato|opción)|Nombre del candidato/)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /secretaría regional|Agregar a Secretaría/i })).toHaveCount(0)
+})
+
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
   let cleanupDone = false
   let cleanupRequests = 0
