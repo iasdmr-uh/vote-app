@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
-import { hashCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { DEFAULT_BOARD_POSITIONS, DEFAULT_DEPARTMENT_POSITIONS, VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { hashCredential } from '../../src/auth/credentials.js'
+import { PrismaService } from '../../src/prisma/prisma.service.js'
+import { DEFAULT_BOARD_POSITIONS, DEFAULT_DEPARTMENT_POSITIONS, VotingService } from '../../src/voting/voting.service.js'
+import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false

@@ -8,4 +8,4 @@ if (headed) process.env.E2E_SLOWMO ??= '350'
 
 process.argv = [process.argv[0], process.argv[1], 'tie-sessions', ...(headed ? ['--headed'] : []), ...rest]
 
-await import('./run-e2e-integration.mjs')
+await import('./run-e2e-real-stack.mjs')

@@ -4,17 +4,17 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
-import { writeChain, type ChainVote } from './fixtures/chain-diagram.js'
-import { assertVoteInvariants, candidatesOf, delegateName, expandBallots, seatsOf, seededShuffle, sorted } from './fixtures/session-tools.js'
-import { fixtures, type Fixture } from './fixtures/tie-sessions.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import { PrismaService } from '../../src/prisma/prisma.service.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { writeChain, type ChainVote } from '../scenarios/chain-diagram.js'
+import { assertVoteInvariants, candidatesOf, delegateName, expandBallots, seatsOf, seededShuffle, sorted } from '../scenarios/session-tools.js'
+import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
-const outputDirectory = process.env.TIE_FIXTURES_OUT ?? fileURLToPath(new URL('../../../test-results/tie-fixtures/', import.meta.url))
+const outputDirectory = process.env.TIE_FIXTURES_OUT ?? fileURLToPath(new URL('../../../../test-results/tie-fixtures/', import.meta.url))
 
 type Option = { id: string; label: string }
 type Mesa = Awaited<ReturnType<VotingService['moderatorAssembly']>>

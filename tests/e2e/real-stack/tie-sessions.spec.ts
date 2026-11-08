@@ -1,8 +1,8 @@
 import { join } from 'node:path'
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test'
-import { writeChain, type ChainVote } from '../../../apps/api/test/fixtures/chain-diagram.js'
-import { candidatesOf, expandBallots, seatsOf, seededShuffle, sorted } from '../../../apps/api/test/fixtures/session-tools.js'
-import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/fixtures/tie-sessions.js'
+import { writeChain, type ChainVote } from '../../../apps/api/test/scenarios/chain-diagram.js'
+import { candidatesOf, expandBallots, seatsOf, seededShuffle, sorted } from '../../../apps/api/test/scenarios/session-tools.js'
+import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/scenarios/tie-sessions.js'
 import { api, castVoteByApi, closeAndPublish, confirm, expectBadge, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
 
 const slowMo = Number(process.env.E2E_SLOWMO ?? 0)

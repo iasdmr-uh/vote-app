@@ -7,8 +7,9 @@
     "start:dev": "nest start --watch",
     "build": "nest build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test --test-concurrency=1 test/*.spec.ts test/**/*.spec.ts",
-    "test:fixtures": "node --import tsx --test --test-concurrency=1 test/tie-sessions.spec.ts test/tie-sessions.integration.spec.ts",
+    "test": "node --import tsx --test --test-concurrency=1 test/unit/*.spec.ts",
+    "test:integration": "node --import tsx --import ./test/support/require-database.ts --test --test-concurrency=1 test/integration/*.spec.ts",
+    "test:scenarios": "node --import tsx --import ./test/support/require-database.ts --test --test-concurrency=1 test/unit/tie-sessions.spec.ts test/integration/tie-sessions.spec.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy"

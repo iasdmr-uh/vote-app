@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import { PrismaService } from '../../src/prisma/prisma.service.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 
