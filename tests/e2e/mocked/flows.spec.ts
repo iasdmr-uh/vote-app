@@ -261,6 +261,7 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
         participationStatus: 'recorded',
         openRound: { roundId: 'repeat', title: 'Presidencia — nueva votación', status: 'closed', format: 'single_choice', options: [] },
         officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: 'Electa por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
+        final: { elected: [{ optionId: 'm', label: 'María López' }], approved: null },
       } })
       return
     }
@@ -1522,6 +1523,7 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
         results: [{ optionId: 'm', label: 'María López', count: 22 }, { optionId: 'c', label: 'Carlos Gómez', count: 15 }],
         outcome: { seats: 1, base: 38, threshold: 20, elected: ['m'], runoff: [], openSeats: 0 },
         officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
+        final: { elected: [{ optionId: 'm', label: 'María López' }], approved: null },
       } })
       return
     }
