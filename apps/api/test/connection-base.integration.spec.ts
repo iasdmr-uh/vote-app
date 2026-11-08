@@ -117,5 +117,13 @@ test('the regional secretary is in the base only of a vote that adds them', { sk
     const base = (await service.openRoundBase(assemblyId))!
     assert.equal(base.participantIds.length, people.length + 1)
     assert.equal(base.participantIds.length, await eligibleOnMesa(service, assemblyId, vote.id))
+
+    const secretary = base.participantIds.find((id) => !people.includes(id))!
+    await service.annulRound(vote.id, 'Prueba')
+    const next = await election(service, assemblyId)
+    await service.openRound(next.id)
+    const nextBase = (await service.openRoundBase(assemblyId))!
+    assert.equal(nextBase.participantIds.includes(secretary), false)
+    assert.equal(nextBase.participantIds.length, await eligibleOnMesa(service, assemblyId, next.id))
   })
 })
