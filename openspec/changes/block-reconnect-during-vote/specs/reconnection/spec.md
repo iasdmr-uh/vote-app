@@ -69,16 +69,32 @@ Source: issue #78, with #85 for how the secretary joins.
 - **WHEN** the operator asks for a reconnection code for the regional secretary
 - **THEN** the request is refused
 
+### Requirement: No assembly code change during an open vote
+
+While a vote is open, the tool SHALL refuse to change the assembly code, and SHALL NOT revoke any public session. Once the vote closes or is annulled, the mesa SHALL be able to change it again.
+
+Source: issue #78, and the owner's decision of 8 November 2026 that nothing can interrupt an open vote.
+
+#### Scenario: Change the code during an open vote
+
+- **WHEN** a vote is open and the mesa asks for a new assembly code
+- **THEN** the code stays the same, no public session is revoked, nothing is recorded, and the console does not offer «Nuevo código»
+
+#### Scenario: Change the code after the vote
+
+- **WHEN** the open vote was closed or annulled
+- **THEN** the mesa can change the assembly code
+
 ### Requirement: Console hides reconnection during a vote
 
-While a vote is open, the operator console SHALL NOT offer «Reconectar dispositivo».
+While a vote is open, the operator console SHALL NOT offer «Reconectar dispositivo» or any other participant menu action.
 
 Source: issue #78.
 
 #### Scenario: Open vote
 
 - **WHEN** a vote is open
-- **THEN** no participant menu offers «Reconectar dispositivo»
+- **THEN** no participant row shows the actions menu
 
 #### Scenario: Regional secretary row
 
