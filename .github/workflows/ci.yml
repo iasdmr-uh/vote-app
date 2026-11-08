@@ -118,6 +118,7 @@ jobs:
 
   e2e-real:
     name: Playwright E2E (real stack)
+    if: github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
