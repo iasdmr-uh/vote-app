@@ -50,7 +50,7 @@ test('closing a round leaves no database-level link between participation receip
   }
 })
 
-test('a failed VACUUM keeps the round closed, blocks publication, and is retried', async () => {
+test('a failed VACUUM keeps the round closed, and a retry unlinks the votes and shows the result', async () => {
   const prisma = await connectDatabase()
   const organizationId = randomUUID()
   const service = new VotingService(prisma, gatewayStub().gateway)
