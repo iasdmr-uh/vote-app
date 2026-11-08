@@ -26,7 +26,6 @@ test('a 2/3 decision with 28 in the room needs 19, and abstentions count in the 
     const closed = (await voting.moderatorAssembly(assemblyId)).rounds.find((item) => item.id === amendment.id)!
     assert.deepEqual(closed.outcome, { seats: 1, base: 28, threshold: 19, elected: [], runoff: [], openSeats: 0, rule: 'two_thirds', approved: false })
 
-    await voting.publishRound(amendment.id)
     const projector = await voting.publicState(joinCode)
     assert.equal(projector.round?.approvalRule, 'two_thirds')
     assert.equal(projector.round?.approvalThreshold, 19)
