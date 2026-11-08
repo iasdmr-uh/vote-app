@@ -115,9 +115,10 @@ describe('voteProgress', () => {
     assert.equal(second.nextStep, 'Decisión tomada')
   })
 
-  test('the wording never says eliminated, winner or lost', () => {
+  test('the wording never says eliminated, winner or lost, and shows no trophy', () => {
     const text = JSON.stringify(voteProgress([tiedFirst, annulledSecond, electedSecond]))
-    assert.doesNotMatch(text, /elimina|gana|ganador|perd/i)
+    assert.doesNotMatch(text, /elimina|gana|ganador|perd|trofeo/i)
+    assert.doesNotMatch(text, /\p{Extended_Pictographic}/u)
   })
 
   test('the latest tab is the election or decision of the last vote that opened', () => {

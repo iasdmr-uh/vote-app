@@ -1,4 +1,4 @@
-import { RESULT_WORDING, countsOf, decisionVerdict, displayOrder, formatNames, isDecision, majorityText, outcomeTag, voteLabel, winnerText } from './resultados'
+import { RESULT_WORDING, chainVoteNumber, countsOf, decisionVerdict, displayOrder, formatNames, isDecision, majorityText, outcomeTag, voteLabel, winnerText } from './resultados'
 import type { RoundRecord } from './types'
 
 export type ProgressState = 'open' | 'counting' | 'counted' | 'annulled'
@@ -61,7 +61,7 @@ function progressColumn(round: RoundRecord, rounds: RoundRecord[]): ProgressColu
   const counted = state === 'counted'
   return {
     id: round.id,
-    heading: voteLabel({ voteNumber: voteNumberOf(round, rounds), runoff: round.runoff }) || '1.ª VOTACIÓN',
+    heading: voteLabel({ voteNumber: chainVoteNumber(round, rounds), runoff: round.runoff }) || '1.ª VOTACIÓN',
     state,
     stateText: STATE_TEXT[state],
     reason: state === 'annulled' ? round.annulReason ?? '' : '',
@@ -77,14 +77,6 @@ function stateOf(round: RoundRecord): ProgressState {
   if (round.status === 'annulled') return 'annulled'
   if (round.status === 'open') return 'open'
   return round.status === 'published' && round.outcome && countsOf(round).length ? 'counted' : 'counting'
-}
-
-function voteNumberOf(round: RoundRecord, rounds: RoundRecord[]) {
-  if (round.voteNumber) return round.voteNumber
-  const rootId = tabIdOf(round)
-  const chain = rounds.filter((item) => tabIdOf(item) === rootId)
-  const before = chain.slice(0, Math.max(0, chain.findIndex((item) => item.id === round.id)))
-  return before.filter((item) => item.status !== 'annulled').length + 1
 }
 
 function rowsOf(round: RoundRecord): ProgressRow[] {
