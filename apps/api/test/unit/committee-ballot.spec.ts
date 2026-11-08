@@ -22,7 +22,7 @@ test('a committee is a multiple-choice ballot of typed names, sized to its seats
   let created: Record<string, any> | undefined
   const tx = {
     $queryRaw: async () => [{ id: 'assembly', status: 'in_progress' }],
-    round: { create: async ({ data }: { data: Record<string, any> }) => { created = data; return { id: 'round', status: 'draft', ...data, options: data.options.create } } },
+    round: { count: async () => 0, create: async ({ data }: { data: Record<string, any> }) => { created = data; return { id: 'round', status: 'draft', ...data, options: data.options.create } } },
     auditEvent: { create: async () => ({}) },
   }
   const voting = buildProviders({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUnique: async () => null } }, {}).voting
@@ -37,7 +37,7 @@ test('"Voto nulo" is an ordinary name now: nothing is added to the ballot or res
   let labels: string[] = []
   const tx = {
     $queryRaw: async () => [{ id: 'assembly', status: 'in_progress' }],
-    round: { create: async ({ data }: { data: Record<string, any> }) => { labels = data.options.create.map((option: { label: string }) => option.label); return { id: 'round', ...data, options: [] } } },
+    round: { count: async () => 0, create: async ({ data }: { data: Record<string, any> }) => { labels = data.options.create.map((option: { label: string }) => option.label); return { id: 'round', ...data, options: [] } } },
     auditEvent: { create: async () => ({}) },
   }
   const voting = buildProviders({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUnique: async () => null } }, {}).voting
