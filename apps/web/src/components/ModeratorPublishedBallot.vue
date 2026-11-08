@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RESULT_WORDING, countsOf, electedSoFar, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
+import ResultExplanation from './ResultExplanation.vue'
 import ResultsList from './ResultsList.vue'
 import ResultSummary from './ResultSummary.vue'
 import { useAssembly } from '../useAssembly'
@@ -37,6 +38,7 @@ function runoffButtonText(target: RoundRecord) {
   <p v-if="final && election?.registeredAt" class="status-line">{{ RESULT_WORDING.registered }}</p>
   <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ RESULT_WORDING.register }}</button></div>
   <ResultsList :rows="rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
+  <ResultExplanation :target="currentRoundRecord" />
   <div class="action-row ballot-actions">
     <button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button>
     <button v-if="runoffOf(currentRoundRecord)" class="primary push-right" :disabled="loading" @click="openRunoff(currentRoundRecord)">{{ runoffButtonText(currentRoundRecord) }}</button>

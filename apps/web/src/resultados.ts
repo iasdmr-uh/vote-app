@@ -1,4 +1,4 @@
-import type { Outcome, Position, RoundRecord } from './types'
+import type { Explanation, OptionReason, Outcome, Position, RoundRecord } from './types'
 import type { Cell } from './xlsx'
 
 type Counted = { count: number }
@@ -168,6 +168,29 @@ export function winnerText(target: DecisionTarget, label: string) {
 export function displayOrder<T extends { label: string; count: number }>(target: DecisionTarget | null | undefined, results: T[]) {
   if (target?.category === 'decision' && target.decisionFormat === 'boolean') return [...results].sort((a, b) => Number(b.label === 'A favor') - Number(a.label === 'A favor'))
   return [...results].sort((a, b) => b.count - a.count)
+}
+
+const EXPLANATION_RULES: Record<string, string> = { simple: 'Mayoría simple', ...RULE_LABELS }
+
+const REASON_GROUPS: Array<[OptionReason, string]> = [['elected', 'Electo/a'], ['no_majority', 'Sin mayoría'], ['tied_at_cut', 'Empate en el último puesto'], ['added_for_choice', 'Se agrega para que haya opción']]
+
+export function explanationText(target: DecisionTarget, outcome?: Outcome, explanation?: Explanation, results: Array<{ optionId?: string; label: string; count: number }> = []) {
+  if (!outcome || !explanation) return ''
+  const base = explanation.baseIncludesSecretary ? `${outcome.base} habilitados (${explanation.baseDelegates} + secretaría regional)` : `${outcome.base} habilitados`
+  const sentences = [`${EXPLANATION_RULES[explanation.rule] ?? EXPLANATION_RULES.simple} de ${base} = ${outcome.threshold} ${outcome.threshold === 1 ? 'voto' : 'votos'}.`]
+  if (isDecision(target) && target.decisionFormat === 'boolean') {
+    const favor = results.find((result) => result.label === 'A favor')?.count ?? 0
+    return [...sentences, `A favor: ${favor}. ${outcome.approved ? 'Aprobada' : 'No aprobada'}.`].join(' ')
+  }
+  const ordered = results.map((result, order) => ({ ...result, order })).sort((a, b) => b.count - a.count || a.order - b.order)
+  for (const [reason, title] of REASON_GROUPS) {
+    const members = ordered.filter((result) => result.optionId && explanation.reasons[result.optionId] === reason)
+    if (!members.length) continue
+    const heading = reason === 'elected' && isDecision(target) ? 'Aprobada' : title
+    sentences.push(`${heading}: ${formatNames(members.map((result) => `${result.label} (${result.count})`))}.`)
+  }
+  if (outcome.runoff.length) sentences.push('Pasan a la siguiente votación.')
+  return sentences.join(' ')
 }
 
 export function formatNames(names: string[]) {
