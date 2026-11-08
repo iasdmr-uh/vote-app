@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectBadge, expectClosedByItself, mesaRow, openRoom, phoneRow, prepareBallot, projectorRow, runVote, voteAll, type Room } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll, type Room } from './helpers'
 
 /**
  * E. Decisions (#42). Six habilitados: mayoría simple is 4 and 3/4 is 5 (ceil of 4.5). A favor / En
@@ -21,7 +21,7 @@ async function expectVerdict(room: Room, verdict: 'Aprobada' | 'No aprobada', ru
   if (verdict === 'Aprobada') await expect(projector.locator('.pj-elected')).not.toHaveClass(/pj-rejected/)
   else await expect(projector.locator('.pj-elected')).toHaveClass(/pj-rejected/)
   await expect(projector.locator('.pj-subtitle')).toHaveText(rule)
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText(verdict)
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
   // A favor / En contra never repeats.
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
 }
@@ -66,7 +66,7 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   await expectVerdict(room, 'No aprobada', 'Se aprueba con mayoría simple · 4 votos')
   await projectorShares(projector, [['A favor', '3 votos', '50 %'], ['En contra', '3 votos', '50 %']])
   await expect(projector.locator('.pj-tie')).toHaveCount(0)
-  await expectBadge(phoneRow(phones[0], 'A favor'), null)
+  await expectPhoneShowsNoResult(phones[0])
 
   await addToOfficials(mesa)
   // Options without majority repeat between the top 2 plus ties, then one option reaches the rule.
@@ -84,7 +84,7 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   // A decision never takes a new candidate, so the repeat opens at once.
   await expect(mesa.getByLabel('Nombre del candidato')).toHaveCount(0)
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options label')).toHaveText(['Tegucigalpa', 'San Pedro Sula'])
   }
   await voteAll(phones, [['Tegucigalpa'], ['Tegucigalpa'], ['Tegucigalpa'], ['Tegucigalpa'], ['San Pedro Sula'], ['San Pedro Sula']])
@@ -97,6 +97,5 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   await expectBadge(projectorRow(projector, 'Tegucigalpa'), '✓ Aprobada')
   await expect(projector.locator('.pj-subtitle')).toHaveText('Se aprueba con mayoría simple · 4 votos')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Tegucigalpa')
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Tegucigalpa')
-  await expectBadge(phoneRow(phones[0], 'Tegucigalpa'), 'Aprobada')
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

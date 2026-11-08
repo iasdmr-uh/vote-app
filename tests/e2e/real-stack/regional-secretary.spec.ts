@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
-import { closeAndShow, confirm, expectBadge, expectClosedByItself, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll, type Phone, type Room } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll, type Phone, type Room } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -61,8 +61,8 @@ test('three tied votes bring in the regional secretary, whose secret vote settle
 
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
-  await expect(phones[3].page.locator('.official-card strong')).toHaveText('Ana Ruiz')
-  await expect(secretary.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
+  await expectPhoneShowsNoResult(phones[3])
+  await expectPhoneShowsNoResult(secretary)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('4')
 
   const record = mesa.locator('.official-round')

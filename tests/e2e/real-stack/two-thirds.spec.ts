@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectClosedByItself, openRoom, prepareBallot, runVote, voteAll, type Room } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectClosedByItself, expectPhoneShowsNoResult, openRoom, prepareBallot, runVote, voteAll, type Room } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -14,7 +14,7 @@ async function expectVerdict(room: Room, verdict: 'Aprobada' | 'No aprobada') {
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText(rule)
   await expect(projector.locator('.pj-elected h2')).toHaveText(verdict === 'Aprobada' ? '✓ Aprobada' : 'No aprobada')
   await expect(projector.locator('.pj-subtitle')).toHaveText(rule)
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText(verdict)
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 }
 
 test('2/3 con 7 en la sala: 5 votos aprueban, 4 no aprueban aunque sean mayoría', async ({ browser, request }) => {

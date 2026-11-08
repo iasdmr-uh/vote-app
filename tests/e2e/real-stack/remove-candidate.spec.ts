@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, expectClosedByItself, moderatorState, openRoom, participantState, prepareBallot, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectClosedByItself, expectPhoneShowsNoResult, moderatorState, openRoom, participantState, prepareBallot, runVote, voteAll } from './helpers'
 
 /**
  * G. «Quitar» on a candidate the mesa added (#40). Five habilitados, majority 3: two votes without majority
@@ -42,7 +42,7 @@ test('G · quitar un candidato nuevo: sale del borrador y ningún teléfono lo r
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(2)
     await expect(phone.page.getByText('Elena Castro')).toHaveCount(0)
     const state = await participantState(request, phone.token)
@@ -51,5 +51,5 @@ test('G · quitar un candidato nuevo: sale del borrador y ningún teléfono lo r
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez']])
   await expectClosedByItself(mesa)
   await closeAndShow(room)
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })
