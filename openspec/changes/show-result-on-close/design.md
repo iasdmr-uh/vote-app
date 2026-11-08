@@ -48,14 +48,21 @@ New nullable columns on `official_results`:
 - Settling writes the row even when nobody is elected, so an A favor / En contra decision gets one.
 - Annulling the settling vote clears `settled_round_id` together with that vote's elected, which the current annulment already removes.
 - `POST /moderator/elections/:rootRoundId/register` sets `registered_at`. It refuses when `settled_round_id` is null, when that round is not `published`, or when the round is annulled. Repeating the call on a registered result changes nothing.
+- `OfficialRosterService` owns registering, apart from `VotingService`.
+- Registering is refused once the assembly is completed, like every other result change. UNCONFIRMED.
 
 Alternative: a separate roster table copying the elected. Rejected because the elected already live on `official_results`, and a copy can drift.
 
 ### D4. Database guard for the roster
 
-A trigger on `official_results` refuses an update that changes `registered_at` once it is set. A trigger on `official_result_options` refuses inserts and deletes for a registered result. A trigger on `rounds` refuses moving a round to `annulled` when its election is registered. Deleting the whole assembly with «Borrar datos» stays allowed, because it deletes rows instead of changing them.
+Triggers refuse these changes to a registered result:
 
-UNCONFIRMED: whether the option-level trigger fires on the cascade from «Borrar datos». A test covers it, and the trigger skips deletes that come from a parent delete if needed.
+- changing `registered_at` or `approved`
+- deleting the `official_results` row
+- inserting or deleting its `official_result_options`
+- moving a round of the election to `annulled`
+
+«Borrar datos» still deletes everything. The delete guards let a delete through when the parent round or ballot option is already gone, which is what the cascade does. A test covers it.
 
 ### D5. Election gate in `openRound`
 

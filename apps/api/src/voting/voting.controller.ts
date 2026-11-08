@@ -19,6 +19,7 @@ import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../au
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
 import { OperatorLogService } from './operator-log.service.js'
+import { OfficialRosterService } from './official-roster.service.js'
 import {
   AddPositionDto,
   AnnulRoundDto,
@@ -94,7 +95,7 @@ export class ParticipantLeaveController {
 @Controller('moderator')
 @UseGuards(ModeratorGuard)
 export class ModeratorController {
-  constructor(private readonly voting: VotingService, private readonly presentation: PresentationService, private readonly operatorLog: OperatorLogService) {}
+  constructor(private readonly voting: VotingService, private readonly presentation: PresentationService, private readonly operatorLog: OperatorLogService, private readonly roster: OfficialRosterService) {}
 
   @Get('session')
   session() {
@@ -210,6 +211,11 @@ export class ModeratorController {
   @Post('rounds/:roundId/close')
   closeRound(@Param('roundId', ParseUUIDPipe) roundId: string) {
     return this.voting.closeRound(roundId)
+  }
+
+  @Post('elections/:rootRoundId/register')
+  registerOfficialResult(@Param('rootRoundId', ParseUUIDPipe) rootRoundId: string) {
+    return this.roster.register(rootRoundId)
   }
 
   @Post('rounds/:roundId/annul')
