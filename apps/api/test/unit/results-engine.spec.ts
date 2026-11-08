@@ -26,6 +26,8 @@ test('the 2/3 rule rounds up and counts the same base', () => {
   assert.equal(thresholdVotes(28, 'two_thirds'), 19)
   assert.equal(thresholdVotes(30, 'two_thirds'), 20)
   assert.equal(thresholdVotes(1, 'two_thirds'), 1)
+  assert.equal(thresholdVotes(2, 'two_thirds'), 2)
+  assert.equal(thresholdVotes(3, 'two_thirds'), 2)
   assert.equal(thresholdVotes(0, 'two_thirds'), 1, 'with nobody in the room, nobody can reach it')
   assert.equal(meetsThreshold(18, 28, 'two_thirds'), false)
   assert.equal(meetsThreshold(19, 28, 'two_thirds'), true)
@@ -36,7 +38,8 @@ test('2/3 never asks for fewer votes than a majority, nor more than 3/4', () => 
     const twoThirds = thresholdVotes(base, 'two_thirds')
     assert.ok(twoThirds >= thresholdVotes(base), `base ${base}`)
     assert.ok(twoThirds <= thresholdVotes(base, 'three_quarters'), `base ${base}`)
-    assert.ok(twoThirds * 3 >= base * 2 && (twoThirds - 1) * 3 < base * 2 || twoThirds === 1, `base ${base}`)
+    assert.ok(twoThirds * 3 >= base * 2, `base ${base} reaches 2/3`)
+    if (base > 0) assert.ok((twoThirds - 1) * 3 < base * 2, `base ${base} needs no extra vote`)
   }
 })
 

@@ -10,9 +10,14 @@ export type ThresholdRule = 'simple' | 'three_quarters' | 'two_thirds'
  * Fewest votes that reach the rule over the base (participants enabled when the vote closed).
  * Simple: 38 → 20 (exactly half is not a majority). 3/4: 38 → 29.
  */
+const RULE_VOTES: Record<ThresholdRule, (base: number) => number> = {
+  simple: (base) => Math.floor(base / 2) + 1,
+  two_thirds: (base) => Math.ceil((base * 2) / 3),
+  three_quarters: (base) => Math.ceil((base * 3) / 4),
+}
+
 export function thresholdVotes(base: number, rule: ThresholdRule = 'simple') {
-  const safeBase = Math.max(0, Math.trunc(base))
-  const votes = rule === 'three_quarters' ? Math.ceil((safeBase * 3) / 4) : rule === 'two_thirds' ? Math.ceil((safeBase * 2) / 3) : Math.floor(safeBase / 2) + 1
+  const votes = RULE_VOTES[rule](Math.max(0, Math.trunc(base)))
   // With no one enabled, nobody can reach a threshold of zero votes.
   return Math.max(1, votes)
 }
