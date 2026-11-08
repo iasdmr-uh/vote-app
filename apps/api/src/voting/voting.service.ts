@@ -31,6 +31,7 @@ export const DEFAULT_DEPARTMENT_POSITIONS = [
   'Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia',
   'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción',
 ] as const
+const SECRECY_CLEANUP_TX_TIMEOUT_MS = 120_000
 const PREPARE_AFTER_OPEN_VOTE = 'Prepara la siguiente votación cuando cierre la votación abierta'
 
 @Injectable()
@@ -59,10 +60,11 @@ export class VotingService implements OnModuleInit {
   }
 
   async retrySecrecyCleanup(assemblyId: string) {
-    if (await this.prisma.round.count({ where: { assemblyId, status: 'open' } }) > 0) {
-      throw new ConflictException('La limpieza se completa al cerrar la votación abierta')
-    }
-    await this.ensureVotesUnlinkedOrFail(assemblyId)
+    await this.prisma.$transaction(async (tx) => {
+      await lockAssembly(tx, assemblyId)
+      await assertNoOpenRound(tx, assemblyId, 'La limpieza se completa al cerrar la votación abierta')
+      await this.ensureVotesUnlinkedOrFail(assemblyId)
+    }, { timeout: SECRECY_CLEANUP_TX_TIMEOUT_MS })
     await this.showSeparatedResults(assemblyId)
     return { assemblyId, secrecyCleanupPending: false }
   }

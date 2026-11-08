@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { ConflictException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import { lockAssembly } from '../../src/voting/assembly-tx.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization, seedAssembly } from '../support/seed.js'
@@ -168,5 +170,78 @@ test('the mesa cannot prepare anything while a vote is open, and can once it end
   } finally {
     await seeded.cleanup()
     await prisma.$disconnect()
+  }
+})
+
+test('a vote opened while the secrecy cleanup runs waits until the cleanup ends', async () => {
+  const { prisma, voting, assemblyId, voter, ballot, cleanup } = await setup('cleanup-race-open')
+  try {
+    const annulled = await ballot('Presidencia')
+    await voting.openRound(annulled.id)
+    await voting.castVote(voter.id, annulled.id, annulled.options[0]!.id)
+    Object.assign(voting, { vacuumAnonymousVotes: async () => { throw new Error('simulated VACUUM failure') } })
+    await voting.annulRound(annulled.id, 'Falla de prueba')
+
+    const next = await ballot('Presidencia, de nuevo')
+    let opening: Promise<unknown> | undefined
+    let openDuringVacuum = 0
+    Object.assign(voting, { vacuumAnonymousVotes: async () => {
+      Object.assign(voting, { vacuumAnonymousVotes: async () => {} })
+      opening = voting.openRound(next.id)
+      await sleep(300)
+      openDuringVacuum = await prisma.round.count({ where: { assemblyId, status: 'open' } })
+    } })
+
+    assert.deepEqual(await voting.retrySecrecyCleanup(assemblyId), { assemblyId, secrecyCleanupPending: false })
+    await opening
+    assert.equal(openDuringVacuum, 0, 'the vote opens only after VACUUM FULL ends')
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: next.id } })).status, 'open')
+  } finally {
+    delete (voting as unknown as Record<string, unknown>).vacuumAnonymousVotes
+    await cleanup()
+  }
+})
+
+test('actions queued behind an opening vote are refused once it opens', async () => {
+  const { prisma, voting, assemblyId, voter, ballot, cleanup } = await setup('queued-behind-open')
+  const refused = (error: unknown) => error instanceof ConflictException && /votación abierta/.test(error.message)
+  try {
+    const annulled = await ballot('Presidencia')
+    await voting.openRound(annulled.id)
+    await voting.castVote(voter.id, annulled.id, annulled.options[0]!.id)
+    Object.assign(voting, { vacuumAnonymousVotes: async () => { throw new Error('simulated VACUUM failure') } })
+    await voting.annulRound(annulled.id, 'Falla de prueba')
+    let vacuums = 0
+    Object.assign(voting, { vacuumAnonymousVotes: async () => { vacuums += 1 } })
+
+    const next = await ballot('Presidencia, de nuevo')
+    let locked!: () => void
+    let release!: () => void
+    const lockTaken = new Promise<void>((resolve) => { locked = resolve })
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const holder = prisma.$transaction(async (tx) => {
+      await lockAssembly(tx, assemblyId)
+      locked()
+      await gate
+    }, { timeout: 10_000 })
+    await lockTaken
+
+    const opening = voting.openRound(next.id)
+    await sleep(150)
+    const preparing = voting.createRound(assemblyId, { title: 'Tesorería', category: 'office', format: 'single_choice', options: [{ label: 'Hageo' }] })
+    const retrying = voting.retrySecrecyCleanup(assemblyId)
+    await sleep(150)
+    release()
+    await holder
+
+    const [opened, prepared, retried] = await Promise.allSettled([opening, preparing, retrying])
+    assert.equal(opened.status, 'fulfilled')
+    assert.ok(prepared.status === 'rejected' && refused(prepared.reason), 'no draft is created behind the opening vote')
+    assert.ok(retried.status === 'rejected' && refused(retried.reason), 'no cleanup runs behind the opening vote')
+    assert.equal(vacuums, 0)
+    assert.equal(await prisma.round.count({ where: { assemblyId, title: 'Tesorería' } }), 0)
+  } finally {
+    delete (voting as unknown as Record<string, unknown>).vacuumAnonymousVotes
+    await cleanup()
   }
 })
