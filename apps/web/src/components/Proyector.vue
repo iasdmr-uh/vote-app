@@ -66,7 +66,7 @@ async function toggleProjectorFullscreen() {
   <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
   <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
     <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
-    <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" />
+    <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
     <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
     <Diapositiva v-else :presentation="presentationSlide ?? 0" />
   </section>
@@ -86,7 +86,7 @@ async function toggleProjectorFullscreen() {
     </template>
 
     <template v-else-if="view === 'results'">
-      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" />
+      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
       <ProjectorResults :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
     </template>
 
