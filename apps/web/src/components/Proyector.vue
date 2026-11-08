@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { REGIONAL_SECRETARY_NOTE, connectedText, voteLabel } from '../resultados'
+import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
 import ProjectorLobby from './ProjectorLobby.vue'
 import ProjectorResults from './ProjectorResults.vue'
+import ResultSummary from './ResultSummary.vue'
 
 const {
   error, state, code, realtimeActive, realtimeConnected, projectorFullscreen, assemblyStatus, lobbyStatus, round, connectionCount, completionTime, go,
@@ -35,7 +36,7 @@ const view = computed(() => {
 
 const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · '))
 const statusLabel = computed(() => ({
-  voting: [round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
+  voting: round.value?.status === 'closed' ? RESULT_WORDING.preparing : ['Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
   results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),
   annulled: 'Votación anulada',
   completed: 'Asamblea finalizada',
@@ -64,6 +65,7 @@ async function toggleProjectorFullscreen() {
   <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
   <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
     <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
+    <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" />
     <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
     <Diapositiva v-else :presentation="presentationSlide ?? 0" />
   </section>
@@ -82,7 +84,10 @@ async function toggleProjectorFullscreen() {
       </div>
     </template>
 
-    <ProjectorResults v-else-if="view === 'results'" :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
+    <template v-else-if="view === 'results'">
+      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" />
+      <ProjectorResults :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
+    </template>
 
     <template v-else-if="view === 'annulled'">
       <p class="pj-status pj-status-annulled">{{ statusLabel }}</p>

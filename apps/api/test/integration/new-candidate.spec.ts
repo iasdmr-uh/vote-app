@@ -190,6 +190,7 @@ test('an annulled vote does not count: the repeated first runoff is still the 2n
     const third = await draftAfter(again.id)
     assert.equal(third.voteNumber, 3)
     assert.equal((await service.addCandidate(third.id, 'Rosa Díaz')).option.isNew, true)
+    await service.annulRound(again.id, 'Empate sin desempate')
 
     // A decision with options repeats between its own options, even from its 3rd vote on.
     const venue = await service.createRound(assemblyId, { title: 'Sede 2027', format: 'single_choice', category: 'decision', decisionFormat: 'options', options: ['Tegucigalpa', 'San Pedro Sula', 'La Ceiba'].map((label) => ({ label })) })

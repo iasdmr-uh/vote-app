@@ -8,7 +8,6 @@ export type ApprovalRule = 'simple' | 'three_quarters'
 export type Outcome = { seats: number; base: number; threshold: number; elected: string[]; runoff: string[]; openSeats: number; rule?: ApprovalRule; approved?: boolean }
 
 export type PositionGroup = 'board' | 'department'
-/** A box of the org chart. `elected`: the mesa sees closed or published results; phones and projector only published. */
 export type Position = { id: string; group: PositionGroup; label: string; sortOrder: number; custom: boolean; elected: { label: string; roundId: string } | null }
 
 /** «Presentar oficiales» on the projector: 0 cover, 1 Junta directiva, 2 Departamentos. */
@@ -43,14 +42,17 @@ export type PublicState = {
   results?: Array<{ optionId?: string; label: string; count: number }>
   outcome?: Outcome
   officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredAt: string }
+  final?: { elected: Array<{ optionId: string; label: string }>; approved: boolean | null }
+  continuing?: Array<{ optionId: string; label: string }>
   joinUrl?: string
   publicAppUrl?: string
   rounds?: Array<{
     id: string; title: string; status: string; positionId?: string | null; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; regionalSecretaryVotes?: boolean; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string; isNew?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number }>
-    privateResults?: Array<{ optionId: string; label: string; count: number }>
     outcome?: Outcome
-    officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null } | null
+    officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null; settledRoundId?: string | null; approved?: boolean | null; registeredAt?: string | null } | null
+    final?: boolean
+    continuing?: Array<{ optionId: string; label: string }>
     secrecyCleanupPending?: boolean
   }>
 }

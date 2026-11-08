@@ -52,7 +52,7 @@ test('«Presentar oficiales»: the mesa moves the slide, it is audited, broadcas
 test('opening a vote ends «Presentar oficiales», audits it and tells the projector', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const { voting, presentation } = buildProviders(prisma, gateway)
+  const { voting, presentation, roster } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
 
   try {
@@ -72,6 +72,7 @@ test('opening a vote ends «Presentar oficiales», audits it and tells the proje
 
     // With the presentation already off, opening the next vote records nothing more.
     await voting.closeRound(budget.id)
+    await roster.register(budget.id)
     const next = await voting.createRound(assemblyId, { title: 'Reforma', format: 'multiple_choice', category: 'decision', decisionFormat: 'boolean' })
     events.length = 0
     await voting.openRound(next.id)

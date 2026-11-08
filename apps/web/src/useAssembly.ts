@@ -416,7 +416,7 @@ function syncRealtime() {
   const socketUrl = import.meta.env.VITE_SOCKET_URL || `${API.replace(/\/api\/v1\/?$/, '')}/events`
   realtimeActive.value = true
   realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelay: 500, reconnectionDelayMax: 1000 })
-  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.left', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
+  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.left', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published', 'results.registered']) {
     realtimeSocket.on(event, scheduleRefresh)
   }
   // The projector follows the mesa's slide at once, without waiting for the refresh.

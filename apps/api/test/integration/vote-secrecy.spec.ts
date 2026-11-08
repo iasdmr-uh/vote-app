@@ -49,7 +49,7 @@ test('closing a round leaves no database-level link between participation receip
   }
 })
 
-test('a failed VACUUM keeps the round closed, blocks publication, and is retried', async () => {
+test('a failed VACUUM keeps the round closed, and a retry unlinks the votes and shows the result', async () => {
   const prisma = await connectDatabase()
   const organizationId = randomUUID()
   const { voting: service } = buildProviders(prisma)
@@ -73,7 +73,6 @@ test('a failed VACUUM keeps the round closed, blocks publication, and is retried
     assert.equal(closed.status, 'closed', 'votes stop being accepted even if the cleanup fails')
     assert.equal(closed.secrecyCleanupPending, true)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt, null)
-    await assert.rejects(service.publishRound(round.id), ServiceUnavailableException)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).status, 'closed')
     await assert.rejects(service.completeAssembly(assembly.id, true), ServiceUnavailableException, 'completion would remove every retry path')
     assert.equal((await prisma.assembly.findUniqueOrThrow({ where: { id: assembly.id } })).status, 'in_progress')
@@ -84,9 +83,9 @@ test('a failed VACUUM keeps the round closed, blocks publication, and is retried
     assert.deepEqual(await service.retrySecrecyCleanup(assembly.id), { assemblyId: assembly.id, secrecyCleanupPending: false })
     assert.ok((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt)
     assert.equal((await service.moderatorAssembly(assembly.id)).rounds[0]?.secrecyCleanupPending, false)
-    const published = await service.publishRound(round.id)
+    const published = (await service.moderatorAssembly(assembly.id)).rounds[0]!
     assert.equal(published.status, 'published')
-    assert.equal(published.results.find((option) => option.label === 'A')?.count, 1)
+    assert.equal(published.results?.find((option) => option.label === 'A')?.count, 1)
   } finally {
     await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
