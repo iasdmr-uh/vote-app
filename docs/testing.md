@@ -42,10 +42,10 @@
 | Each test checks one behavior | Meszaros, Eager Test; Google ch. 12 |
 | A test name states the unit, the scenario and the expected result | Goldberg 1.1 |
 | Arrange, Act and Assert are separate blocks, split by a blank line | Goldberg 1.2 |
-| A test shows only the setup that matters to it, and helpers in `support/` build the rest | Meszaros, Obscure Test; Pryce, Test Data Builder |
+| A test shows only the setup that matters to it, and builders make the rest. Builders used by several files live in `support/`, and the rest stay in their spec | Meszaros, Obscure Test; Pryce, Test Data Builder |
 | Readable repetition beats clever sharing | Google ch. 12, DAMP |
 | `describe` groups tests by unit or story | Goldberg 1.12 |
-| Data looks real, with Spanish names and real offices | Goldberg 1.6 |
+| Data looks real. Candidates are Old Testament prophets in Spanish, delegates are numbered, and offices are real | Goldberg 1.6 |
 | Errors are expected with `assert.rejects` or `assert.throws`, never caught | Goldberg 1.10 |
 | Collaborators come in through the constructor, replaced by stubs or spies | Goldberg 1.5 |
 | Tests never sleep, and wait for events or advance `page.clock` | Goldberg 3.4 |
@@ -66,7 +66,7 @@ test('electionOutcome: a tie at the last seat sends only the tied candidates to 
 - Unique fields get a random suffix. (Goldberg integration 6.5)
 - Each test removes its own records when it ends, so the next test finds no live assembly. Goldberg 2.8 allows this after-each strategy.
 - Integration files run one at a time, because the API allows one live assembly and `VACUUM FULL` locks the whole votes table.
-- The integration script fails when `TEST_DATABASE_URL` is missing.
+- Integration tests fail when `TEST_DATABASE_URL` is missing.
 
 ## Outcomes to check
 
