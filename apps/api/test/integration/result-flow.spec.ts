@@ -51,7 +51,7 @@ async function withAssembly(delegates: number, body: (context: {
 const countsOf = (options: Array<{ label: string; count: number }> | undefined) => options?.map((option) => [option.label, option.count])
 
 test('closing a vote shows its result on every screen at once', async () => {
-  await withAssembly(3, async ({ prisma, service, emitted, assemblyId, joinCode, voters }) => {
+  await withAssembly(4, async ({ prisma, service, emitted, assemblyId, joinCode, voters }) => {
     const round = await service.createRound(assemblyId, { title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' } })
     await service.openRound(round.id)
     await service.castVote(voters[0]!, round.id, round.options[0]!.id)
@@ -75,7 +75,7 @@ test('closing a vote shows its result on every screen at once', async () => {
 })
 
 test('no screen shows a result until the votes are separated, and a retry shows it everywhere', async () => {
-  await withAssembly(2, async ({ prisma, service, emitted, assemblyId, joinCode, voters }) => {
+  await withAssembly(3, async ({ prisma, service, emitted, assemblyId, joinCode, voters }) => {
     const round = await service.createRound(assemblyId, { title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' } })
     await service.openRound(round.id)
     await service.castVote(voters[0]!, round.id, round.options[0]!.id)
@@ -107,7 +107,7 @@ test('no screen shows a result until the votes are separated, and a retry shows 
 })
 
 test('the next vote of an election stays hidden from the mesa and cannot open until the result is shown', async () => {
-  await withAssembly(2, async ({ prisma, service, assemblyId, voters }) => {
+  await withAssembly(3, async ({ prisma, service, assemblyId, voters }) => {
     const round = await service.createRound(assemblyId, { title: 'Presidente', category: 'office', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }] })
     await service.openRound(round.id)
     await service.castVote(voters[0]!, round.id, round.options[0]!.id)

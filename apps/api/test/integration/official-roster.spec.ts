@@ -105,10 +105,10 @@ test('the operator adds a decision to the roster as not approved', async () => {
 })
 
 test('the roster refuses a result still being prepared and an annulled one', async () => {
-  await withAssembly(2, async ({ prisma, service, roster, assemblyId, voters }) => {
+  await withAssembly(3, async ({ prisma, service, roster, assemblyId, voters }) => {
     const president = await service.createRound(assemblyId, { title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' } })
     await service.openRound(president.id)
-    for (const voter of voters) await service.castVote(voter, president.id, president.options[0]!.id)
+    for (const voter of voters.slice(0, 2)) await service.castVote(voter, president.id, president.options[0]!.id)
     Object.assign(service, { vacuumAnonymousVotes: async () => { throw new Error('simulated VACUUM failure') } })
     await service.closeRound(president.id)
 
