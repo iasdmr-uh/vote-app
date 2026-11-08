@@ -61,7 +61,7 @@ function nameOf(position: Position) {
               <ol v-if="item.results?.length" class="acta-results">
                 <li v-for="row in actaRows(item)" :key="row.key" :class="{ winner: row.winner }">
                   <span class="acta-rank">{{ row.rank }}</span>
-                  <span class="acta-name">{{ row.label }}<span v-if="row.tag" class="acta-tag" :class="row.tag === es.results.runoffTag || row.tag === es.results.tiedTag ? 'tag-amber' : 'tag-green'">{{ row.tag }}</span></span>
+                  <span class="acta-name">{{ row.label }}<span v-if="row.tag" class="acta-tag" :class="row.tag === es.results.runoffTag ? 'tag-amber' : 'tag-green'">{{ row.tag }}</span></span>
                   <strong class="acta-votes">{{ es.common.votes(row.count) }}</strong>
                   <span class="acta-percent">{{ row.percent === null ? '' : es.common.percent(row.percent) }}</span>
                 </li>

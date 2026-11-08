@@ -285,7 +285,7 @@ export function actaMetaText(target: RoundRecord) {
   return parts.filter(Boolean).join(' · ')
 }
 
-export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: typeof es.results.electedTag | typeof es.results.approved | typeof es.results.runoffTag | typeof es.results.tiedTag | null; winner: boolean }
+export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: typeof es.results.electedTag | typeof es.results.approved | typeof es.results.runoffTag | null; winner: boolean }
 
 /** Counted options of a vote, in acta order, with votes, % of the habilitados and their tag. */
 export function actaRows(target: RoundRecord): ActaRow[] {
@@ -298,7 +298,7 @@ export function actaRows(target: RoundRecord): ActaRow[] {
     const outcome = outcomeTag(target.outcome, result.optionId)
     const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === IN_FAVOR_LABEL)
     const tied = !target.outcome && isTied(byVotes, byVotes.indexOf(result))
-    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' ? es.results.runoffTag : tied ? es.results.tiedTag : null
+    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' || tied ? es.results.runoffTag : null
     return { key: result.optionId || result.label, rank: index + 1, label: result.label, count: result.count, percent: eligible ? percentOf(result.count, eligible) : null, tag, winner }
   })
 }

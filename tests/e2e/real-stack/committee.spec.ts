@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  castVoteByApi, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, voteAll,
+  castVoteByApi, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, voteAll,
 } from './helpers'
 
 /**
@@ -121,7 +121,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
     await expect(phone.page.locator('.phone-ballot-heading .count-pill')).toHaveText('0 de 1')
   }
   await voteAll(phones, [['Carla Mora'], ['Carla Mora'], ['Carla Mora'], ['Carla Mora'], ['Diego Paz'], ['Diego Paz']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('6')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('1 puesto · Mayoría: 4')
