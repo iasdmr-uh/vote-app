@@ -18,6 +18,7 @@ import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CreateRoundDto, RepeatRoundDto } from './dtos.js'
 import { presentationOf } from './presentation.service.js'
 import { decisionOutcome, electionOutcome, tiedAtCut, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
+import { roomNumbers } from './room.js'
 
 const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 const RESUME_CODE_TTL_MS = 10 * 60_000
@@ -469,10 +470,11 @@ export class VotingService implements OnModuleInit {
     const voted = new Set(attendanceRound
       ? (await this.prisma.participation.findMany({ where: { roundId: attendanceRound.id }, select: { participantSessionId: true } })).map((item) => item.participantSessionId)
       : [])
-    const [eligibleCounts, leftParticipants, regionalSecretary] = await Promise.all([
+    const [eligibleCounts, leftParticipants, regionalSecretary, accredited] = await Promise.all([
       this.eligibleCounts(assemblyId),
       this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left', isRegionalSecretary: false }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
       this.prisma.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { id: true, firstName: true, lastName: true } }),
+      this.prisma.participantSession.count({ where: { assemblyId, status: { in: ['active', 'left'] }, isRegionalSecretary: false } }),
     ])
     const chains = new Map<string, Array<{ id: string; status: string }>>()
     for (const round of assembly.rounds) {
@@ -526,6 +528,7 @@ export class VotingService implements OnModuleInit {
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants.map((person) => ({ ...person, ...(attendanceRound ? { voted: voted.has(person.id) } : {}) })),
       participantCount: assembly.participants.length,
+      room: roomNumbers(assembly.participants.length, accredited),
       regionalSecretary: regionalSecretary ? { ...regionalSecretary, ...(attendanceRound ? { voted: voted.has(regionalSecretary.id) } : {}) } : null,
       // Kept for the acta: they were registered, and those who voted still count in that ballot's base.
       leftParticipants,

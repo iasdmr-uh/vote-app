@@ -178,3 +178,49 @@ test('the regional secretary is not taken out through the participant list', { s
     assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: secretary.id } })).status, 'active')
   } finally { await cleanup() }
 })
+
+async function addSecretary(prisma: PrismaService, assemblyId: string) {
+  return prisma.participantSession.create({
+    data: { assemblyId, firstName: 'Débora', lastName: 'Secretaria', isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) },
+  })
+}
+
+test('the room numbers follow joins, take-outs and returns', { skip }, async () => {
+  const { service, assemblyId, people, cleanup } = await setup('room-numbers', ['Abdías', 'Nahúm', 'Sofonías', 'Hageo'])
+  try {
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 4, accredited: 4, quorum: 3 })
+    await service.takeOutOfRoom(people.Nahúm!.id)
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 3, accredited: 4, quorum: 3 })
+    await service.takeOutOfRoom(people.Hageo!.id)
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 2, accredited: 4, quorum: 3 })
+    await service.returnToRoom(people.Nahúm!.id)
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 3, accredited: 4, quorum: 3 })
+  } finally { await cleanup() }
+})
+
+test('a participant removed before voting is not accredited and the regional secretary is excluded', { skip }, async () => {
+  const { prisma, service, assemblyId, people, cleanup } = await setup('room-excluded', ['Habacuc', 'Malaquías', 'Zacarías'])
+  try {
+    await addSecretary(prisma, assemblyId)
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 3, accredited: 3, quorum: 2 })
+    await prisma.participantSession.update({ where: { id: people.Zacarías!.id }, data: { status: 'removed' } })
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 2, accredited: 2, quorum: 2 })
+  } finally { await cleanup() }
+})
+
+test('the quorum is two thirds of the accredited, rounded up', { skip }, async () => {
+  const empty = await setup('room-empty', [])
+  try {
+    assert.deepEqual((await empty.service.moderatorAssembly(empty.assemblyId)).room, { present: 0, accredited: 0, quorum: 0 })
+  } finally { await empty.cleanup() }
+
+  const forty5 = await setup('room-45', Array.from({ length: 45 }, (_, index) => `Profeta ${index}`))
+  try {
+    assert.deepEqual((await forty5.service.moderatorAssembly(forty5.assemblyId)).room, { present: 45, accredited: 45, quorum: 30 })
+  } finally { await forty5.cleanup() }
+
+  const four = await setup('room-4', ['Esdras', 'Nehemías', 'Ezequiel', 'Daniel'])
+  try {
+    assert.deepEqual((await four.service.moderatorAssembly(four.assemblyId)).room, { present: 4, accredited: 4, quorum: 3 })
+  } finally { await four.cleanup() }
+})
