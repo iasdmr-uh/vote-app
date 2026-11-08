@@ -31,6 +31,14 @@ const evenDecision = {
   results: [{ optionId: 'favor', label: 'A favor', count: 18 }, { optionId: 'contra', label: 'En contra', count: 18 }],
 }
 
+const tiedCommittee = {
+  id: 't1', title: 'Comisión de Música', status: 'published', category: 'committee', memberCount: 2, electionSeats: 2, voteNumber: 1, runoff: false,
+  participationCount: 12, eligibleCount: 12, options,
+  results: [8, 7, 7, 1, 1].map((count, index) => ({ optionId: `o${index}`, label: prophets[index]!, count })),
+  outcome: { seats: 2, base: 12, threshold: 7, elected: ['o0'], runoff: ['o1', 'o2'], openSeats: 1 },
+  explanation: { rule: 'simple', reasons: { o0: 'elected', o1: 'tied_at_cut', o2: 'tied_at_cut', o3: 'out', o4: 'out' }, baseDelegates: 12, baseIncludesSecretary: false },
+}
+
 function rowPattern([label, count, percent]: readonly [string, number, number]) {
   return new RegExp(`^${label}\\D*${count} ${count === 1 ? 'voto' : 'votos'}\\s*${percent} %$`)
 }
@@ -101,6 +109,30 @@ for (const [where, scope] of [['published result', '.ballot-card'], ['results re
     await expect(area.locator('.ranked-rows .badge-warning')).toHaveCount(0)
   })
 }
+
+for (const [where, scope] of [['published result', '.ballot-card'], ['results record', '.official-history']] as const) {
+  test(`the mesa ${where} marks rows tied at the cut as «Desempate»`, async ({ page }) => {
+    await mesaWith(page, tiedCommittee)
+    const rows = page.locator(scope).locator('.ranked-rows > li')
+    await expect(rows.locator('.badge-warning')).toHaveText(['Desempate', 'Desempate'])
+    await expect(rows.nth(1)).toContainText('Daniel')
+    await expect(rows.nth(2)).toContainText('Jeremías')
+  })
+
+  test(`the mesa ${where} keeps «Desempate» on rows that continue without a majority`, async ({ page }) => {
+    await mesaWith(page, committee)
+    const rows = page.locator(scope).locator('.ranked-rows > li')
+    await expect(rows.locator('.badge-warning')).toHaveText(['Desempate', 'Desempate'])
+  })
+}
+
+test('the projector marks rows tied at the cut and rows without a majority as «Desempate»', async ({ page }) => {
+  await projectorWith(page, tiedCommittee)
+  await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate'])
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+  await projectorWith(page, committee)
+  await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate'])
+})
 
 test('the projector lists rows by votes with «No votaron» last and no position numbers', async ({ page }) => {
   await projectorWith(page, committee)

@@ -1,15 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import type { Explanation, OptionReason } from '../../src/types'
 import { baseSumText, marksCheckText, marksPerBallot, notVotedRow, resultRows } from '../../src/resultados'
 
 type Row = [label: string, count: number]
 
 const results = (list: Row[]) => list.map(([label, count]) => ({ optionId: label, label, count }))
-
-function explanation(reasons: Record<string, OptionReason>): Explanation {
-  return { rule: 'simple', reasons, baseDelegates: 12, baseIncludesSecretary: false }
-}
 
 describe('resultRows', () => {
   test('lists rows by votes, most first, with the share of the base', () => {
@@ -27,25 +22,9 @@ describe('resultRows', () => {
     assert.deepEqual(rows.map((row) => row.label), ['En contra', 'A favor'])
   })
 
-  test('marks as tied only the rows tied across the line after the last seat', () => {
-    const counts = results([['Ana', 9], ['Juan', 7], ['Elena', 7], ['Pedro', 4], ['Luis', 4]])
-    const rows = resultRows(counts, 12, explanation({ Ana: 'elected', Juan: 'tied_at_cut', Elena: 'tied_at_cut', Pedro: 'out', Luis: 'out' }))
-    assert.deepEqual(rows.map((row) => [row.label, row.tied]), [['Ana', false], ['Juan', true], ['Elena', true], ['Pedro', false], ['Luis', false]])
-  })
-
-  test('never marks A favor and En contra as tied, even on an even split', () => {
-    const rows = resultRows(results([['A favor', 15], ['En contra', 15]]), 32, explanation({}))
-    assert.deepEqual(rows.map((row) => [row.label, row.tied]), [['A favor', false], ['En contra', false]])
-  })
-
-  test('without an explanation no row is marked as tied', () => {
-    const rows = resultRows(results([['Amós', 5], ['Oseas', 5]]), 12)
-    assert.deepEqual(rows.map((row) => row.tied), [false, false])
-  })
-
-  test('zero votes give zero shares and no ties', () => {
+  test('zero votes give zero shares', () => {
     const rows = resultRows(results([['Amós', 0], ['Oseas', 0]]), 38)
-    assert.deepEqual(rows.map((row) => [row.count, row.percent, row.tied]), [[0, 0, false], [0, 0, false]])
+    assert.deepEqual(rows.map((row) => [row.count, row.percent]), [[0, 0], [0, 0]])
   })
 
   test('no candidates give no rows', () => {
@@ -64,7 +43,7 @@ describe('resultRows', () => {
 
 describe('notVotedRow', () => {
   test('counts everyone in the base who did not cast a ballot, with the share of the base', () => {
-    assert.deepEqual(notVotedRow(36, 40), { key: 'not-voted', label: 'No votaron', count: 4, percent: 10, tied: false })
+    assert.deepEqual(notVotedRow(36, 40), { key: 'not-voted', label: 'No votaron', count: 4, percent: 10 })
   })
 
   test('is zero when everyone voted', () => {
@@ -72,7 +51,7 @@ describe('notVotedRow', () => {
   })
 
   test('is the whole base when nobody voted', () => {
-    assert.deepEqual(notVotedRow(0, 38), { key: 'not-voted', label: 'No votaron', count: 38, percent: 100, tied: false })
+    assert.deepEqual(notVotedRow(0, 38), { key: 'not-voted', label: 'No votaron', count: 38, percent: 100 })
   })
 
   test('the people who voted plus «No votaron» equal the base', () => {

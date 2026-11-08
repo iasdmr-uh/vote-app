@@ -24,7 +24,7 @@ const marksLine = computed(() => checked.value && props.marks ? marksCheckText(p
 
 <template>
   <ol class="ranked-rows result-rows" :class="{ 'compact-rows': compact }">
-    <li v-for="row in allRows" :key="row.key" :class="{ 'not-voted-row': row.key === 'not-voted' }"><span class="ranked-label">{{ row.label }}<span v-if="outcomeTag(outcome, row.key) === 'elected'" class="badge badge-success">{{ target ? winnerText(target, row.label) : '' }}</span><span v-else-if="outcomeTag(outcome, row.key) === 'runoff'" class="badge badge-warning">Desempate</span><span v-else-if="!outcome && row.tied" class="badge badge-warning">Empate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span><span v-if="showBar" class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span></li>
+    <li v-for="row in allRows" :key="row.key" :class="{ 'not-voted-row': row.key === 'not-voted' }"><span class="ranked-label">{{ row.label }}<span v-if="outcomeTag(outcome, row.key) === 'elected'" class="badge badge-success">{{ target ? winnerText(target, row.label) : '' }}</span><span v-else-if="outcomeTag(outcome, row.key) === 'runoff'" class="badge badge-warning">Desempate</span></span><strong>{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong><span class="ranked-percent">{{ row.percent }} %</span><span v-if="showBar" class="result-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span></li>
   </ol>
   <div v-if="checked" class="result-checks">
     <p>{{ baseSumText(recorded!, base!) }}</p>

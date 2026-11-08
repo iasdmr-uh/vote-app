@@ -45,21 +45,20 @@ export function notVotedText(recorded: number, eligible?: number | null) {
   return `${missing} ${missing === 1 ? 'no votó' : 'no votaron'}`
 }
 
-export type ResultRow = { key: string; label: string; count: number; percent: number; tied: boolean }
+export type ResultRow = { key: string; label: string; count: number; percent: number }
 
-export function resultRows(results: Array<{ optionId?: string; label: string; count: number }>, base: number, explanation?: Explanation): ResultRow[] {
+export function resultRows(results: Array<{ optionId?: string; label: string; count: number }>, base: number): ResultRow[] {
   return [...results].sort((a, b) => b.count - a.count).map((result) => ({
     key: result.optionId || result.label,
     label: result.label,
     count: result.count,
     percent: percentOf(result.count, base),
-    tied: !!result.optionId && explanation?.reasons[result.optionId] === 'tied_at_cut',
   }))
 }
 
 export function notVotedRow(recorded: number, base: number): ResultRow {
   const count = notVotedOf(recorded, base)
-  return { key: 'not-voted', label: 'No votaron', count, percent: percentOf(count, base), tied: false }
+  return { key: 'not-voted', label: 'No votaron', count, percent: percentOf(count, base) }
 }
 
 export function baseSumText(recorded: number, base: number) {

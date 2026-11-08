@@ -13,7 +13,7 @@ const { state, round } = useAssembly()
 
 const isCommittee = computed(() => round.value?.category === 'committee')
 
-const results = computed(() => [...resultRows(state.value?.results || [], props.eligible, state.value?.explanation), notVotedRow(props.recorded, props.eligible)])
+const results = computed(() => [...resultRows(state.value?.results || [], props.eligible), notVotedRow(props.recorded, props.eligible)])
 const marksLine = computed(() => round.value ? marksCheckText(marksPerBallot(round.value), props.recorded) : '')
 const outcome = computed(() => state.value?.outcome)
 const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
@@ -60,7 +60,7 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
   <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
   <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
     <li v-for="row in results" :key="row.key" class="pj-card" :class="{ 'pj-not-voted': row.key === 'not-voted' }">
-      <span class="pj-name"><span class="pj-label">{{ row.label }}</span><em v-if="tagOf(row) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, row.label) : '' }}</em><em v-else-if="tagOf(row) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && row.tied" class="pj-tie">Empate</em></span>
+      <span class="pj-name"><span class="pj-label">{{ row.label }}</span><em v-if="tagOf(row) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, row.label) : '' }}</em><em v-else-if="tagOf(row) === 'runoff'" class="pj-tie">Desempate</em></span>
       <strong class="pj-votes">{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong>
       <span class="pj-percent">{{ row.percent }} %</span>
       <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span>

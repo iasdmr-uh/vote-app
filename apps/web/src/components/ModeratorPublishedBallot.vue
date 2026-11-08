@@ -37,7 +37,7 @@ function runoffButtonText(target: RoundRecord) {
   <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" :so-far="soFar" />
   <p v-if="final && election?.registeredAt" class="status-line">{{ RESULT_WORDING.registered }}</p>
   <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ RESULT_WORDING.register }}</button></div>
-  <ResultsList :rows="resultRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord), currentRoundRecord.explanation)" :recorded="currentRoundRecord.participationCount ?? state?.recordedCount ?? 0" :base="eligibleOf(currentRoundRecord)" :marks="marksPerBallot(currentRoundRecord)" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
+  <ResultsList :rows="resultRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :recorded="currentRoundRecord.participationCount ?? state?.recordedCount ?? 0" :base="eligibleOf(currentRoundRecord)" :marks="marksPerBallot(currentRoundRecord)" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
   <ResultExplanation :target="currentRoundRecord" />
   <div class="action-row ballot-actions">
     <button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button>
