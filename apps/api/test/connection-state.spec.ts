@@ -3,6 +3,7 @@ import test from 'node:test'
 import { ModeratorController, ParticipantController, PublicAssemblyController } from '../src/voting/voting.controller.js'
 import { CONNECTION_GRACE_MS } from '../src/realtime/connection-timing.js'
 import type { ConnectionCountService } from '../src/voting/connection-count.service.js'
+import type { OperatorLogService } from '../src/voting/operator-log.service.js'
 import type { PresentationService } from '../src/voting/presentation.service.js'
 import type { VotingService } from '../src/voting/voting.service.js'
 import { PARTICIPANT_ID } from '../src/auth/auth.service.js'
@@ -18,6 +19,7 @@ function counts(value: { roundId: string; connected: number; base: number } | nu
 }
 
 const presentation = {} as PresentationService
+const operatorLog = {} as OperatorLogService
 
 test('the public state carries the connected count while a vote is open', async () => {
   const controller = new PublicAssemblyController(voting, counts({ roundId: 'r-1', connected: 3, base: 4 }))
@@ -32,13 +34,13 @@ test('the public state has no connected count when no vote is open', async () =>
 })
 
 test('the mesa state carries the connected count while a vote is open', async () => {
-  const controller = new ModeratorController(voting, presentation, counts({ roundId: 'r-1', connected: 1, base: 1 }))
+  const controller = new ModeratorController(voting, presentation, counts({ roundId: 'r-1', connected: 1, base: 1 }), operatorLog)
   const state = await controller.assembly('a1') as Record<string, unknown>
   assert.deepEqual(state.connection, { roundId: 'r-1', connected: 1, base: 1 })
 })
 
 test('the mesa state has no connected count when no vote is open', async () => {
-  const state = await new ModeratorController(voting, presentation, counts(null)).assembly('a1') as Record<string, unknown>
+  const state = await new ModeratorController(voting, presentation, counts(null), operatorLog).assembly('a1') as Record<string, unknown>
   assert.equal('connection' in state, false)
 })
 
