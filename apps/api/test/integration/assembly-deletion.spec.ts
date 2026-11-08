@@ -9,8 +9,8 @@ import { buildProviders } from '../support/providers.js'
 test('after the acta, the mesa erases every record of a completed assembly', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const { voting: service, operatorLog } = buildProviders(prisma, gateway)
-  const { organizationId, assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'deletion-test', delegates: ['Ana', 'Luis', 'Marta'] })
+  const { voting: service, room, operatorLog } = buildProviders(prisma, gateway)
+  const { organizationId, assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: 'deletion-test', delegates: ['Ana', 'Luis', 'Marta'] })
   const sessions = ['Ana', 'Luis', 'Marta'].map((name) => people[name]!.id)
 
   try {

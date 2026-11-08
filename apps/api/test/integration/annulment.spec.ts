@@ -9,9 +9,9 @@ import { buildProviders } from '../support/providers.js'
 test('the mesa can annul a ballot, repeat it, and annulling takes back what it computed', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const { voting: service } = buildProviders(prisma, gateway)
+  const { voting: service, room } = buildProviders(prisma, gateway)
   const roundStates = () => events.filter((event) => event.name === 'roundState').map((event) => (event.payload as { status: string }).status)
-  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'annulment-test', delegates: ['Ana', 'Luis', 'Marta'] })
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: 'annulment-test', delegates: ['Ana', 'Luis', 'Marta'] })
   const voters = ['Ana', 'Luis', 'Marta'].map((name) => people[name]!.id)
 
   try {

@@ -42,6 +42,7 @@ test('voting services import each other only along the known edges', () => {
     .sort()
   assert.deepEqual(edges, [
     'connection-count.service.ts -> voting.service.ts',
+    'room.service.ts -> voting.service.ts',
     'voting.service.ts -> operator-log.service.ts',
     'voting.service.ts -> presentation.service.ts',
   ])

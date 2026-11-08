@@ -3,20 +3,21 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import { PrismaService } from '../../src/prisma/prisma.service.js'
+import { RoomService } from '../../src/voting/room.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { buildProviders } from '../support/providers.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
 
-type Context = { service: VotingService; assemblyId: string; people: string[] }
+type Context = { service: VotingService; room: RoomService; assemblyId: string; people: string[] }
 
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
   process.env.DATABASE_URL = testDatabaseUrl
   process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
-  const { voting: service } = buildProviders(prisma)
+  const { voting: service, room } = buildProviders(prisma)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
   try {
@@ -25,11 +26,11 @@ async function withAssembly(name: string, count: number, body: (context: Context
     assemblyId = (await prisma.assembly.create({ data: { organizationId, name, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
     const people: string[] = []
     for (let index = 0; index < count; index += 1) {
-      const joined = await service.joinAssembly(joinCode, `Delegado ${index + 1}`, 'Prueba')
+      const joined = await room.joinAssembly(joinCode, `Delegado ${index + 1}`, 'Prueba')
       people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
     }
-    await service.changeLobby(assemblyId, 'lobby_closed')
-    await body({ service, assemblyId, people })
+    await room.changeLobby(assemblyId, 'lobby_closed')
+    await body({ service, room, assemblyId, people })
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
@@ -67,8 +68,8 @@ test('the base of an open vote lists everyone who counts in "han votado"', { ski
 })
 
 test('a disabled delegate stays in the base', { skip }, async () => {
-  await withAssembly('connection-base-disabled', 3, async ({ service, assemblyId, people }) => {
-    await service.setVotingDisabled(people[0]!, true)
+  await withAssembly('connection-base-disabled', 3, async ({ service, room, assemblyId, people }) => {
+    await room.setVotingDisabled(people[0]!, true)
     const vote = await election(service, assemblyId)
     await service.openRound(vote.id)
     assert.ok((await service.openRoundBase(assemblyId))!.participantIds.includes(people[0]!))
@@ -76,8 +77,8 @@ test('a disabled delegate stays in the base', { skip }, async () => {
 })
 
 test('someone taken out of the room is not in the base', { skip }, async () => {
-  await withAssembly('connection-base-out', 3, async ({ service, assemblyId, people }) => {
-    await service.takeOutOfRoom(people[0]!)
+  await withAssembly('connection-base-out', 3, async ({ service, room, assemblyId, people }) => {
+    await room.takeOutOfRoom(people[0]!)
     const vote = await election(service, assemblyId)
     await service.openRound(vote.id)
     const base = (await service.openRoundBase(assemblyId))!

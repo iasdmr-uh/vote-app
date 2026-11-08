@@ -18,9 +18,9 @@ type Mesa = Awaited<ReturnType<VotingService['moderatorAssembly']>>
 
 async function withAssembly(name: string, count: number, body: (context: { service: VotingService; assemblyId: string; people: string[] }) => Promise<void>) {
   const prisma = await connectDatabase()
-  const { voting: service } = buildProviders(prisma)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => delegateName(index + 1))
-  const seeded = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const seeded = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, assemblyId: seeded.assemblyId, people: names.map((person) => seeded.people[person]!.id) })
   } finally {

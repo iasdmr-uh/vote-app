@@ -13,14 +13,14 @@ async function setup() {
   process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
-  const { voting, operatorLog: log, presentation } = buildProviders(prisma)
+  const { voting, room, operatorLog: log, presentation } = buildProviders(prisma)
   const organization = await prisma.organization.create({ data: { id: randomUUID(), name: `log-test-${randomUUID()}`, type: 'union' } })
   const joinCode = newOpaqueCredential()
   const assemblyId = (await prisma.assembly.create({
     data: { organizationId: organization.id, name: 'Asamblea de prueba', status: 'lobby_open', joinCodeHash: hashCredential(joinCode) },
   })).id
   const join = async (number: number) => {
-    const joined = await voting.joinAssembly(joinCode, 'Delegado', String(number))
+    const joined = await room.joinAssembly(joinCode, 'Delegado', String(number))
     return (await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id
   }
   const cleanup = async () => {
@@ -31,23 +31,23 @@ async function setup() {
     await prisma.organization.deleteMany({ where: { id: organization.id } })
     await prisma.$disconnect()
   }
-  return { prisma, voting, log, presentation, assemblyId, join, cleanup }
+  return { prisma, voting, room, log, presentation, assemblyId, join, cleanup }
 }
 
 const actionsOf = (csv: string) => csv.slice(1).trimEnd().split('\r\n').slice(1).map((line) => line.split('","')[2]!.replace(/"$/, ''))
 
 test('entries about a person name them as they were when the action happened', { skip }, async () => {
-  const { voting, log, assemblyId, join, cleanup } = await setup()
+  const { voting, room, log, assemblyId, join, cleanup } = await setup()
   try {
     const twelve = await join(12)
     const seven = await join(7)
-    await voting.takeOutOfRoom(twelve)
-    await voting.returnToRoom(twelve)
-    await voting.setVotingDisabled(twelve, true)
-    await voting.setVotingDisabled(twelve, false)
-    await voting.patchParticipant(twelve, { lastName: '21' })
-    await voting.patchParticipant(seven, { status: 'removed' })
-    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await room.takeOutOfRoom(twelve)
+    await room.returnToRoom(twelve)
+    await room.setVotingDisabled(twelve, true)
+    await room.setVotingDisabled(twelve, false)
+    await room.patchParticipant(twelve, { lastName: '21' })
+    await room.patchParticipant(seven, { status: 'removed' })
+    await room.changeLobby(assemblyId, 'lobby_closed')
     await voting.issueResumeCode(twelve)
 
     const { csv } = await log.download(assemblyId, 'review')
@@ -68,10 +68,10 @@ test('entries about a person name them as they were when the action happened', {
 })
 
 test('the download is the last entry of its own file, and the file keeps votes secret', { skip }, async () => {
-  const { prisma, voting, log, assemblyId, join, cleanup } = await setup()
+  const { prisma, voting, room, log, assemblyId, join, cleanup } = await setup()
   try {
     const voters = [await join(1), await join(2), await join(3)]
-    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     const round = await voting.createRound(assemblyId, {
       title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' },
     })
@@ -109,12 +109,12 @@ test('the download sorts last even after an entry stamped later than the downloa
 })
 
 test('a refused action is not logged', { skip }, async () => {
-  const { prisma, voting, assemblyId, cleanup } = await setup()
+  const { prisma, voting, room, assemblyId, cleanup } = await setup()
   try {
-    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     await voting.completeAssembly(assemblyId, true)
     const before = await prisma.auditEvent.count({ where: { assemblyId } })
-    await assert.rejects(voting.changeLobby(assemblyId, 'lobby_open'))
+    await assert.rejects(room.changeLobby(assemblyId, 'lobby_open'))
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId } }), before)
   } finally {
     await cleanup()
@@ -134,10 +134,10 @@ test('a delegate joining is not logged', { skip }, async () => {
 })
 
 test('a «Reconectar dispositivo» redemption is left out of the file', { skip }, async () => {
-  const { voting, log, assemblyId, join, cleanup } = await setup()
+  const { voting, room, log, assemblyId, join, cleanup } = await setup()
   try {
     const twelve = await join(12)
-    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     const issued = await voting.issueResumeCode(twelve)
     await voting.redeemResumeCode(new URL(issued.resumeUrl).searchParams.get('resume')!)
     const { csv } = await log.download(assemblyId, 'review')
@@ -148,10 +148,10 @@ test('a «Reconectar dispositivo» redemption is left out of the file', { skip }
 })
 
 test('«Borrar datos» needs a download for it with every entry recorded so far', { skip }, async () => {
-  const { voting, log, presentation, assemblyId, join, cleanup } = await setup()
+  const { voting, room, log, presentation, assemblyId, join, cleanup } = await setup()
   try {
     await join(1)
-    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     await voting.completeAssembly(assemblyId, true)
 
     await assert.rejects(voting.deleteAssemblyData(assemblyId, true), /Descarga el registro/)
@@ -170,9 +170,9 @@ test('«Borrar datos» needs a download for it with every entry recorded so far'
 })
 
 test('the gate catches an entry that sorts before the download but is missing from its file', { skip }, async () => {
-  const { prisma, voting, log, assemblyId, cleanup } = await setup()
+  const { prisma, voting, room, log, assemblyId, cleanup } = await setup()
   try {
-    await voting.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     await voting.completeAssembly(assemblyId, true)
     await log.download(assemblyId, 'delete')
     await prisma.auditEvent.create({ data: { assemblyId, actorRef: 'test', action: 'presentation.changed', occurredAt: new Date(0), metadata: { active: false } } })

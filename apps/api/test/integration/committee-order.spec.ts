@@ -9,9 +9,9 @@ type Context = { service: VotingService; assemblyId: string; joinCode: string; p
 
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
   const prisma = await connectDatabase()
-  const { voting: service } = buildProviders(prisma)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
-  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id) })
   } finally {
