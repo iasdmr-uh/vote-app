@@ -34,6 +34,8 @@ const committeeMemberCount = ref<number | null>(null)
 const decisionFormat = ref<DecisionFormat>('boolean')
 const approvalRule = ref<ApprovalRule>('simple')
 const showNextBallotForm = ref(false)
+// The acta de resultados opens from the mesa menu instead of filling the bottom of the panel.
+const showActa = ref(false)
 const resumeQr = ref<{ heading?: string; name: string; image: string; url: string; expiresAt: string } | null>(null)
 const regionalSecretaryFirstName = ref('')
 const regionalSecretaryLastName = ref('')
@@ -596,7 +598,7 @@ export function useMesa() {
   return {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
-    showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
+    showNextBallotForm, showActa, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, voteOpen, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, electionComplete, runoffOf, electionsAwaitingRegistration,

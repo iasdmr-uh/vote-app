@@ -20,7 +20,7 @@ const {
 const {
   moderatorCredential, assemblyName, assemblyPeriod, showNextBallotForm, preparedRunoff,
   secrecyCleanupPendingRounds, voteOpen, moderatorWorkflow, currentRoundRecord, moderatorWorkflowStep, otherPendingActas,
-  electionsAwaitingRegistration, rootRoundOf, registerOfficial,
+  electionsAwaitingRegistration, rootRoundOf, registerOfficial, showActa,
   repeatAllOptions, openCompletedAssembly, openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa,
   downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData, createAssembly, signInModerator,
 } = useMesa()
@@ -85,7 +85,7 @@ const {
         <ModeratorParticipants />
       </div>
       <ModeratorVoteProgress />
-      <ModeratorResultsRecord />
+      <ModeratorResultsRecord v-if="showActa" />
     </template>
   </template>
   <ActaImpresa v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" :state="state" />

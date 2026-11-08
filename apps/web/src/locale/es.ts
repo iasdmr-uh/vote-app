@@ -13,6 +13,8 @@ export const es = {
     mesaViews: 'Vistas de mesa',
     delegateView: 'Delegado',
     openProjector: 'Abrir proyector',
+    acta: 'Acta',
+    closeActa: 'Cerrar acta',
     connectionLost: 'Conexión interrumpida · Intentando reconectar. Los datos mostrados son los últimos confirmados.',
     problemPrefix: 'Ocurrió un problema.',
     codeMismatchPrefix,
