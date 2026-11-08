@@ -17,26 +17,20 @@ import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 import type { AssemblyStatus, RoundStatus } from '../generated/prisma/enums.js'
 import type { CreateRoundDto, RepeatRoundDto } from './dtos.js'
 import { presentationOf } from './presentation.service.js'
-import { decisionOutcome, electionOutcome, tiedAtCut, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
+import { tiedAtCut, type ThresholdRule } from './results-engine.js'
 import { roomNumbers } from './room.js'
 import { appUrl } from './app-url.js'
 import { assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
 import { baseOf, basePeople, countInRoom, freezeRoundBase, roundBase, roundBases } from './base-count.js'
+import { ORGANIZATION_ID, RESULTS_ENGINE_ACTOR, RESUME_CODE_TTL_MS, SECRECY_CLEANUP_PENDING, VACUUM_LOCK_TIMEOUT_MS } from './constants.js'
+import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn } from './round-rules.js'
 
-const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
-const RESUME_CODE_TTL_MS = 10 * 60_000
-const VACUUM_LOCK_TIMEOUT_MS = 5_000
-/** Rounds whose votes are at rest and must be unlinked from their participation receipts. */
-const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
-/** The official result is computed, never declared by hand (Asamblea, Nov 2026). */
-const RESULTS_ENGINE_ACTOR = 'results_engine'
 /** The Unión Hondureña org chart, seeded in this order on every new Asamblea (Asamblea, Nov 2026). */
 export const DEFAULT_BOARD_POSITIONS = ['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3'] as const
 export const DEFAULT_DEPARTMENT_POSITIONS = [
   'Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia',
   'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción',
 ] as const
-const SECRECY_CLEANUP_PENDING = 'No se completó la limpieza que protege el secreto del voto. La operación no se realizó; usa «Reintentar limpieza» en unos segundos.'
 
 @Injectable()
 export class VotingService implements OnModuleInit {
@@ -1339,51 +1333,4 @@ export class VotingService implements OnModuleInit {
       .map((option) => ({ optionId: option.id, label: option.label, count: countByOption.get(option.id) ?? 0 }))
       .sort((a, b) => b.count - a.count)
   }
-}
-
-/** Seats one vote fills: an office fills one; a runoff asks for the seats still open. */
-function seatsOf(round: { category: string; memberCount: number | null; electionSeats: number | null }) {
-  return round.category === 'committee' ? Math.max(1, round.electionSeats ?? round.memberCount ?? 1) : 1
-}
-
-type OutcomeRound = {
-  category: string; memberCount: number | null; electionSeats: number | null; decisionFormat: string | null; approvalRule: string
-  options: Array<{ id: string }>
-}
-
-function outcomeOf(round: OutcomeRound, counts: Array<{ optionId: string; count: number }>, base: number): ElectionOutcome | DecisionOutcome {
-  const countOf = new Map(counts.map((row) => [row.optionId, row.count]))
-  // Ballot order: a boolean decision's first option is "A favor".
-  const tallies = round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 }))
-  if (round.category === 'decision') return decisionOutcome(tallies, round.decisionFormat as DecisionFormat, base, round.approvalRule as ThresholdRule)
-  return electionOutcome(tallies, seatsOf(round), base)
-}
-
-/** A boolean decision's ballot, written by the server in this order. */
-const BOOLEAN_DECISION_LABELS = ['A favor', 'En contra'] as const
-
-/** Format and rule are only sent for decisions, so election payloads stay as they were. */
-function decisionFields(round: { category: string; decisionFormat: string | null; approvalRule: string }) {
-  return round.category === 'decision' ? { decisionFormat: round.decisionFormat, approvalRule: round.approvalRule } : {}
-}
-
-/** A runoff, or the repetition of an annulled runoff. */
-function isRunoff(countingRule: unknown) {
-  const rule = countingRule as { reason?: unknown; runoff?: unknown } | null
-  return runoffSourceOf(countingRule) !== null || (rule?.reason === 'repeat' && rule.runoff === true)
-}
-
-/**
- * Which vote of its election a round is, counting only the votes before it that were not annulled:
- * an annulled vote and the vote that repeats it share a number.
- */
-function voteNumberIn(chain: Array<{ id: string; status: string }>, roundId: string) {
-  const index = chain.findIndex((item) => item.id === roundId)
-  return chain.slice(0, Math.max(0, index)).filter((item) => item.status !== 'annulled').length + 1
-}
-
-/** The vote whose result prepared this runoff. */
-function runoffSourceOf(countingRule: unknown) {
-  const rule = countingRule as { reason?: unknown; sourceRoundId?: unknown } | null
-  return rule?.reason === 'runoff' && typeof rule.sourceRoundId === 'string' ? rule.sourceRoundId : null
 }

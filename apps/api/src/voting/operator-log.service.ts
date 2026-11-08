@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
-import { MODERATOR_ACTOR } from '../auth/auth.service.js'
+import { MODERATOR_ACTOR } from '../auth/actors.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { LOGGED_ACTIONS, LOG_DOWNLOADED, canEraseWithLog, operatorLogCsv, type LogPurpose } from './operator-log.js'

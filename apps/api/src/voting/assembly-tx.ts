@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common'
 import type { Prisma } from '../generated/prisma/client.js'
-import { MODERATOR_ACTOR } from '../auth/auth.service.js'
+import { MODERATOR_ACTOR } from '../auth/actors.js'
 
 export async function lockAssembly(tx: Prisma.TransactionClient, assemblyId: string) {
   const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
