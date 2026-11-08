@@ -99,3 +99,24 @@ test('the connected count reaches only the public screen and the mesa, with aggr
     payload: { roundId: 'r-1', connected: 4, base: 5 },
   }])
 })
+
+test('a second tab that closes before it is counted leaves the first tab counted', async () => {
+  const { gateway, presence, runTimers } = setup({ audience: 'participant', assemblyId: 'assembly-7', sessionId: 'session-3' })
+  await gateway.handleConnection(socket(participant) as never)
+  const closedTab = { ...socket(participant), disconnected: true }
+  await gateway.handleConnection(closedTab as never)
+  gateway.handleDisconnect(closedTab as never)
+  runTimers()
+  assert.deepEqual(presence.online('assembly-7'), ['session-3'])
+})
+
+test('a second tab whose room join fails leaves the first tab counted', async () => {
+  const { gateway, presence, runTimers } = setup({ audience: 'participant', assemblyId: 'assembly-7', sessionId: 'session-3' })
+  await gateway.handleConnection(socket(participant) as never)
+  let joins = 0
+  const failingTab = { ...socket(participant), async join() { joins += 1; if (joins === 2) throw new Error('join failed') } }
+  await gateway.handleConnection(failingTab as never)
+  gateway.handleDisconnect(failingTab as never)
+  runTimers()
+  assert.deepEqual(presence.online('assembly-7'), ['session-3'])
+})

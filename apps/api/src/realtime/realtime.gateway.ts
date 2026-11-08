@@ -68,6 +68,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnG
   private server!: RealtimeServer
 
   private readonly logger = new Logger(RealtimeGateway.name)
+  private readonly countedSockets = new WeakSet<RealtimeSocket>()
 
   constructor(
     @Inject(REALTIME_AUTHORIZER) private readonly authorizer: RealtimeAuthorizer,
@@ -93,7 +94,10 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnG
       await client.join(roomFor(identity))
       if (identity.audience === 'participant') {
         await client.join(participantBroadcastRoom(identity.assemblyId))
-        if (!client.disconnected) this.presence.connect(identity.assemblyId, identity.sessionId)
+        if (!client.disconnected) {
+          this.presence.connect(identity.assemblyId, identity.sessionId)
+          this.countedSockets.add(client)
+        }
       }
     } catch {
       // Do not log credentials, tokens, or auth-provider error bodies.
@@ -104,7 +108,8 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnG
 
   handleDisconnect(client: RealtimeSocket): void {
     const identity = client.data.identity
-    if (identity?.audience === 'participant') this.presence.disconnect(identity.assemblyId, identity.sessionId)
+    if (identity?.audience !== 'participant' || !this.countedSockets.delete(client)) return
+    this.presence.disconnect(identity.assemblyId, identity.sessionId)
   }
 
   publisher(): RealtimePublisher {
