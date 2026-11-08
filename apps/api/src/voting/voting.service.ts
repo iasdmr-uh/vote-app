@@ -184,7 +184,7 @@ export class VotingService implements OnModuleInit {
       if (!current || current.status !== 'active' || !current.resumeExpiresAt || current.resumeExpiresAt <= new Date()) {
         throw new NotFoundException('El código de reconexión no es válido o ya venció')
       }
-      await assertNoOpenRound(tx, current.assemblyId, 'Vuelve a escanear este código cuando cierre la votación abierta')
+      await assertNoOpenRound(tx, current.assemblyId, 'Hay una votación en curso. Vuelve a escanear este código cuando termine.')
       // Conditional update makes the code single-use even if two devices redeem it at once.
       const claimed = await tx.participantSession.updateMany({
         where: { id: current.id, resumeCodeHash },

@@ -17,7 +17,7 @@ async function setup(label: string, names: string[]) {
     await seeded.cleanup()
     await prisma.$disconnect()
   }
-  return { prisma, service, auth: new AuthService(prisma), events, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
+  return { prisma, service, room, auth: new AuthService(prisma), events, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
 }
 
 const twoOptions = { format: 'single_choice' as const, countingRule: { kind: 'count_only' as const }, options: [{ label: 'Opción A' }, { label: 'Opción B' }] }
@@ -33,7 +33,8 @@ test('while a vote is open no reconnection code is issued or redeemed, and an ea
 
     events.length = 0
     await assert.rejects(service.issueResumeCode(people.Joel!.id), ConflictException)
-    await assert.rejects(service.redeemResumeCode(earlier), ConflictException)
+    await assert.rejects(service.redeemResumeCode(earlier), (error: unknown) =>
+      error instanceof ConflictException && /votación en curso/.test(error.message) && /escanea/i.test(error.message))
     assert.equal(events.length, 0)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId } }), audits)
     const joel = await prisma.participantSession.findUniqueOrThrow({ where: { id: people.Joel!.id } })
@@ -102,4 +103,23 @@ test('nobody joins with the assembly code while a vote is open, and the mesa can
     await seeded.cleanup()
     await prisma.$disconnect()
   }
+})
+
+test('the mesa cannot change the assembly code while a vote is open, and can once it ends', async () => {
+  const { prisma, service, room, events, assemblyId, cleanup } = await setup('rotate-open-vote', ['Sofonías', 'Zacarías'])
+  try {
+    const round = await service.createRound(assemblyId, { title: 'Vocalía', ...twoOptions })
+    await service.openRound(round.id)
+    const before = await prisma.assembly.findUniqueOrThrow({ where: { id: assemblyId }, select: { joinCodeHash: true } })
+    const audits = await prisma.auditEvent.count({ where: { assemblyId } })
+    events.length = 0
+    await assert.rejects(room.rotateJoinCode(assemblyId), (error: unknown) =>
+      error instanceof ConflictException && /votación/.test(error.message))
+    assert.equal(events.length, 0, 'no public session is revoked during the vote')
+    assert.equal(await prisma.auditEvent.count({ where: { assemblyId } }), audits)
+    assert.deepEqual(await prisma.assembly.findUniqueOrThrow({ where: { id: assemblyId }, select: { joinCodeHash: true } }), before)
+
+    await service.closeRound(round.id)
+    assert.ok((await room.rotateJoinCode(assemblyId)).joinCode)
+  } finally { await cleanup() }
 })

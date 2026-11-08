@@ -113,6 +113,7 @@ export class RoomService {
       const assembly = await lockAssembly(tx, assemblyId)
       if (!assembly) throw new NotFoundException('Asamblea no encontrada')
       assertNotCompleted(assembly.status)
+      await assertNoOpenRound(tx, assemblyId, 'Cambia el código de ingreso cuando cierre la votación abierta')
       await tx.assembly.update({ where: { id: assemblyId }, data: { joinCodeHash: hashCredential(joinCode) } })
       await recordAudit(tx, { assemblyId, action: 'assembly.join_code_rotated' })
     })
