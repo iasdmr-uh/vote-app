@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
-import type { VotingService } from '../../src/voting/voting.service.js'
+import type { RoomService } from '../../src/voting/room.service.js'
 
 export type Delegate = { id: string; token: string }
 
-export async function seedAssembly(prisma: PrismaService, service: VotingService, { label, delegates = [] }: { label: string; delegates?: string[] }) {
+export async function seedAssembly(prisma: PrismaService, room: RoomService, { label, delegates = [] }: { label: string; delegates?: string[] }) {
   const organizationId = randomUUID()
   await prisma.organization.create({ data: { id: organizationId, name: `${label}-${organizationId}`, type: 'union' } })
   try {
@@ -14,11 +14,11 @@ export async function seedAssembly(prisma: PrismaService, service: VotingService
     const people: Record<string, Delegate> = {}
     for (const name of delegates) {
       const [firstName, lastName = 'Delegado'] = name.split(' ')
-      const joined = await service.joinAssembly(joinCode, firstName!, lastName)
+      const joined = await room.joinAssembly(joinCode, firstName!, lastName)
       const session = await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })
       people[name] = { id: session.id, token: joined.participantSessionToken }
     }
-    await service.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     return { organizationId, assemblyId, joinCode, people, cleanup: () => removeOrganization(prisma, organizationId) }
   } catch (error) {
     await removeOrganization(prisma, organizationId)

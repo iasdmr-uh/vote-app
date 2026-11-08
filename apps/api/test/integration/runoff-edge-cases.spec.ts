@@ -4,15 +4,15 @@ import { UnprocessableEntityException } from '@nestjs/common'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 /** A closed-lobby assembly with `count` delegates, torn down after `body`. */
 async function withAssembly(name: string, count: number, body: (ctx: { service: VotingService; prisma: PrismaService; assemblyId: string; people: string[] }) => Promise<void>) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
-  const { assemblyId, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const { assemblyId, people, cleanup } = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, prisma, assemblyId, people: names.map((person) => people[person]!.id) })
   } finally {

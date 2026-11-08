@@ -3,14 +3,13 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('decisions: A favor / En contra with 3/4 or mayoría simple, and options that repeat between the top 2 until one reaches the rule', async () => {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service, room } = buildProviders(prisma)
   const organizationId = randomUUID()
   const joinCode = newOpaqueCredential()
 
@@ -44,7 +43,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.equal(phone.openRound?.electionSeats, null, 'no exact-N count on a decision ballot')
     const [favor, contra] = budget.options
     await assert.rejects(service.castVote(delegates[0]!.id, budget.id, [favor!.id, contra!.id]), unprocessable(/una sola opción/), 'no marking both')
-    await service.setVotingDisabled(delegates[7]!.id, true)
+    await room.setVotingDisabled(delegates[7]!.id, true)
     await assert.rejects(vote(7, budget.id, favor), ForbiddenException)
     for (const index of [0, 1, 2, 3, 4, 5]) await vote(index, budget.id, favor)
     await vote(6, budget.id, contra)
@@ -59,7 +58,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.equal(projector.outcome && 'approved' in projector.outcome && projector.outcome.approved, true)
     assert.deepEqual(projector.results?.map((option) => [option.label, option.count]), [['A favor', 6], ['En contra', 1]])
     assert.equal(projector.eligibleCount, 8, 'percentages are over the habilitados, the inhabilitado included')
-    await service.setVotingDisabled(delegates[7]!.id, false)
+    await room.setVotingDisabled(delegates[7]!.id, false)
 
     // 2 · Mayoría simple over 8: 5 needed. A 4-4 tie is not approved.
     const statute = await service.createRound(activeAssemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })

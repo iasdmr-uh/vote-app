@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { MODERATOR_ACTOR } from './actors.js'
 import { hashCredential, matchesSecret } from './credentials.js'
 import {
   REALTIME_AUTHORIZER,
@@ -9,7 +10,6 @@ import {
 } from '../realtime/realtime.types.js'
 
 export const PARTICIPANT_ID = Symbol('PARTICIPANT_ID')
-export const MODERATOR_ACTOR = 'shared_moderator_credential'
 
 @Injectable()
 export class RealtimeAuthService implements RealtimeAuthorizer {
