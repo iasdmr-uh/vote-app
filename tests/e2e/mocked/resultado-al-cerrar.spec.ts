@@ -206,7 +206,7 @@ for (const item of finals) {
     await page.setViewportSize({ width: 1920, height: 1080 })
     await projectorWith(page, () => ({ round: item.round, results: item.results, outcome: item.outcome, officialResult, final: item.final }))
     await page.getByRole('button', { name: 'Ver conteo' }).click()
-    await expect(page.locator('.pj-results li')).toHaveCount(2)
+    await expect(page.locator('.pj-results li')).toHaveCount(3)
     await expect(page.locator('.result-summary')).toHaveCount(1)
     await expect(page.locator('.result-summary')).toContainText(item.shown)
     await expect(page.locator('.pj-elected')).toHaveCount(0)
