@@ -1121,19 +1121,20 @@ export class VotingService implements OnModuleInit {
     const resumeCode = newOpaqueCredential()
     const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
     const identity = { firstName: input.firstName.trim(), lastName: input.lastName.trim() }
-    const session = { ...identity, status: 'active' as const, resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt }
+    const session = { ...identity, status: 'active' as const, votingDisabled: false, resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt }
     const secretary = await this.prisma.$transaction(async (tx) => {
       const round = await this.lockDraft(tx, roundId, 'La secretaría regional solo se agrega antes de abrir la votación')
       if (!round.runoff || round.voteNumber < 4) throw new ConflictException('La secretaría regional se agrega a partir de la 4.ª votación')
       if (!await this.previousVoteTied(tx, round.chain, roundId)) throw new ConflictException('La secretaría regional solo se agrega si la votación anterior terminó en empate')
       const existing = await tx.participantSession.findFirst({ where: { assemblyId: round.assemblyId, isRegionalSecretary: true }, select: { id: true } })
       const person = existing
-        ? await tx.participantSession.update({ where: { id: existing.id }, data: session, select: { id: true } })
+        ? await tx.participantSession.update({ where: { id: existing.id }, data: { ...session, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true } })
         : await tx.participantSession.create({ data: { ...session, assemblyId: round.assemblyId, isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) }, select: { id: true } })
       await tx.round.update({ where: { id: roundId }, data: { regionalSecretaryVotes: true } })
       await tx.auditEvent.create({ data: { assemblyId: round.assemblyId, roundId, actorRef: MODERATOR_ACTOR, action: 'round.regional_secretary_added', metadata: { participantId: person.id, voteNumber: round.voteNumber } } })
-      return person
+      return { ...person, replaced: Boolean(existing) }
     })
+    if (secretary.replaced) this.realtime.participantSessionReplaced(secretary.id)
     await this.announceRound(roundId)
     return { participantId: secretary.id, name: `${identity.firstName} ${identity.lastName}`, resumeUrl: this.appUrl({ resume: resumeCode }), expiresAt: expiresAt.toISOString() }
   }
