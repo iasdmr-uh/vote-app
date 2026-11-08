@@ -119,8 +119,8 @@ export async function confirm(mesa: Page, button: string, dialogButton = button)
 type Ballot =
   | { kind: 'office'; title: string; candidates: string[] }
   | { kind: 'committee'; title: string; seats: number; candidates: string[] }
-  | { kind: 'decision'; title: string; format: 'boolean'; rule: 'simple' | 'three_quarters' }
-  | { kind: 'decision'; title: string; format: 'options'; rule: 'simple' | 'three_quarters'; options: string[] }
+  | { kind: 'decision'; title: string; format: 'boolean'; rule: 'simple' | 'two_thirds' | 'three_quarters' }
+  | { kind: 'decision'; title: string; format: 'options'; rule: 'simple' | 'two_thirds' | 'three_quarters'; options: string[] }
 
 export async function prepareBallot(mesa: Page, ballot: Ballot) {
   const another = mesa.getByRole('button', { name: 'Preparar otra papeleta' })
@@ -149,7 +149,7 @@ export async function prepareBallot(mesa: Page, ballot: Ballot) {
   } else {
     await mesa.getByLabel('Decisión', { exact: true }).fill(ballot.title)
     await mesa.getByRole('radio', { name: ballot.format === 'boolean' ? 'A favor / En contra' : 'Opciones', exact: true }).click()
-    await mesa.getByRole('radio', { name: ballot.rule === 'simple' ? 'Mayoría simple' : '3/4', exact: true }).click()
+    await mesa.getByRole('radio', { name: { simple: 'Mayoría simple', two_thirds: '2/3', three_quarters: '3/4' }[ballot.rule], exact: true }).click()
     if (ballot.format === 'options') names = ballot.options
   }
   const input = mesa.getByLabel(ballot.kind === 'decision' ? 'Agregar opción' : 'Agregar candidato')
