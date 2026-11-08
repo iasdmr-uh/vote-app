@@ -145,8 +145,8 @@ place  name       votes  majority  result
   3    Ezequiel     18   yes       next vote   ← last seat, cut value 18
 ──────────────────────────────────────── line
   4    Daniel       18   yes       next vote
-  5    Oseas        11             out
-  6    Joel         11             out
+  5    Oseas         2             out
+  6    Joel          2             out
 ```
 
 - The tie between Isaías and Jeremías is above the cut, so both are elected.
@@ -155,7 +155,7 @@ place  name       votes  majority  result
 
 ### Fewer candidates than seats
 
-Committee of 3 with 2 candidates. Each delegate marks 2 names.
+Committee of 3 with 2 candidates. How many names each delegate marks here is not settled, so the counts are only illustrative.
 
 ```
 place  name       votes  majority  result
