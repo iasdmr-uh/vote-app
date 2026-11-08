@@ -291,12 +291,16 @@ export class VotingService implements OnModuleInit {
     const state = await this.participantState(participantId)
     this.realtime.participantState(participantId, state)
     await this.announceParticipationCount(participant.assemblyId, roundId)
+    void this.closeWhenEveryoneVoted(participant.assemblyId, roundId)
+    return { accepted: true, participationStatus: 'recorded' as const }
+  }
+
+  private async closeWhenEveryoneVoted(assemblyId: string, roundId: string) {
     try {
-      if (await this.everyoneVoted(participant.assemblyId, roundId)) await this.closeRound(roundId, 'system')
+      if (await this.everyoneVoted(assemblyId, roundId)) await this.closeRound(roundId, 'system')
     } catch (error) {
       this.logger.error(`Closing round ${roundId} after the last ballot failed: ${(error as Error).message}`)
     }
-    return { accepted: true, participationStatus: 'recorded' as const }
   }
 
   private async everyoneVoted(assemblyId: string, roundId: string) {
