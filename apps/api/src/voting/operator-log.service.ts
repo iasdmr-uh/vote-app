@@ -2,7 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { LOGGED_ACTIONS, operatorLogCsv } from './operator-log.js'
+import { LOGGED_ACTIONS, canEraseWithLog, operatorLogCsv } from './operator-log.js'
 
 export type LogDownloadPurpose = 'review' | 'delete'
 
@@ -17,9 +17,8 @@ export async function requireLogDownloadedForDeletion(tx: Prisma.TransactionClie
   const newest = await tx.auditEvent.findFirst({
     where: loggedWhere(assemblyId), orderBy: [{ occurredAt: 'desc' }, { sequence: 'desc' }], select: { action: true, metadata: true },
   })
-  const meta = (newest?.metadata ?? {}) as { purpose?: unknown; entryCount?: unknown }
   const recorded = await tx.auditEvent.count({ where: loggedWhere(assemblyId) })
-  if (newest?.action !== LOG_DOWNLOADED || meta.purpose !== 'delete' || meta.entryCount !== recorded) {
+  if (!canEraseWithLog(newest, recorded)) {
     throw new ConflictException('Descarga el registro para «Borrar datos» antes de borrar los datos')
   }
 }

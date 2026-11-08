@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { LOGGED_ACTIONS, logEntryOf, operatorLogCsv, type LogRow } from '../src/voting/operator-log.js'
+import { LOGGED_ACTIONS, canEraseWithLog, logEntryOf, operatorLogCsv, type LogRow } from '../src/voting/operator-log.js'
 
 const at = new Date('2026-11-08T20:15:30.000Z')
 const row = (action: string, metadata: Record<string, unknown> | null = null, extra: Partial<LogRow> = {}): LogRow =>
@@ -73,4 +73,14 @@ test('a name that looks like a formula stays text, and quotes are escaped', () =
 test('the file leaves out rows that are not in the log', () => {
   const csv = operatorLogCsv([row('round.result_computed', { electedLabels: ['Isaías'] })])
   assert.equal(csv, '﻿"Hora","Tipo","Acción"\r\n')
+})
+
+test('«Borrar datos» needs the newest entry to be a download for it with every entry recorded so far', () => {
+  const download = (purpose: string, entryCount: number) => ({ action: 'log.downloaded', metadata: { purpose, entryCount } })
+  assert.equal(canEraseWithLog(null, 0), false, 'nothing logged')
+  assert.equal(canEraseWithLog({ action: 'assembly.completed', metadata: {} }, 3), false, 'no download yet')
+  assert.equal(canEraseWithLog(download('delete', 4), 4), true, 'downloaded, then erased')
+  assert.equal(canEraseWithLog({ action: 'presentation.changed', metadata: { active: true } }, 5), false, 'an action after the download')
+  assert.equal(canEraseWithLog(download('review', 4), 4), false, 'a plain download does not count')
+  assert.equal(canEraseWithLog(download('delete', 4), 5), false, 'an entry missing from the downloaded file')
 })

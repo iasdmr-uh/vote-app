@@ -67,6 +67,17 @@ export function logEntryOf(row: LogRow): LogEntry | null {
   return { time: row.occurredAt, kind: entry.kind, text: entry.describe(meta, text(row.roundTitle)) }
 }
 
+export interface NewestLogEntry {
+  action: string
+  metadata: unknown
+}
+
+export function canEraseWithLog(newest: NewestLogEntry | null, recordedCount: number) {
+  if (newest?.action !== 'log.downloaded') return false
+  const meta = newest.metadata && typeof newest.metadata === 'object' ? (newest.metadata as Meta) : {}
+  return meta.purpose === 'delete' && meta.entryCount === recordedCount
+}
+
 export function compareLogRows(a: LogRow, b: LogRow) {
   const byTime = a.occurredAt.getTime() - b.occurredAt.getTime()
   if (byTime !== 0) return byTime
