@@ -95,7 +95,7 @@ test('an office ballot without seats still takes a single choice', async () => {
   assert.deepEqual(votes, [['a']])
 })
 
-test('the mesa sees who voted in the latest opened ballot, never what they chose', async () => {
+test('the mesa sees how many voted in the latest opened ballot and never who (#55)', async () => {
   const database = {
     assembly: { findUnique: async () => ({
       id: 'assembly', name: 'Asamblea', status: 'in_progress', completedAt: null,
@@ -103,17 +103,20 @@ test('the mesa sees who voted in the latest opened ballot, never what they chose
       rounds: [],
     }) },
     round: { findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy: Record<string, string> }) => {
-      assert.deepEqual(where.openedAt, { not: null }, 'a closed ballot keeps its dots until the next one opens')
+      assert.deepEqual(where.openedAt, { not: null }, 'a closed ballot keeps its count until the next one opens')
       assert.deepEqual(orderBy, { openedAt: 'desc' })
       return { id: 'closed-round', status: 'closed' }
     }, findMany: async () => [{ id: 'closed-round', committeeRootRoundId: null }] },
-    participation: { findMany: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? [{ participantSessionId: 'ana' }] : [] },
+    participation: {
+      count: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? 1 : 0,
+      findMany: async () => assert.fail('the mesa never reads who voted'),
+    },
     participantSession: { count: async () => 2, findMany: async () => [], findFirst: async () => null },
     position: { findMany: async () => [] },
   }
   const voting = buildProviders(database, {}).voting
   const state = await voting.moderatorAssembly('assembly')
-  assert.deepEqual(state.participants.map((person) => [person.id, person.voted]), [['ana', true], ['luis', false]])
+  assert.deepEqual(state.participants.map((person) => 'voted' in person), [false, false])
   assert.deepEqual(state.attendanceRound, { roundId: 'closed-round', status: 'closed', votedCount: 1, eligibleCount: 2 })
 })
 
