@@ -97,7 +97,6 @@ const preparedRunoff = computed(() => {
   if (chosen && needsPreparation(chosen)) return chosen
   return currentRoundRecord.value && needsPreparation(currentRoundRecord.value) ? currentRoundRecord.value : undefined
 })
-const regionalSecretaryInBallot = computed(() => Boolean((preparedRunoff.value ?? currentRoundRecord.value)?.regionalSecretaryVotes && state.value?.regionalSecretary))
 const currentRoundComplete = computed(() => Boolean(currentRoundRecord.value && electionComplete(currentRoundRecord.value)))
 const moderatorWorkflowStep = computed(() => {
   if (preparedRunoff.value) return 1
@@ -328,9 +327,10 @@ function issueResumeCode(person: { id?: string; firstName: string; lastName: str
 
 function removeFromRoom(person: { id?: string; firstName: string; lastName: string }) {
   if (!person.id) return
+  const isSecretary = person.id === state.value?.regionalSecretary?.id
   moderationConfirmation.value = {
     title: `¿Retirar a ${person.firstName} ${person.lastName} de la sala?`,
-    consequence: 'La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta. Puedes regresarlo a la sala después.',
+    consequence: `La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta. ${isSecretary ? 'Para que vuelva, agrégalo de nuevo desde una votación que lo permita.' : 'Puedes regresarlo a la sala después.'}`,
     label: 'Retirar de la sala',
     path: `/moderator/participants/${encodeURIComponent(person.id)}/take-out`,
     method: 'POST',
@@ -557,7 +557,7 @@ export function useMesa() {
   return {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
-    showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, regionalSecretaryInBallot, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
+    showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
