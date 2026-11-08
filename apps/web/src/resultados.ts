@@ -44,6 +44,34 @@ export function notVotedText(recorded: number, eligible?: number | null) {
   return es.results.notVoted(notVotedOf(recorded, eligible))
 }
 
+export type ResultRow = { key: string; label: string; count: number; percent: number }
+
+export function resultRows(results: Array<{ optionId?: string; label: string; count: number }>, base: number): ResultRow[] {
+  return [...results].sort((a, b) => b.count - a.count).map((result) => ({
+    key: result.optionId || result.label,
+    label: result.label,
+    count: result.count,
+    percent: percentOf(result.count, base),
+  }))
+}
+
+export function notVotedRow(recorded: number, base: number): ResultRow {
+  const count = notVotedOf(recorded, base)
+  return { key: 'not-voted', label: es.results.notVotedLabel, count, percent: percentOf(count, base) }
+}
+
+export function baseSumText(recorded: number, base: number) {
+  return es.results.baseSum(recorded, notVotedText(recorded, base), base)
+}
+
+export function marksPerBallot(target: { category?: string | null; electionSeats?: number | null; memberCount?: number | null }) {
+  return target.category === 'committee' ? target.electionSeats ?? target.memberCount ?? 1 : 1
+}
+
+export function marksCheckText(marks: number, recorded: number) {
+  return marks > 1 ? es.results.marksCheck(marks, recorded) : ''
+}
+
 export function rankedResults<T extends Counted>(results: T[], eligible?: number | null) {
   const sorted = [...results].sort((a, b) => b.count - a.count)
   return sorted.map((result, index) => ({ ...result, rank: index + 1, tied: isTied(sorted, index), percent: percentOf(result.count, eligible) }))

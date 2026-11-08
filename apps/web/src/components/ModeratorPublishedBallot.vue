@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { es } from '../locale/es'
-import { countsOf, electedSoFar, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
+import { countsOf, electedSoFar, majorityText, marksPerBallot, notVotedText, resultRows, verdictOf, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import ResultExplanation from './ResultExplanation.vue'
 import ResultsList from './ResultsList.vue'
@@ -15,7 +15,7 @@ const props = defineProps<{
 }>()
 
 const { loading, state } = useAssembly()
-const { showNextBallotForm, rootRoundOf, eligibleOf, rankedRows, runoffOf, openRunoff, registerOfficial } = useMesa()
+const { showNextBallotForm, rootRoundOf, eligibleOf, runoffOf, openRunoff, registerOfficial } = useMesa()
 
 const election = computed(() => rootRoundOf(props.currentRoundRecord)?.officialResult ?? null)
 const final = computed(() => props.currentRoundRecord.final && election.value ? { elected: election.value.elected, approved: election.value.approved ?? null } : null)
@@ -38,7 +38,7 @@ function runoffButtonText(target: RoundRecord) {
   <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" :so-far="soFar" />
   <p v-if="final && election?.registeredAt" class="status-line">{{ es.results.registered }}</p>
   <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ es.results.register }}</button></div>
-  <ResultsList :rows="rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
+  <ResultsList :rows="resultRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :recorded="currentRoundRecord.participationCount ?? state?.recordedCount ?? 0" :base="eligibleOf(currentRoundRecord)" :marks="marksPerBallot(currentRoundRecord)" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
   <ResultExplanation :target="currentRoundRecord" />
   <div class="action-row ballot-actions">
     <button class="link-button" @click="showNextBallotForm = true">{{ es.moderator.prepareAnother }}</button>

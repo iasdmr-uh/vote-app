@@ -114,7 +114,8 @@ for (const [moment, state] of [
 ] as const) {
   test(`the phone shows no rule, explanation or information button during ${moment}`, async ({ page }) => {
     await phoneWith(page, state)
-    await expect(page.getByRole('heading', { name: 'Comisión de Finanzas' })).toBeVisible()
+    await expect(page.locator(`.phone-screen[data-round-status="${state.currentRound.status}"]`)).toBeVisible()
+    await expect(page.locator('.result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '¿Cómo se decidió?' })).toHaveCount(0)
     await expect(page.getByText(/Mayoría simple|habilitados|Sin mayoría|Empate en el último puesto/)).toHaveCount(0)
   })

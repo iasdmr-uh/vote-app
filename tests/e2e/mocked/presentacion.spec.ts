@@ -48,7 +48,7 @@ test.describe('diapositivas del proyector', () => {
 
     // The detailed count is still there, one click away, and back.
     await page.getByRole('button', { name: 'Ver conteo' }).click()
-    await expect(page.locator('.pj-results li')).toHaveCount(2)
+    await expect(page.locator('.pj-results li')).toHaveCount(3)
     await page.getByRole('button', { name: 'Ver resultado' }).click()
     await expect(slide).toBeVisible()
   })
@@ -149,7 +149,7 @@ test.describe('diapositivas del proyector', () => {
     await expect(page.locator('.slide')).toHaveCount(0)
     status = 'published'
     await refreshByPolling(page)
-    await expect(page.locator('.pj-results li')).toHaveCount(4)
+    await expect(page.locator('.pj-results li')).toHaveCount(5)
     await expect(page.locator('.slide')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Ver conteo' })).toHaveCount(0)
     status = 'annulled'

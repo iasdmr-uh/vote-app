@@ -142,7 +142,7 @@ test('una decisión con opciones sin la mayoría marca Desempate y prepara la 2.
   await expect.poll(() => opened).toContain('/moderator/rounds/sede-2/open')
 })
 
-test('el teléfono vota una decisión A favor / En contra con una sola opción (T03) y ve el resultado', async ({ page }) => {
+test('el teléfono vota una decisión A favor / En contra con una sola opción (T03) y no ve el resultado', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'decision-session'))
   let recorded = false
   let published = false
@@ -186,8 +186,8 @@ test('el teléfono vota una decisión A favor / En contra con una sola opción (
 
   published = true
   await page.reload()
-  await expect(page.locator('.official-card')).toHaveText(/RESULTADO\s*Aprobada/)
-  await expect(page.locator('.phone-results .ranked-rows > li').nth(0)).toHaveText(/A favor\s*30 votos\s*79 %/)
+  await expect(page.locator('.phone-screen[data-round-status="published"]')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText(/Aprobada|A favor|30 votos|resultado/i)
 })
 
 test('el teléfono vota una decisión con opciones (T04)', async ({ page }) => {

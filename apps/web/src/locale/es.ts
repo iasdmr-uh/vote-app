@@ -31,7 +31,6 @@ export const es = {
     list: (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0] || ''),
   },
   phone: {
-    connected: 'Conectado',
     otherAssemblyQr: 'Este QR corresponde a otra Asamblea.',
     switchAssembly: 'Cerrar sesión y cambiar a la Asamblea del QR',
     voteDisabled: 'Voto inhabilitado',
@@ -49,9 +48,6 @@ export const es = {
     lastNamePlaceholder: 'Tu apellido',
     joining: 'Entrando…',
     joinRoom: 'Entrar a la sala',
-    resultsEyebrow: 'RESULTADOS',
-    resultEyebrow: 'RESULTADO',
-    officialResultEyebrow: 'RESULTADO OFICIAL',
     confirmVote: 'Confirma tu voto',
     back: 'Volver',
     sending: 'Enviando…',
@@ -329,6 +325,9 @@ export const es = {
       const verb = plural(recorded, 'votó', 'votaron')
       return eligible ? `${recorded} de ${eligible} ${verb}` : `${recorded} ${verb}`
     },
+    notVotedLabel: 'No votaron',
+    baseSum: (recorded: number, notVoted: string, base: number) => `${recorded} ${plural(recorded, 'votó', 'votaron')} + ${notVoted} = ${base}`,
+    marksCheck: (marks: number, recorded: number) => `Cada papeleta marca ${marks} nombres · ${marks} × ${recorded} = ${marks * recorded} votos`,
     notVoted: (missing: number) => `${missing} ${plural(missing, 'no votó', 'no votaron')}`,
     tieFirstPlace: 'en el primer lugar',
     tieLastSeat: 'por el último cupo',

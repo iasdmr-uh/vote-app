@@ -19,7 +19,7 @@ test('los puestos electos llegan a «Presentar oficiales» y al organigrama del 
   await prepareBallot(mesa, { kind: 'office', title: 'Presidente', candidates: ['María López', 'Carlos Gómez'] })
   await runVote(room, [['María López'], ['Carlos Gómez'], null])
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
-  await expect(room.phones[0].page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(room.phones[0].page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await voteAll(room.phones, [['María López'], ['María López'], ['Carlos Gómez']])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('3')
   await confirm(mesa, 'Cerrar votación')

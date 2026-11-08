@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, castVoteByApi, confirm, finishLiveAssembly, joinPhone, moderatorState, openMesa, openProjector, prepareBallot, vote } from './helpers'
+import { api, castVoteByApi, confirm, expectPhoneShowsNoResult, expectProjectorFinal, finishLiveAssembly, joinPhone, moderatorState, openMesa, openProjector, prepareBallot, vote } from './helpers'
 
 test('flujo real de asamblea: ingreso, voto único, cierre y publicación', async ({ browser, request }) => {
   await finishLiveAssembly(request)
@@ -34,7 +34,7 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   await expect(projector.locator('.slide-office .office-votes')).toHaveText('1 de 1 votos · 100 %')
   await projector.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(projector.locator('.pj-status')).toHaveText('Conteo publicado')
-  await expect(projector.locator('.pj-results .pj-label')).toHaveText(['Opción Ámbar', 'Opción Índigo'])
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Opción Ámbar')
-  await expect(delegate.page.locator('.official-card strong')).toHaveText('Opción Ámbar')
+  await expect(projector.locator('.pj-results .pj-label')).toHaveText(['Opción Ámbar', 'Opción Índigo', 'No votaron'])
+  await expectProjectorFinal(projector, 'Opción Ámbar')
+  await expectPhoneShowsNoResult(delegate)
 })

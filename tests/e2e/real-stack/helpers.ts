@@ -206,8 +206,18 @@ export function mesaRow(mesa: Page, label: string): Locator {
   return mesa.locator('.ballot-card .ranked-rows li').filter({ hasText: label })
 }
 
-export function phoneRow(phone: Phone, label: string): Locator {
-  return phone.page.locator('.phone-results .ranked-rows li').filter({ hasText: label })
+export async function expectPhoneShowsNoResult(phone: Phone) {
+  await expect(phone.page.locator('.phone-screen[data-round-status="closed"], .phone-screen[data-round-status="published"]')).toBeVisible()
+  await expect(phone.page.locator('.result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
+  await expect(phone.page.locator('.phone-screen')).not.toContainText(/electo|desempate|aprobada|resultado|pasan a/i)
+}
+
+// #115: the projector states a final result once, in its «Resultado final» summary, with no banner below.
+export async function expectProjectorFinal(projector: Page, result: string) {
+  const summary = projector.locator('.pj-result-summary .result-summary:not(.result-so-far)')
+  await expect(summary.locator('.eyebrow')).toHaveText('Resultado final')
+  await expect(summary).toContainText(result)
+  await expect(projector.locator('.pj-elected')).toHaveCount(0)
 }
 
 export function projectorRow(projector: Page, label: string): Locator {
