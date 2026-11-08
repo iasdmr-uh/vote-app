@@ -7,6 +7,7 @@ import ModeratorPreparedBallot from './ModeratorPreparedBallot.vue'
 import ModeratorPresentationBar from './ModeratorPresentationBar.vue'
 import ModeratorPublishedBallot from './ModeratorPublishedBallot.vue'
 import ModeratorResultsRecord from './ModeratorResultsRecord.vue'
+import ModeratorVoteProgress from './ModeratorVoteProgress.vue'
 import ModeratorVotingBallot from './ModeratorVotingBallot.vue'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
@@ -74,6 +75,7 @@ const {
         </div>
         <ModeratorParticipants />
       </div>
+      <ModeratorVoteProgress />
       <ModeratorResultsRecord />
     </template>
   </template>
