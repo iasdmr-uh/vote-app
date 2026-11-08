@@ -30,7 +30,7 @@ async function openBallot(t: TestContext) {
       openedAt: new Date(),
       options: { create: [{ label: 'Samuel', order: 0 }, { label: 'Natán', order: 1 }] },
     },
-    include: { options: true },
+    include: { options: { orderBy: { order: 'asc' } } },
   })
   const [samuel, natan] = round.options.map((option) => option.id) as [string, string]
   return { prisma, service, events, joinCode, assemblyId, delegate, roundId: round.id, samuel, natan }
