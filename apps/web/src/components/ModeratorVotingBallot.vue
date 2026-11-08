@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { majorityText, verdictOf, voteLabel } from '../resultados'
+import { connectedText, majorityText, verdictOf, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import ResultsList from './ResultsList.vue'
 import { useAssembly } from '../useAssembly'
@@ -10,7 +10,7 @@ defineProps<{
   currentRoundRecord?: RoundRecord
 }>()
 
-const { state, eligibleVotes, loading } = useAssembly()
+const { state, eligibleVotes, connectionCount, loading } = useAssembly()
 const { showNextBallotForm, rootRoundOf, eligibleOf, rankedRows, annulRound, moderatorAction } = useMesa()
 </script>
 
@@ -20,6 +20,7 @@ const { showNextBallotForm, rootRoundOf, eligibleOf, rankedRows, annulRound, mod
                 <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2>
                 <p class="vote-progress"><strong>{{ state?.recordedCount ?? 0 }}</strong><span>de {{ eligibleVotes }} ya {{ (state?.recordedCount ?? 0) === 1 ? 'votó' : 'votaron' }}</span></p>
                 <span class="vote-progress-bar" aria-hidden="true"><span :style="{ width: `${eligibleVotes ? Math.min(100, Math.round(((state?.recordedCount ?? 0) / eligibleVotes) * 100)) : 0}%` }"></span></span>
+                <p v-if="connectionCount" class="vote-connected">{{ connectedText(connectionCount.connected, connectionCount.base) }}</p>
                 <div class="action-row ballot-actions"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">Anular votación</button><button class="danger push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/close`)">Cerrar votación</button></div>
               </template>
               <template v-else>
