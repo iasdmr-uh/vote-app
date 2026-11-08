@@ -341,6 +341,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
         participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', votingDisabled: anaDisabled }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }, { id: 'p4', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
         regionalSecretary: { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' },
+        leftParticipants: [{ id: 'p5', firstName: 'Jonás', lastName: 'Amitai' }],
         participantCount: 4, attendanceRound: { roundId: 'r1', status, votedCount: 2, eligibleCount: 4 },
         rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
       } })
@@ -379,6 +380,10 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Nuevo código' })).toHaveCount(0)
+  const jonasOut = page.locator('.out-of-room li', { hasText: 'Jonás Amitai' })
+  await expect(jonasOut).toBeVisible()
+  await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Presentar oficiales' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
@@ -389,6 +394,8 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Nuevo código' })).toBeVisible()
+  await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Presentar oficiales' })).toBeVisible()
   await page.getByLabel('Acciones para Luis Mejía').click()
   await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
   await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toBeVisible()
@@ -1281,6 +1288,76 @@ test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ pa
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(publicStateCalls).toBe(1)
+})
+
+test('durante una votación abierta la mesa ve la limpieza pendiente sin poder reintentarla', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null, participants: [], participantCount: 0,
+        rounds: [
+          { id: 'annulled-round', title: 'Presidencia', status: 'annulled', options: [{ id: 'a', label: 'A' }], participationCount: 1, secrecyCleanupPending: true },
+          { id: 'open-round', title: 'Presidencia, de nuevo', status: 'open', options: [{ id: 'b', label: 'B' }], participationCount: 0 },
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const panel = page.getByRole('alert').filter({ hasText: 'Limpieza del secreto del voto pendiente' })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Reintentar limpieza' })).toHaveCount(0)
+})
+
+test('durante una votación abierta la mesa no ofrece preparar la siguiente votación', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  const open = { id: 'open-round', title: 'Presidencia, de nuevo', status: 'open', options: [{ id: 'b', label: 'Opción Beta (prueba)' }, { id: 'c', label: 'Opción Gama (prueba)' }], participationCount: 0 }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético' }],
+        participantCount: 4,
+        eligibleCount: 4,
+        recordedCount: 0,
+        regionalSecretary: { firstName: 'Secretaría', lastName: 'Regional' },
+        currentRound: open,
+        rounds: [
+          { id: 'annulled-round', title: 'Presidencia', status: 'annulled', annulReason: 'Error de la mesa', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }], participationCount: 1 },
+          open,
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const ballot = page.locator('.ballot-card')
+  await expect(ballot.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
+  await expect(ballot.getByRole('button', { name: 'Cerrar votación', exact: true })).toBeVisible()
+  await expect(ballot.getByRole('button', { name: 'Anular votación', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Preparar otra papeleta', exact: true })).toHaveCount(0)
+  await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Repetir con las mismas opciones', exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del departamento', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Agregar candidato', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Agregar opción', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del candidato', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre de la secretaría regional', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Agregar a Secretaría Regional', exact: true })).toHaveCount(0)
 })
 
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {

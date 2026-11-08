@@ -6,9 +6,8 @@ import { useMesa } from '../useMesa'
 const {
   origin, loading, state, code, qrImage, assemblyStatus, lobbyStatus, assemblyId, round, formatDateTime,
 } = useAssembly()
-const { attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
+const { voteOpen, attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
 const secretaryOut = computed(() => state.value?.regionalSecretary?.status === 'left')
-const voteOpen = computed(() => Boolean(state.value?.rounds?.some((item) => item.status === 'open')))
 
 function closePersonMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
@@ -44,7 +43,7 @@ function closePersonMenu(event: Event) {
       <h3>Fuera de la sala</h3>
       <ul class="mesa-person-list">
         <li v-if="secretaryOut && state?.regionalSecretary"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretario regional</span></span></li>
-        <li v-for="person in state?.leftParticipants || []" :key="person.id"><span class="person-name">{{ person.firstName }} {{ person.lastName }}</span><button v-if="assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="returnToRoom(person.id)">Regresar a la sala</button></li>
+        <li v-for="person in state?.leftParticipants || []" :key="person.id"><span class="person-name">{{ person.firstName }} {{ person.lastName }}</span><button v-if="!voteOpen && assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="returnToRoom(person.id)">Regresar a la sala</button></li>
       </ul>
     </div>
     <div class="action-row lobby-actions"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><button v-else-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button v-if="!voteOpen" class="link-button" :disabled="loading" @click="rotateJoinCode">Nuevo código</button></div>
