@@ -77,7 +77,7 @@ Diseñar e implementar una aplicación web accesible que facilite la preparació
 ## 8. Reglas funcionales
 
 1. **Identidad de ingreso:** nombre y apellido son requeridos para aparecer en la sala de espera. No equivalen a validación de identidad ni acreditación oficial.
-2. **Ingreso controlado:** una vez cerrado el ingreso, no se admiten participantes nuevos salvo que el moderador reabra explícitamente la sala antes de una votación, dejando registro del evento. Mientras hay una votación abierta nadie puede ingresar con el código de la Asamblea, y el teléfono pide esperar a que termine (#78).
+2. **Ingreso controlado:** una vez cerrado el ingreso, no se admiten participantes nuevos salvo que el moderador reabra explícitamente la sala antes de una votación, dejando registro del evento. Mientras hay una votación abierta nadie puede ingresar con el código de la Asamblea, y el teléfono pide esperar a que termine. Tampoco se puede cambiar el código de ingreso (#78).
 3. **Nombres repetidos:** no bloquear automáticamente a dos personas con el mismo nombre; permitir que el moderador los distinga/revise.
 4. **Configuración de papeleta:** el moderador define el título, el tipo (Cargo, Comisión o Decisión), los candidatos/opciones, los puestos de una comisión (N) y, en decisiones, la regla de aprobación (mayoría simple; 2/3, Reglamento 01-02 03, ver #87; o 3/4, regla de la Junta, ver #88).
 5. **Inmutabilidad de ronda abierta:** no editar candidatos/opciones después de abrir una votación. Si existe un error, el moderador debe cerrar/anular según decisión de la mesa y crear una nueva ronda; conservar el evento en el historial.
