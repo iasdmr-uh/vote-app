@@ -32,6 +32,7 @@ Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activ
 | `new-candidate.spec.ts` | C · Candidato nuevo: ausente en la 2.ª votación, presente en la 3.ª, y resulta electo (#40). |
 | `inhabilitar.spec.ts` | D · Inhabilitar y Habilitar durante una votación, voto rechazado con 403, sigue en la base; inhabilitar a alguien que aún no votó. |
 | `decisions.spec.ts` | E · Decisiones 3/4 aprobada y no aprobada, 50/50 con mayoría simple, opciones que se repiten (#42). |
+| `two-thirds.spec.ts` | Decisión 2/3 con 7 en la sala: 5 votos aprueban, 4 no aprueban aunque sean mayoría, y el teléfono no muestra la regla (#87). |
 | `annul-runoff.spec.ts` | F · Anular el primer desempate y repetirlo: sigue siendo la 2.ª votación y no admite candidato nuevo. |
 | `remove-candidate.spec.ts` | G · «Quitar» un candidato nuevo en la 3.ª votación: sale del borrador y ningún teléfono lo recibe (#40). |
 | `inhabilitar-reconnect.spec.ts` | H · La mesa retira a alguien de la sala, lo regresa y lo reconecta con «Reconectar dispositivo». |
