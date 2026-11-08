@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
-import { VotingService } from '../src/voting/voting.service.js'
+import { VotingService } from '../../src/voting/voting.service.js'
 
 const service = new VotingService({} as never, {} as never)
 const base = {

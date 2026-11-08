@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
-import type { Position, RoundRecord } from '../../apps/web/src/types'
+import type { Position, RoundRecord } from '../../../apps/web/src/types'
 import { actaPositions, actaRounds } from './acta-fixture'
-import { actaKind, actaMetaText, actaRows, actaSheetRows, actaSummary, isTied, orgChart, votesText, notVotedOf, notVotedText, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../apps/web/src/resultados'
+import { actaKind, actaMetaText, actaRows, actaSheetRows, actaSummary, isTied, orgChart, votesText, notVotedOf, notVotedText, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../../apps/web/src/resultados'
 
 test.describe('resultados', () => {
   const tiedFirst = [{ count: 4 }, { count: 4 }, { count: 2 }, { count: 0 }, { count: 0 }]

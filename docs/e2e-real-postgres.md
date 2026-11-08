@@ -1,6 +1,6 @@
 # E2E real con PostgreSQL
 
-La suite `test:e2e:integration` recorre la aplicación web conectada a la API Nest y a una instancia PostgreSQL real. La suite `test:e2e` existente sigue usando mocks y conserva su ejecución rápida.
+La suite `test:e2e:real-stack` recorre la aplicación web conectada a la API Nest y a una instancia PostgreSQL real. La suite `test:e2e` existente sigue usando mocks y conserva su ejecución rápida.
 
 ## Requisitos
 
@@ -13,16 +13,16 @@ La suite `test:e2e:integration` recorre la aplicación web conectada a la API Ne
 Desde la raíz del repositorio:
 
 ```sh
-npm run test:e2e:integration
+npm run test:e2e:real-stack
 # solo algunos escenarios: los argumentos extra pasan a Playwright
-npm run test:e2e:integration -- committee inhabilitar
+npm run test:e2e:real-stack -- committee inhabilitar
 # si 3300 o 4174 están ocupados
-E2E_API_PORT=3310 E2E_WEB_PORT=4184 npm run test:e2e:integration
+E2E_API_PORT=3310 E2E_WEB_PORT=4184 npm run test:e2e:real-stack
 ```
 
 El comando intenta arrancar un contenedor PostgreSQL sin volumen persistente y con puerto local aleatorio. Si Docker no está disponible, crea un clúster PostgreSQL local aislado en una carpeta temporal y selecciona un puerto libre. En ambos casos genera el cliente Prisma, aplica las migraciones e inicia la API en `127.0.0.1:3300` y la web en `127.0.0.1:4174` (o en `E2E_API_PORT` / `E2E_WEB_PORT`; si un puerto está ocupado, el comando falla antes de empezar e indica la variable). El clúster local corre con la configuración regional `C`, porque PostgreSQL no arranca con un `LC_CTYPE` inválido. El proceso elimina el contenedor o detiene y borra el clúster al terminar, incluso si falla la prueba.
 
-Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activa, porque la API admite una sola) y actúa por la interfaz real: la mesa, el proyector y varios teléfonos, cada uno en su propio contexto de navegador. La API solo se usa para leer lo guardado y para probar lo que el servidor rechaza. Las esperas son sobre el estado de la interfaz o los avisos en tiempo real, nunca pausas fijas. Los pasos comunes están en `tests/e2e/integration/helpers.ts`.
+Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activa, porque la API admite una sola) y actúa por la interfaz real: la mesa, el proyector y varios teléfonos, cada uno en su propio contexto de navegador. La API solo se usa para leer lo guardado y para probar lo que el servidor rechaza. Las esperas son sobre el estado de la interfaz o los avisos en tiempo real, nunca pausas fijas. Los pasos comunes están en `tests/e2e/real-stack/helpers.ts`.
 
 | Archivo | Qué prueba |
 |---|---|
@@ -41,4 +41,4 @@ Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activ
 
 Cada corrida escribe `metadata.json`, `results.json` y artefactos de Playwright en una carpeta ignorada por Git bajo `test-results/`. El nombre de carpeta incluye el SHA completo de `HEAD`, indica si el árbol de trabajo tenía cambios y añade una marca de tiempo; `metadata.json` registra también la rama. Para vincular evidencia a un cambio terminado, ejecuta la suite después de crear el commit correspondiente.
 
-Esta suite se configura en `playwright.integration.config.ts` y vive en `tests/e2e/integration/`; la configuración por defecto no incluye esa carpeta y sigue ejecutando únicamente los E2E simulados.
+Esta suite se configura en `playwright.real-stack.config.ts` y vive en `tests/e2e/real-stack/`; la configuración por defecto no incluye esa carpeta y sigue ejecutando únicamente los E2E simulados.

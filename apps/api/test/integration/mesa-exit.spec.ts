@@ -1,50 +1,31 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { AuthService, MODERATOR_ACTOR } from '../src/auth/auth.service.js'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { ParticipantLeaveController } from '../src/voting/voting.controller.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
-
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
+import { AuthService, MODERATOR_ACTOR } from '../../src/auth/auth.service.js'
+import { ParticipantLeaveController } from '../../src/voting/voting.controller.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { randomUUID } from 'node:crypto'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import type { PrismaService } from '../../src/prisma/prisma.service.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
 
 async function setup(label: string, names: string[]) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const events: Array<{ name: string; target: unknown; payload: unknown }> = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
-    events.push({ name, target: args[0], payload: args[1] })
-  } }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  const organizationId = randomUUID()
-  const organization = await prisma.organization.create({ data: { id: organizationId, name: `${label}-${organizationId}`, type: 'union' } })
-  const joinCode = newOpaqueCredential()
-  const assemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name: label, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-  const people: Record<string, { id: string; token: string }> = {}
-  for (const name of names) {
-    const joined = await service.joinAssembly(joinCode, name, 'Delegado')
-    const session = await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })
-    people[name] = { id: session.id, token: joined.participantSessionToken }
-  }
-  await service.changeLobby(assemblyId, 'lobby_closed')
+  const prisma = await connectDatabase()
+  const { gateway, events } = gatewayStub()
+  const service = new VotingService(prisma, gateway)
+  const seeded = await seedAssembly(prisma, service, { label, delegates: names })
   const cleanup = async () => {
-    await prisma.round.deleteMany({ where: { assemblyId } })
-    await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await seeded.cleanup()
     await prisma.$disconnect()
   }
-  return { prisma, service, auth: new AuthService(prisma), events, joinCode, assemblyId, people, cleanup }
+  return { prisma, service, auth: new AuthService(prisma), events, joinCode: seeded.joinCode, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
 }
 
 const twoOptions = { format: 'single_choice' as const, countingRule: { kind: 'count_only' as const }, options: [{ label: 'Opción A' }, { label: 'Opción B' }] }
 
-test('a delegate cannot leave on their own', { skip }, async () => {
+test('a delegate cannot leave on their own', async () => {
   const { prisma, service, assemblyId, people, cleanup } = await setup('self-leave', ['Elías'])
   try {
     const controller = new ParticipantLeaveController(service)
@@ -54,7 +35,7 @@ test('a delegate cannot leave on their own', { skip }, async () => {
   } finally { await cleanup() }
 })
 
-test('the mesa takes someone out during an open vote: that vote keeps them in its base and the next one drops them', { skip }, async () => {
+test('the mesa takes someone out during an open vote: that vote keeps them in its base and the next one drops them', async () => {
   const { prisma, service, auth, events, joinCode, assemblyId, people, cleanup } = await setup('take-out', ['Eliseo', 'Isaías', 'Jeremías'])
   try {
     const first = await service.createRound(assemblyId, { title: 'Primera', ...twoOptions })
@@ -138,7 +119,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
   } finally { await cleanup() }
 })
 
-test('in an election, someone taken out stops counting from the next vote even if they voted, and one who returns counts again', { skip }, async () => {
+test('in an election, someone taken out stops counting from the next vote even if they voted, and one who returns counts again', async () => {
   const { prisma, service, joinCode, assemblyId, people, cleanup } = await setup('election-exit', ['Oseas', 'Joel', 'Amós'])
   try {
     const round = await service.createRound(assemblyId, { title: 'Presidencia', ...twoOptions })
@@ -168,7 +149,7 @@ test('in an election, someone taken out stops counting from the next vote even i
   } finally { await cleanup() }
 })
 
-test('the regional secretary is taken out by the mesa and never returned through the participant list', { skip }, async () => {
+test('the regional secretary is taken out by the mesa and never returned through the participant list', async () => {
   const { prisma, service, assemblyId, cleanup } = await setup('secretary-exit', ['Miqueas'])
   try {
     const secretary = await prisma.participantSession.create({
@@ -189,7 +170,7 @@ async function addSecretary(prisma: PrismaService, assemblyId: string) {
   })
 }
 
-test('the room numbers follow joins, take-outs and returns', { skip }, async () => {
+test('the room numbers follow joins, take-outs and returns', async () => {
   const { service, assemblyId, people, cleanup } = await setup('room-numbers', ['Abdías', 'Nahúm', 'Sofonías', 'Hageo'])
   try {
     assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 4, accredited: 4, quorum: 3 })
@@ -202,7 +183,7 @@ test('the room numbers follow joins, take-outs and returns', { skip }, async () 
   } finally { await cleanup() }
 })
 
-test('a participant removed before voting is not accredited and the regional secretary is excluded', { skip }, async () => {
+test('a participant removed before voting is not accredited and the regional secretary is excluded', async () => {
   const { prisma, service, assemblyId, people, cleanup } = await setup('room-excluded', ['Habacuc', 'Malaquías', 'Zacarías'])
   try {
     await addSecretary(prisma, assemblyId)
@@ -212,7 +193,7 @@ test('a participant removed before voting is not accredited and the regional sec
   } finally { await cleanup() }
 })
 
-test('the quorum is two thirds of the accredited, rounded up', { skip }, async () => {
+test('the quorum is two thirds of the accredited, rounded up', async () => {
   const empty = await setup('room-empty', [])
   try {
     assert.deepEqual((await empty.service.moderatorAssembly(empty.assemblyId)).room, { present: 0, accredited: 0, quorum: 0 })

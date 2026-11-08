@@ -1,28 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { AuthService } from '../src/auth/auth.service.js'
-import { hashCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { AuthService } from '../../src/auth/auth.service.js'
+import { hashCredential } from '../../src/auth/credentials.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('moderator and delegates can recover from lost devices without enabling a second vote', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const replacedSessions: string[] = []
-  const revokedPublicAssemblies: string[] = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
-    if (name === 'participantSessionReplaced') replacedSessions.push(String(args[0]))
-    if (name === 'publicSessionsRevoked') revokedPublicAssemblies.push(String(args[0]))
-  } }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
+test('moderator and delegates can recover from lost devices without enabling a second vote', async () => {
+  const prisma = await connectDatabase()
+  const { gateway, events } = gatewayStub()
+  const targetsOf = (name: string) => events.filter((event) => event.name === name).map((event) => String(event.target))
+  const service = new VotingService(prisma, gateway)
   const auth = new AuthService(prisma)
   let assemblyId: string | undefined
 
@@ -33,7 +22,7 @@ test('moderator and delegates can recover from lost devices without enabling a s
 
     const rotated = await service.rotateJoinCode(assemblyId)
     assert.ok(rotated.joinUrl.includes(encodeURIComponent(rotated.joinCode)))
-    assert.deepEqual(revokedPublicAssemblies, [assemblyId], 'projector sockets using the old code are disconnected')
+    assert.deepEqual(targetsOf('publicSessionsRevoked'), [assemblyId], 'projector sockets using the old code are disconnected')
     await assert.rejects(service.joinAssembly(created.joinCode, 'Old', 'Code'), NotFoundException)
     const ana = await service.joinAssembly(rotated.joinCode, 'Ana', 'Lopez')
     const anaId = (await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(ana.participantSessionToken) } })).id
@@ -56,7 +45,7 @@ test('moderator and delegates can recover from lost devices without enabling a s
     const resumeCode = new URL(issued.resumeUrl).searchParams.get('resume')!
     const resumed = await service.redeemResumeCode(resumeCode)
     assert.equal(resumed.participationStatus, 'recorded', 'the new device inherits the existing participation')
-    assert.deepEqual(replacedSessions, [anaId])
+    assert.deepEqual(targetsOf('participantSessionReplaced'), [anaId])
     await assert.rejects(auth.participantForToken(ana.participantSessionToken), UnauthorizedException)
     assert.equal(await auth.participantForToken(resumed.participantSessionToken), anaId)
     await assert.rejects(service.castVote(anaId, round.id, round.options[1]!.id), ConflictException)

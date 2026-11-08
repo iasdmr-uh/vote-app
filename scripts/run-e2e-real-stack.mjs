@@ -167,8 +167,7 @@ try {
   run('npm', ['run', 'db:deploy', '--workspace', '@asdmr/api'], { env })
 
   console.log(`Running real API + PostgreSQL browser flow for ${commit.slice(0, 12)} (${branch || 'detached HEAD'}${dirty ? ', working tree dirty' : ''}).`)
-  // Extra arguments go to Playwright, e.g. `npm run test:e2e:integration -- office-runoff`.
-  const code = await start('npx', ['playwright', 'test', '--config=playwright.integration.config.ts', ...process.argv.slice(2)], { env })
+  const code = await start('npx', ['playwright', 'test', '--config=playwright.real-stack.config.ts', ...process.argv.slice(2)], { env })
   if (code !== 0) process.exitCode = code
   console.log(`Integration evidence: ${resolve(resultDir, 'metadata.json')} and ${resolve(resultDir, 'results.json')}`)
 } catch (error) {

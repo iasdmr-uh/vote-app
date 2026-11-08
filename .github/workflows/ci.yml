@@ -80,8 +80,11 @@ jobs:
       - name: Apply database migrations
         run: npm run db:deploy --workspace @asdmr/api
 
-      - name: Run API tests
+      - name: Run API unit tests
         run: npm test --workspace @asdmr/api
+
+      - name: Run API integration tests
+        run: npm run test:integration --workspace @asdmr/api
 
   e2e:
     name: Playwright E2E
@@ -137,7 +140,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run real-stack Playwright tests
-        run: npm run test:e2e:integration
+        run: npm run test:e2e:real-stack
 
       - name: Upload Playwright report on failure
         if: failure()
