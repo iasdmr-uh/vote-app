@@ -126,6 +126,19 @@ test('a second election offers the same regional secretary by name', async ({ pa
   expect(bodies[0]).toEqual({ firstName: 'Marta', lastName: 'Regional' })
 })
 
+function openVote(regionalSecretaryVotes: boolean): Round {
+  return { ...draftVote(4), status: 'open', regionalSecretaryVotes, eligibleCount: regionalSecretaryVotes ? 11 : 10 }
+}
+
+for (const regionalSecretaryVotes of [true, false]) {
+  test(`the mesa card of an open vote ${regionalSecretaryVotes ? 'says' : 'does not say'} the regional secretary takes part`, async ({ page }) => {
+    await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), openVote(regionalSecretaryVotes)], () => null, () => ({ recordedCount: 3, eligibleCount: regionalSecretaryVotes ? 11 : 10 }))
+    const card = page.locator('.ballot-card')
+    await expect(card).toContainText('VOTACIÓN ABIERTA')
+    await expect(card.getByText('Con la secretaría regional')).toHaveCount(regionalSecretaryVotes ? 1 : 0)
+  })
+}
+
 test('the projector says the regional secretary takes part in the vote', async ({ page }) => {
   await page.route(api, async (route) => {
     await route.fulfill({ json: {

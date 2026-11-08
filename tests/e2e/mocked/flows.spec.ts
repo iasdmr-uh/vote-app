@@ -1599,7 +1599,8 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
   await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
-  await expect(page.locator('.pj-elected')).toContainText('María López')
+  await expect(page.locator('.result-summary')).toContainText('María López')
+  await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
 })
 

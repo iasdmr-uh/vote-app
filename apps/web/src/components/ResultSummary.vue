@@ -6,13 +6,16 @@ const props = defineProps<{
   final?: { elected: Array<{ label: string }>; approved: boolean | null } | null
   continuing?: Array<{ label: string }>
   soFar?: { title: string; names: string } | null
+  showOption?: boolean
 }>()
 
 const summary = computed(() => {
   if (props.final) {
     const detail = props.final.approved === null
       ? { label: RESULT_WORDING.elected, names: props.final.elected.map((person) => person.label).join(' · ') }
-      : { label: '', names: props.final.approved ? RESULT_WORDING.approved : RESULT_WORDING.notApproved }
+      : props.showOption && props.final.approved && props.final.elected.length
+        ? { label: RESULT_WORDING.approved, names: props.final.elected.map((option) => option.label).join(' · ') }
+        : { label: '', names: props.final.approved ? RESULT_WORDING.approved : RESULT_WORDING.notApproved }
     return { title: RESULT_WORDING.final, ...detail }
   }
   if (props.continuing?.length) return { title: RESULT_WORDING.continuing, label: '', names: props.continuing.map((person) => person.label).join(' · ') }

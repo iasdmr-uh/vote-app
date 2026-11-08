@@ -18,7 +18,6 @@ const outcome = computed(() => state.value?.outcome)
 const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
 const booleanDecision = computed(() => round.value?.category === 'decision' && round.value.decisionFormat === 'boolean')
 const verdict = computed(() => booleanDecision.value && round.value ? decisionVerdict(round.value, outcome.value) : '')
-const officeElected = computed(() => !state.value?.final ? [] : !isCommittee.value || (round.value?.voteNumber ?? 1) > 1 ? state.value?.officialResult?.elected || [] : [])
 
 function tagOf(result: { optionId?: string }) {
   return outcomeTag(outcome.value, result.optionId)
@@ -34,7 +33,7 @@ const resultsList = ref<HTMLElement | null>(null)
 const density = ref(1)
 
 async function fitResults() {
-  const rows = rowsPerColumn.value + (officeElected.value.length || verdict.value ? 1.2 : 0)
+  const rows = rowsPerColumn.value + (verdict.value && !state.value?.final ? 1.2 : 0)
   density.value = Math.max(0.45, Math.min(1, 4.2 / rows))
   await nextTick()
   const list = resultsList.value
@@ -44,7 +43,7 @@ async function fitResults() {
   }
 }
 
-watch([results, officeElected, () => round.value?.title], () => { void fitResults() }, { immediate: true })
+watch([results, () => state.value?.final, () => round.value?.title], () => { void fitResults() }, { immediate: true })
 onMounted(() => window.addEventListener('resize', fitResults))
 onUnmounted(() => window.removeEventListener('resize', fitResults))
 </script>
@@ -59,8 +58,7 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
     </div>
     <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
   </header>
-  <div v-if="verdict" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
-  <div v-else-if="officeElected.length" class="pj-elected"><h2><span class="pj-check" aria-hidden="true">✓</span> {{ officeElected.map((person) => person.label).join(' · ') }}</h2></div>
+  <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
   <ol ref="resultsList" class="pj-results" :class="{ 'pj-unranked': booleanDecision }" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
     <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
       <span v-if="!booleanDecision" class="pj-rank">{{ index + 1 }}</span>
