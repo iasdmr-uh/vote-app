@@ -5,8 +5,8 @@
 
 ## 2. API and database
 
-- [ ] 2.1 Write a failing integration test that a decision accepts `two_thirds`, an election rejects it, and the database rejects an unknown rule. Add the DTO value and the check constraint migration, and verify
-- [ ] 2.2 Write a failing integration test that the participant state carries `approvalThreshold` for an open decision. Implement and verify
+- [x] 2.1 Write a failing integration test that a decision accepts `two_thirds`, an election rejects it, and the database rejects an unknown rule. Add the DTO value and the check constraint migration, and verify
+- [x] 2.2 Write a failing integration test that the participant state carries `approvalThreshold` for an open decision. Implement and verify
 
 ## 3. Web
 
