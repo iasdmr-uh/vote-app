@@ -93,7 +93,7 @@ async function submitVote() {
     </div>
     <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
-      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : es.phone.voteOpen }}</p>
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : es.common.voteOpen }}</p>
       <h1>{{ es.phone.voteDisabled }}</h1>
     </template>
     <PhoneBallot v-else-if="ballotShown && round" :round="round" :seats-to-fill="seatsToFill" :selection-complete="selectionComplete" @review="reviewVote" />

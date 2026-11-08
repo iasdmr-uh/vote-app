@@ -16,7 +16,7 @@ const {
 const moderationConfirmation = ref<{ title: string; consequence: string; warning?: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
 const moderationReason = ref('')
 const moderatorCredential = ref('')
-const assemblyName = ref('Asamblea de Delegados')
+const assemblyName = ref(es.moderator.defaultAssemblyName)
 const assemblyPeriod = ref('')
 /** M25: a cargo fills a puesto of the org chart; its name is the ballot's title. */
 const roundPositionId = ref('')
@@ -24,8 +24,8 @@ const positionMenuOpen = ref(false)
 const newDepartment = ref('')
 const positions = computed<Position[]>(() => state.value?.positions || [])
 const positionGroups = computed(() => [
-  { group: 'board' as const, label: 'JUNTA DIRECTIVA', items: positions.value.filter((item) => item.group === 'board') },
-  { group: 'department' as const, label: 'DEPARTAMENTOS', items: positions.value.filter((item) => item.group === 'department') },
+  { group: 'board' as const, label: es.moderator.boardGroup, items: positions.value.filter((item) => item.group === 'board') },
+  { group: 'department' as const, label: es.moderator.departmentGroup, items: positions.value.filter((item) => item.group === 'department') },
 ])
 const selectedPosition = computed(() => positions.value.find((item) => item.id === roundPositionId.value))
 const roundTitle = ref('')
@@ -43,8 +43,8 @@ const newBallotCandidate = ref('')
 const preparingRunoffId = ref('')
 const newRunoffCandidate = ref('')
 const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
-const assemblyStatusLabels: Record<string, string> = { preparing: 'En preparación', lobby_open: 'Ingreso abierto', lobby_closed: 'Ingreso cerrado', in_progress: 'En curso', completed: 'Finalizada' }
-const roundStatusLabels: Record<string, string> = { draft: 'preparada', open: 'abierta', closed: 'cerrada', published: 'publicada', annulled: 'anulada' }
+const assemblyStatusLabels: Record<string, string> = es.moderator.assemblyStatus
+const roundStatusLabels: Record<string, string> = es.moderator.roundStatus
 function roundChain(target: RoundRecord) {
   return (state.value?.rounds || []).filter((item) => item.id === target.id || item.committeeRootRoundId === target.id)
 }
@@ -58,13 +58,13 @@ const attendance = computed(() => {
 })
 const roomWarning = computed(() => {
   const room = state.value?.room
-  return room && room.present < room.quorum ? 'Sin quórum' : ''
+  return room && room.present < room.quorum ? es.moderator.noQuorum : ''
 })
 const roomLine = computed(() => {
   const room = state.value?.room
-  return room ? `En sala ${room.present} de ${room.accredited} · quórum ${room.quorum}` : ''
+  return room ? es.moderator.roomLine(room.present, room.accredited, room.quorum) : ''
 })
-const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
+const moderatorWorkflow = es.moderator.workflow
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
 /** Every seat of the election is filled, across its first vote and its runoffs. */
 function electionComplete(target: RoundRecord) {
@@ -130,13 +130,13 @@ function rankedRows(unsorted: Array<{ optionId?: string; label: string; count: n
 function annulRound(target: { id: string; title: string }) {
   moderationReason.value = ''
   moderationConfirmation.value = {
-    title: '¿Anular esta papeleta?',
-    consequence: `Los votos de «${target.title}» se eliminarán y nunca se contarán ni publicarán. Teléfonos y proyector mostrarán «Votación anulada». Después puedes repetir la votación.`,
-    label: 'Anular papeleta',
+    title: es.moderator.confirm.annul.title,
+    consequence: es.moderator.confirm.annul.consequence(target.title),
+    label: es.moderator.confirm.annul.label,
     path: `/moderator/rounds/${encodeURIComponent(target.id)}/annul`,
     method: 'POST',
-    reasonLabel: 'Motivo (obligatorio, queda en el registro)',
-    reasonPlaceholder: 'Ej.: Se detectó un error en las opciones de la papeleta',
+    reasonLabel: es.moderator.confirm.annul.reasonLabel,
+    reasonPlaceholder: es.moderator.confirm.annul.reasonPlaceholder,
   }
 }
 
@@ -253,21 +253,22 @@ function chooseRoundCategory(category: RoundCategory) {
 async function moderatorAction(path: string, method = 'POST', body?: unknown, onSuccess?: (result: any) => void | Promise<void>) {
   const removed = body && typeof body === 'object' && 'status' in body && body.status === 'removed'
   const reopening = body && typeof body === 'object' && 'status' in body && body.status === 'lobby_open'
+  const confirm = es.moderator.confirm
   const config = path.endsWith('/lobby') && reopening
-    ? { title: '¿Reabrir el ingreso?', consequence: 'Nuevas personas podrán unirse con el QR. Quedará registrado. Cierra el ingreso de nuevo antes de abrir la siguiente papeleta.', label: 'Reabrir ingreso' }
+    ? confirm.reopenEntry
     : path.endsWith('/lobby')
-    ? { title: '¿Cerrar el ingreso?', consequence: 'Las personas que todavía no se hayan unido ya no podrán entrar.', label: 'Cerrar ingreso' }
+    ? confirm.closeEntry
     : path.endsWith('/rounds')
-      ? { title: '¿Preparar esta papeleta?', consequence: 'Revisa el cargo y las opciones. No se podrán editar después de abrir la votación.', label: 'Preparar papeleta' }
+      ? confirm.prepareBallot
       : path.endsWith('/open')
-        ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación', ...(roomWarning.value ? { warning: `${roomWarning.value}. Hay menos personas en la sala que el quórum. Puedes abrir la votación de todos modos.` } : {}) }
+        ? { title: confirm.openVote.title, consequence: confirm.openVote.consequence, label: confirm.openVote.label, ...(roomWarning.value ? { warning: confirm.openVote.warning(roomWarning.value) } : {}) }
         : path.endsWith('/close')
-          ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
+          ? confirm.closeVote
           : path.endsWith('/repeat')
-            ? { title: '¿Repetir la votación?', consequence: 'Se prepara una papeleta con las mismas opciones.', label: 'Repetir votación' }
+            ? confirm.repeatVote
             : removed
-              ? { title: '¿Retirar a esta persona?', consequence: 'Ya no podrá participar desde esta sesión.', label: 'Retirar participante' }
-              : { title: '¿Guardar los cambios?', consequence: 'Se actualizarán los datos de esta persona en la lista.', label: 'Guardar cambios' }
+              ? confirm.removeParticipant
+              : confirm.saveChanges
   moderationConfirmation.value = { ...config, path, method, ...(body === undefined ? {} : { body }), ...(onSuccess ? { onSuccess } : {}) }
 }
 
@@ -284,12 +285,12 @@ async function confirmModeratorAction() {
   let succeeded = false
   try {
     const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
-    showTransientNotice(notice, 'Acción registrada.', (run, ms) => { setTimeout(run, ms) })
+    showTransientNotice(notice, es.moderator.notices.actionRecorded, (run, ms) => { setTimeout(run, ms) })
     succeeded = true
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
-  if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.'
+  if (succeeded && action.path.endsWith('/complete')) notice.value = es.moderator.notices.assemblyCompleted
   if (succeeded) await refresh(true)
 }
 
@@ -300,8 +301,8 @@ function registerOfficial(record: RoundRecord) {
     ? result?.elected.map((person) => person.label).join(' · ') ?? ''
     : `${root.title}: ${result.approved ? es.results.approved : es.results.notApproved}`
   moderationConfirmation.value = {
-    title: `¿${es.results.register}?`,
-    consequence: `${named}. No se podrá deshacer.`,
+    title: es.moderator.confirm.register.title,
+    consequence: es.moderator.confirm.register.consequence(named),
     label: es.results.register,
     path: `/moderator/elections/${encodeURIComponent(root.id)}/register`,
     method: 'POST',
@@ -311,15 +312,15 @@ function registerOfficial(record: RoundRecord) {
 function rotateJoinCode() {
   if (!assemblyId.value) return
   moderationConfirmation.value = {
-    title: '¿Generar un nuevo código de ingreso?',
-    consequence: 'El QR y el enlace del proyector anteriores dejarán de funcionar. Vuelve a abrir el proyector después de generarlo.',
-    label: 'Generar código',
+    title: es.moderator.confirm.rotateCode.title,
+    consequence: es.moderator.confirm.rotateCode.consequence,
+    label: es.moderator.confirm.rotateCode.label,
     path: `/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/join-code`,
     method: 'POST',
     onSuccess: async (result: { joinCode: string; joinUrl: string }) => {
       rememberJoinCode(result.joinCode)
       qrImage.value = await QRCode.toDataURL(result.joinUrl, { width: 300, margin: 2 })
-      notice.value = 'Nuevo código generado. Abre de nuevo el proyector para mostrar el QR actualizado.'
+      notice.value = es.moderator.notices.newCodeGenerated
     },
   }
 }
@@ -327,9 +328,9 @@ function rotateJoinCode() {
 function issueResumeCode(person: { id?: string; firstName: string; lastName: string }) {
   if (!person.id) return
   moderationConfirmation.value = {
-    title: `¿Reconectar a ${person.firstName} ${person.lastName}?`,
-    consequence: 'Se mostrará un QR de un solo uso (válido 10 minutos) para su nuevo dispositivo. El dispositivo anterior dejará de funcionar. Si ya votó en esta papeleta, no podrá votar de nuevo.',
-    label: 'Generar QR de reconexión',
+    title: es.moderator.confirm.reconnect.title(`${person.firstName} ${person.lastName}`),
+    consequence: es.moderator.confirm.reconnect.consequence,
+    label: es.moderator.confirm.reconnect.label,
     path: `/moderator/participants/${encodeURIComponent(person.id)}/resume-code`,
     method: 'POST',
     onSuccess: async (result: { name: string; resumeUrl: string; expiresAt: string }) => {
@@ -343,9 +344,9 @@ function removeFromRoom(person: { id?: string; firstName: string; lastName: stri
   if (!person.id) return
   const isSecretary = person.id === state.value?.regionalSecretary?.id
   moderationConfirmation.value = {
-    title: `¿Retirar a ${person.firstName} ${person.lastName} de la sala?`,
-    consequence: `La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta. ${isSecretary ? 'Para que vuelva, agrégalo de nuevo desde una votación que lo permita.' : 'Puedes regresarlo a la sala después.'}`,
-    label: 'Retirar de la sala',
+    title: es.moderator.confirm.takeOut.title(`${person.firstName} ${person.lastName}`),
+    consequence: es.moderator.confirm.takeOut.consequence(isSecretary),
+    label: es.moderator.confirm.takeOut.label,
     path: `/moderator/participants/${encodeURIComponent(person.id)}/take-out`,
     method: 'POST',
   }
@@ -411,7 +412,7 @@ async function retrySecrecyCleanup() {
   let succeeded = false
   try {
     await request(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/secrecy-cleanup`, { method: 'POST' }, moderatorToken.value)
-    notice.value = 'Limpieza completada. Ya se pueden publicar resultados.'
+    notice.value = es.moderator.notices.cleanupDone
     succeeded = true
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
@@ -421,9 +422,9 @@ async function retrySecrecyCleanup() {
 async function completeAssembly() {
   if (!assemblyId.value || assemblyStatus.value === 'completed' || round.value?.status === 'open') return
   moderationConfirmation.value = {
-    title: '¿Finalizar la Asamblea?',
-    consequence: 'Confirma solo después de que la mesa haya aprobado el cierre. La sesión quedará en modo de consulta.',
-    label: 'Finalizar Asamblea',
+    title: es.moderator.confirm.complete.title,
+    consequence: es.moderator.confirm.complete.consequence,
+    label: es.moderator.confirm.complete.label,
     path: `/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/complete`,
     method: 'POST', body: { confirmation: true },
   }
@@ -436,14 +437,14 @@ async function printActa() {
 }
 
 function assemblyFileSlug() {
-  return (state.value?.assembly?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'asamblea'
+  return (state.value?.assembly?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || es.moderator.files.fallbackSlug
 }
 
 function downloadActaSpreadsheet() {
   const rows = actaSheetRows(state.value?.rounds || [], roundStatusLabels)
   const link = document.createElement('a')
-  link.href = URL.createObjectURL(xlsxBlob('Acta', rows))
-  link.download = `acta-${assemblyFileSlug()}.xlsx`
+  link.href = URL.createObjectURL(xlsxBlob(es.acta.sheetName, rows))
+  link.download = `${es.moderator.files.actaPrefix}${assemblyFileSlug()}.xlsx`
   link.click()
   URL.revokeObjectURL(link.href)
 }
@@ -456,10 +457,10 @@ async function downloadOperatorLog(purpose: 'review' | 'delete' = 'review') {
     const blob = await requestFile(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/log`, { purpose }, moderatorToken.value)
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = `registro-${assemblyFileSlug()}.csv`
+    link.download = `${es.moderator.files.logPrefix}${assemblyFileSlug()}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    notice.value = purpose === 'delete' ? 'Se descargó el registro para «Borrar datos». Guárdalo antes de borrar.' : 'Se descargó el registro.'
+    notice.value = purpose === 'delete' ? es.moderator.notices.logDownloadedForDelete : es.moderator.notices.logDownloaded
     return true
   } catch (e) {
     error.value = (e as Error).message
@@ -472,17 +473,17 @@ async function deleteAssemblyData() {
   const deletedId = assemblyId.value
   if (!await downloadOperatorLog('delete')) return
   moderationConfirmation.value = {
-    title: '¿Borrar todos los datos de la Asamblea?',
-    consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta y guardar el registro que se acaba de descargar.',
-    label: 'Borrar datos',
-    reasonLabel: 'Escribe BORRAR para confirmar',
-    typedConfirmation: 'BORRAR',
+    title: es.moderator.confirm.deleteData.title,
+    consequence: es.moderator.confirm.deleteData.consequence,
+    label: es.moderator.confirm.deleteData.label,
+    reasonLabel: es.moderator.confirm.deleteData.reasonLabel,
+    typedConfirmation: es.moderator.confirm.deleteData.typed,
     path: `/moderator/assemblies/${encodeURIComponent(deletedId)}`,
     method: 'DELETE', body: { confirmation: true },
     onSuccess: (result: { vacuumed: boolean }) => {
       notice.value = result.vacuumed
-        ? 'Se borraron los datos de la Asamblea. Al apagar, sigue el cierre de la guía del técnico.'
-        : 'Se borraron los datos de la Asamblea, pero la compactación de la base no terminó. Al apagar, sigue el cierre de la guía del técnico para borrarla por completo.'
+        ? es.moderator.notices.dataDeleted
+        : es.moderator.notices.dataDeletedNoVacuum
       assemblyId.value = ''
       sessionStorage.removeItem('assemblyId')
       if (localStorage.getItem('assemblyJoinCodeAssemblyId') === deletedId) {
@@ -509,7 +510,7 @@ async function createAssembly() {
     sessionStorage.setItem('assemblyId', result.assemblyId)
     rememberJoinCode(result.joinCode)
     qrImage.value = await QRCode.toDataURL(result.joinUrl || `${window.location.origin}/?join=${encodeURIComponent(result.joinCode)}`, { width: 300, margin: 2 })
-    notice.value = `Asamblea creada. Código de ingreso: ${result.joinCode}`
+    notice.value = es.moderator.notices.assemblyCreated(result.joinCode)
     created = true
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
@@ -518,9 +519,9 @@ async function createAssembly() {
 
 function editParticipant(person: { id?: string; firstName: string; lastName: string }) {
   if (!person.id) return
-  const updatedFirst = window.prompt('Corrige el nombre del participante:', person.firstName)
+  const updatedFirst = window.prompt(es.moderator.prompts.firstName, person.firstName)
   if (updatedFirst === null) return
-  const updatedLast = window.prompt('Corrige el apellido del participante:', person.lastName)
+  const updatedLast = window.prompt(es.moderator.prompts.lastName, person.lastName)
   if (updatedLast === null) return
   void moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', {
     firstName: updatedFirst.trim(), lastName: updatedLast.trim(),
@@ -544,12 +545,12 @@ async function createRound() {
   const category = roundCategory.value
   const options = ballotCandidates.value.map((label) => ({ label }))
   const seats = committeeMemberCount.value
-  if (category === 'office' && !selectedPosition.value) { error.value = 'Elige el puesto que se vota.'; return }
-  if (category !== 'office' && !roundTitle.value.trim()) { error.value = { committee: 'Escribe el nombre de la comisión.', decision: 'Escribe la decisión que se vota.' }[category]; return }
-  if (category === 'office' && options.length < 2) { error.value = 'Agrega al menos dos candidatos.'; return }
-  if (category === 'committee' && (!seats || seats < 1)) { error.value = 'Indica cuántos integrantes quedarán en la comisión.'; return }
-  if (category === 'committee' && options.length < seats!) { error.value = `Agrega al menos ${seats} candidatos: pueden ser más que los integrantes, pero no menos.`; return }
-  if (category === 'decision' && decisionFormat.value === 'options' && options.length < 2) { error.value = 'Agrega al menos dos opciones.'; return }
+  if (category === 'office' && !selectedPosition.value) { error.value = es.moderator.errors.pickPosition; return }
+  if (category !== 'office' && !roundTitle.value.trim()) { error.value = { committee: es.moderator.errors.committeeName, decision: es.moderator.errors.decisionTitle }[category]; return }
+  if (category === 'office' && options.length < 2) { error.value = es.moderator.errors.twoCandidates; return }
+  if (category === 'committee' && (!seats || seats < 1)) { error.value = es.moderator.errors.committeeSeats; return }
+  if (category === 'committee' && options.length < seats!) { error.value = es.moderator.errors.minCandidates(seats!); return }
+  if (category === 'decision' && decisionFormat.value === 'options' && options.length < 2) { error.value = es.moderator.errors.twoOptions; return }
   showNextBallotForm.value = false
   // The server computes every result; a decision also carries its format and the rule that approves it.
   await moderatorAction(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/rounds`, 'POST', {
@@ -583,7 +584,7 @@ async function signInModerator() {
       moderatorToken.value = ''
       moderatorAuthState.value = 'unauthenticated'
       sessionStorage.removeItem('moderatorToken')
-      error.value = 'La credencial de moderación no es válida.'
+      error.value = es.moderator.errors.invalidCredential
     } else {
       moderatorAuthState.value = 'validation_error'
       error.value = message

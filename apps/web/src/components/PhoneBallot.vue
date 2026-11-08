@@ -32,7 +32,7 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
 </script>
 
 <template>
-  <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>{{ round.runoff ? voteLabel(round) : es.phone.voteOpen }}</p>
+  <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>{{ round.runoff ? voteLabel(round) : es.common.voteOpen }}</p>
   <div v-if="seatsToFill" class="phone-ballot-heading"><h1>{{ round.title }}</h1><span class="count-pill">{{ es.phone.selectedOfSeats(selectedOptions.length, seatsToFill) }}</span></div>
   <h1 v-else>{{ round.title }}</h1>
   <fieldset class="options" :aria-label="seatsToFill ? es.phone.selectedOfSeats(selectedOptions.length, seatsToFill) : undefined">

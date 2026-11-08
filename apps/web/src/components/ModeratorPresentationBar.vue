@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { useAssembly } from '../useAssembly'
 import { usePresentacion } from '../usePresentacion'
 
@@ -7,14 +8,14 @@ const { presentation, slideName, startPresentation, stopPresentation, previousSl
 </script>
 
 <template>
-      <section class="presentation-bar" :class="{ presenting: presentation.active }" aria-label="Presentar oficiales">
-        <button v-if="!presentation.active" class="secondary" :disabled="loading" @click="startPresentation">Presentar oficiales</button>
+      <section class="presentation-bar" :class="{ presenting: presentation.active }" :aria-label="es.moderator.presentOfficers">
+        <button v-if="!presentation.active" class="secondary" :disabled="loading" @click="startPresentation">{{ es.moderator.presentOfficers }}</button>
         <template v-else>
-          <span class="badge badge-info">PRESENTANDO</span>
-          <button class="secondary presentation-arrow" aria-label="Diapositiva anterior" :disabled="loading || presentation.slide === 0" @click="previousSlide">←</button>
+          <span class="badge badge-info">{{ es.moderator.presenting }}</span>
+          <button class="secondary presentation-arrow" :aria-label="es.moderator.previousSlide" :disabled="loading || presentation.slide === 0" @click="previousSlide">←</button>
           <strong class="presentation-slide" aria-live="polite">{{ slideName }} · {{ presentation.slide + 1 }}/3</strong>
-          <button class="secondary presentation-arrow" aria-label="Diapositiva siguiente" :disabled="loading || presentation.slide === 2" @click="nextSlide">→</button>
-          <button class="link-button push-right" :disabled="loading" @click="stopPresentation">Terminar presentación</button>
+          <button class="secondary presentation-arrow" :aria-label="es.moderator.nextSlide" :disabled="loading || presentation.slide === 2" @click="nextSlide">→</button>
+          <button class="link-button push-right" :disabled="loading" @click="stopPresentation">{{ es.moderator.stopPresentation }}</button>
         </template>
       </section>
 </template>

@@ -25,23 +25,23 @@ function runoffButtonText(target: RoundRecord) {
   const runoff = runoffOf(target)
   if (!runoff) return ''
   const seats = runoff.electionSeats ?? 1
-  return runoff.category === 'committee' ? `Abrir desempate · ${seats} ${seats === 1 ? 'puesto' : 'puestos'}` : 'Abrir desempate'
+  return runoff.category === 'committee' ? es.moderator.openRunoffSeats(seats) : es.moderator.openRunoff
 }
 </script>
 
 <template>
   <div class="ballot-heading">
-    <div><div class="eyebrow-row"><p class="eyebrow">CONTEO PUBLICADO</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div><h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2><p v-if="currentRoundRecord && majorityText(currentRoundRecord, currentRoundRecord.outcome)" class="majority-chip">{{ majorityText(currentRoundRecord, currentRoundRecord.outcome) }}</p></div>
-    <p class="voters-total"><strong>{{ currentRoundRecord.participationCount ?? state?.recordedCount ?? 0 }} de {{ eligibleOf(currentRoundRecord) }}</strong><span>votaron<template v-if="eligibleOf(currentRoundRecord)"> · {{ notVotedText(currentRoundRecord.participationCount ?? state?.recordedCount ?? 0, eligibleOf(currentRoundRecord)) }}</template></span></p>
+    <div><div class="eyebrow-row"><p class="eyebrow">{{ es.moderator.publishedEyebrow }}</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div><h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2><p v-if="currentRoundRecord && majorityText(currentRoundRecord, currentRoundRecord.outcome)" class="majority-chip">{{ majorityText(currentRoundRecord, currentRoundRecord.outcome) }}</p></div>
+    <p class="voters-total"><strong>{{ es.common.votersTotal(currentRoundRecord.participationCount ?? state?.recordedCount ?? 0, eligibleOf(currentRoundRecord)) }}</strong><span>{{ es.common.votedLabel }}<template v-if="eligibleOf(currentRoundRecord)"> · {{ notVotedText(currentRoundRecord.participationCount ?? state?.recordedCount ?? 0, eligibleOf(currentRoundRecord)) }}</template></span></p>
   </div>
-  <p v-if="verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === 'No aprobada' }]">{{ verdictOf(currentRoundRecord) }}</p>
+  <p v-if="verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === es.results.notApproved }]">{{ verdictOf(currentRoundRecord) }}</p>
   <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" :so-far="soFar" />
   <p v-if="final && election?.registeredAt" class="status-line">{{ es.results.registered }}</p>
   <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ es.results.register }}</button></div>
   <ResultsList :rows="rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
   <ResultExplanation :target="currentRoundRecord" />
   <div class="action-row ballot-actions">
-    <button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button>
+    <button class="link-button" @click="showNextBallotForm = true">{{ es.moderator.prepareAnother }}</button>
     <button v-if="runoffOf(currentRoundRecord)" class="primary push-right" :disabled="loading" @click="openRunoff(currentRoundRecord)">{{ runoffButtonText(currentRoundRecord) }}</button>
   </div>
 </template>

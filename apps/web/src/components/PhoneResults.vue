@@ -18,7 +18,7 @@ defineProps<{
   <section class="phone-results" aria-labelledby="phone-results-title">
     <div class="phone-results-heading">
       <div><p class="eyebrow">{{ es.phone.resultsEyebrow }}</p><h2 id="phone-results-title">{{ round?.title }}</h2></div>
-      <p v-if="base" class="voters-total"><strong>{{ es.phone.votersTotal(voters, base) }}</strong><span>{{ es.phone.voted }}</span></p>
+      <p v-if="base" class="voters-total"><strong>{{ es.common.votersTotal(voters, base) }}</strong><span>{{ es.common.votedLabel }}</span></p>
     </div>
     <p v-if="round?.regionalSecretaryVotes" class="status-line">{{ es.results.regionalSecretaryNote }}</p>
     <div v-if="verdict" class="official-card"><p class="eyebrow">{{ es.phone.resultEyebrow }}</p><strong>{{ verdict }}</strong></div>

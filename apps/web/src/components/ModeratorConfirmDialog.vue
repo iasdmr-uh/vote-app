@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
 
@@ -14,8 +15,8 @@ const { moderationConfirmation, moderationReason, confirmModeratorAction } = use
       <p v-if="moderationConfirmation.warning" class="quorum-warning" role="alert">{{ moderationConfirmation.warning }}</p>
       <label v-if="moderationConfirmation.reasonLabel" class="confirmation-reason">{{ moderationConfirmation.reasonLabel }}<textarea v-model="moderationReason" rows="3" maxlength="1000" required :placeholder="moderationConfirmation.reasonPlaceholder"></textarea></label>
       <div class="confirmation-actions">
-        <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
-        <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim()) || (!!moderationConfirmation.typedConfirmation && moderationReason.trim() !== moderationConfirmation.typedConfirmation)" @click="confirmModeratorAction">{{ loading ? 'Guardando…' : moderationConfirmation.label }}</button>
+        <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">{{ es.moderator.cancel }}</button>
+        <button :class="moderationConfirmation.path.endsWith('/complete') || moderationConfirmation.path.endsWith('/close') || moderationConfirmation.path.endsWith('/annul') || moderationConfirmation.method === 'DELETE' || moderationConfirmation.path.includes('/participants/') ? 'danger' : 'primary'" :disabled="loading || (!!moderationConfirmation.reasonLabel && !moderationReason.trim()) || (!!moderationConfirmation.typedConfirmation && moderationReason.trim() !== moderationConfirmation.typedConfirmation)" @click="confirmModeratorAction">{{ loading ? es.moderator.saving : moderationConfirmation.label }}</button>
       </div>
     </section>
   </div>
