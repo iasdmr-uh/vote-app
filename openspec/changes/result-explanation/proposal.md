@@ -28,4 +28,4 @@ None. `openspec/specs/` has no specs yet.
 - Database: rounds record whether the regional secretary was in the base when the base was frozen.
 - Web: a new explanation helper in `resultados.ts`. `ModeratorPublishedBallot.vue` and `ModeratorVotingBallot.vue` gain the information button. `ProjectorResults.vue` gains the fixed line. Phone views are unchanged.
 - Unchanged: counting rules, the acta, result rows and percentages (#86).
-- Source issues: #57, #58. Related: #54, #59, #76, #86, #111.
+- Source issues: #57, #58. Related: #54, #59, #76, #86.

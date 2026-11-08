@@ -18,7 +18,8 @@
 - Changing any counting rule or who continues.
 - The acta, result rows, percentages and «No votaron» (#86).
 - Moving on-screen text to a locale file. That happens after the split PR.
-- Any change to the phone. What the phone keeps today is the coordinator's and the user's call, outside this change.
+- Any change to the phone. The phone is only a device to vote and shows no results, as the user decided on 8 Nov 2026. A separate change removes the phone results.
+- Anything that acts during an open vote. The explanation appears only after a vote closes.
 
 ## Decisions
 
