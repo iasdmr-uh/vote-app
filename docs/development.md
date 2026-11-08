@@ -94,7 +94,7 @@ E2E real: `npm run test:e2e:real-stack`; si 3300 o 4174 están ocupados, `E2E_AP
 
 ## Documentos de fundamento
 
-- `docs/foundation/ADR-001-architecture.md`: decisiones técnicas iniciales.
+- `docs/adr/ADR-001-architecture.md`: decisiones técnicas iniciales.
 - `docs/foundation/decisions-pending.md`: confirmaciones y pendientes institucionales.
 - `docs/foundation/state-transitions.md`: estados e invariantes.
 - `docs/foundation/data-model.md`: modelo lógico.

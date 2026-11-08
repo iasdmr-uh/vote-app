@@ -329,6 +329,7 @@ test('la mesa prepara una comisión escribiendo los candidatos y cuántos integr
 
 test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también tras cerrar', async ({ page }) => {
   let status: 'open' | 'closed' = 'open'
+  let anaDisabled = false
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -339,8 +340,9 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
-        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía', voted: false }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: true }],
-        participantCount: 3, attendanceRound: { roundId: 'r1', status, votedCount: 2 },
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', votingDisabled: anaDisabled }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }, { id: 'p4', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
+        regionalSecretary: { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' },
+        participantCount: 4, attendanceRound: { roundId: 'r1', status, votedCount: 2, eligibleCount: 4 },
         rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
       } })
       return
@@ -350,6 +352,11 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
       await route.fulfill({ status: 201, json: { roundId: 'r1', status: 'closed' } })
       return
     }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/participants/p1/disable-voting')) {
+      anaDisabled = true
+      await route.fulfill({ status: 201, json: { id: 'p1', firstName: 'Ana', lastName: 'Reyes', status: 'active', votingDisabled: true } })
+      return
+    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for attendance test' } })
   })
 
@@ -357,14 +364,72 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   const summary = page.locator('.attendance-summary')
   await expect(summary).toContainText('2 votaron')
   await expect(summary).toContainText('1 falta')
+  await expect(summary).toContainText('1 inhabilitado')
   await expect(page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })).toBeVisible()
   await expect(page.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
+  const secretaryRow = page.locator('.regional-secretary-row')
+  await expect(secretaryRow).toContainText('Marta Regional')
+  await expect(secretaryRow).not.toContainText('Votó')
+  await expect(secretaryRow).not.toContainText('Falta')
+  await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await page.getByLabel('Acciones para Luis Mejía').click()
+  const luisMenu = page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })
+  await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
+  await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await page.getByLabel('Acciones para Luis Mejía').click()
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
   await expect(page.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
   await expect(summary).toContainText('2 votaron')
-  await expect(summary).toContainText('1 falta')
+  await expect(summary).not.toContainText('falta')
+  await expect(summary).toContainText('1 inhabilitado')
+  await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toBeVisible()
+  await page.getByLabel('Acciones para Luis Mejía').click()
+  await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toBeVisible()
+  await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
+  await page.getByLabel('Acciones para Luis Mejía').click()
+
+  await page.getByLabel('Acciones para Ana Reyes').click()
+  await page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' }).getByRole('button', { name: 'Inhabilitar' }).click()
+  await expect(summary).toContainText('2 inhabilitados')
+  await expect(summary).toContainText('2 votaron')
+  await expect(summary).not.toContainText('falta')
+})
+
+test('la mesa no ve acciones sobre la lista mientras una votación está abierta, aunque haya un borrador más reciente', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }, { id: 'p2', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
+        regionalSecretary: null, participantCount: 2, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 0, eligibleCount: 2 },
+        rounds: [
+          { id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 0, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null },
+          { id: 'r2', title: 'Secretaría', status: 'draft', format: 'single_choice', category: 'office', participationCount: 0, options: [{ id: 'c', label: 'Gama' }, { id: 'd', label: 'Delta' }], officialResult: null },
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for draft-after-open test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })).toBeVisible()
+  await page.getByLabel('Acciones para Ana Reyes').click()
+  const ana = page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })
+  await expect(ana.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(ana.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
+  await expect(ana.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
 })
 
 test('delegado conserva la sesión al recargar y no tiene botón Salir', async ({ page }) => {
@@ -1540,7 +1605,7 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
 })
 
-test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan» sin contarlos', async ({ page }) => {
+test('la mesa inhabilita y habilita entre votaciones: badge gris y «N inhabilitados», sin «faltan» tras cerrar', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -1551,12 +1616,12 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía', voted: false }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: false }]
+      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }]
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
         participants: people.map((person) => ({ ...person, votingDisabled: disabled.has(person.id) })),
-        participantCount: 3, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 1, eligibleCount: 3 },
-        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 1, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
+        participantCount: 3, attendanceRound: { roundId: 'r1', status: 'closed', votedCount: 1, eligibleCount: 3 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'closed', format: 'single_choice', category: 'office', participationCount: 1, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null, privateResults: [{ optionId: 'a', label: 'Alfa', count: 1 }, { optionId: 'b', label: 'Beta', count: 0 }] }],
       } })
       return
     }
@@ -1574,7 +1639,7 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
   await page.goto('/moderator')
   const summary = page.locator('.attendance-summary')
   await expect(summary).toContainText('1 votó')
-  await expect(summary).toContainText('1 falta')
+  await expect(summary).not.toContainText('falta')
   await expect(summary).toContainText('1 inhabilitado')
   const rosa = page.locator('.mesa-person-list li', { hasText: 'Rosa Paz' })
   await expect(rosa.getByText('Inhabilitado', { exact: true })).toBeVisible()
@@ -1583,27 +1648,17 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
 
   await rosa.getByRole('button', { name: 'Habilitar' }).click()
   await expect(rosa.getByText('Inhabilitado', { exact: true })).toHaveCount(0)
-  await expect(summary).toContainText('2 faltan')
   await expect(summary).not.toContainText('inhabilitado')
+  await expect(summary).toContainText('1 votó')
 
   const luis = page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })
   await luis.locator('summary').click()
   await luis.getByRole('button', { name: 'Inhabilitar' }).click()
   await expect(luis.getByText('Inhabilitado', { exact: true })).toBeVisible()
   await expect(luis.getByRole('button', { name: 'Habilitar' })).toBeVisible()
-  await expect(summary).toContainText('1 falta')
   await expect(summary).toContainText('1 inhabilitado')
+  await expect(summary).not.toContainText('falta')
   expect(calls).toEqual(['p3:enable', 'p2:disable'])
-
-  // Someone who already voted counts only in «votaron», so the three numbers add up to the list.
-  const ana = page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })
-  await ana.locator('summary').click()
-  await ana.getByRole('button', { name: 'Inhabilitar' }).click()
-  await expect(ana.getByText('Inhabilitado', { exact: true })).toBeVisible()
-  await expect(summary).toContainText('1 votó')
-  await expect(summary).toContainText('1 falta')
-  await expect(summary).toContainText('1 inhabilitado')
-  await expect(summary).not.toContainText('2 inhabilitados')
 })
 
 test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin opciones ni botón', async ({ page }) => {

@@ -231,19 +231,19 @@ test('adding the regional secretary again clears a voting block', async () => {
   })
 })
 
-test('the mesa list shows the regional secretary with whether they voted and never how', async () => {
+test('the mesa list shows the regional secretary and never whether or how they voted (#55)', async () => {
   await withAssembly('secretary-in-list', 4, async ({ service, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     assert.deepEqual(
       (await service.moderatorAssembly(assemblyId)).regionalSecretary,
-      { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active', voted: false },
+      { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active' },
     )
 
     await service.openRound(fourth.id)
     await service.castVote(participantId, fourth.id, optionId(fourth, 'Ana'))
     const mesa = await service.moderatorAssembly(assemblyId)
-    assert.deepEqual(mesa.regionalSecretary, { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active', voted: true })
+    assert.deepEqual(mesa.regionalSecretary, { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active' })
     assert.equal(mesa.participants.some((person) => person.id === participantId), false)
     assert.equal(mesa.participantCount, 4)
   })
@@ -276,17 +276,19 @@ test('the mesa takes the regional secretary out and the next vote drops them fro
   })
 })
 
-test('a vote already open keeps the regional secretary in its base after they are taken out', async () => {
+test('the regional secretary cannot be taken out while a vote is open and stays in its base (#55)', async () => {
   await withAssembly('secretary-taken-out-open', 4, async ({ service, room, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     await service.openRound(fourth.id)
-    await room.takeOutOfRoom(participantId)
+    await assert.rejects(room.takeOutOfRoom(participantId), conflict(/cierre la votación/))
+    assert.equal((await service.moderatorAssembly(assemblyId)).regionalSecretary?.status, 'active')
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
     for (const [index, person] of people.entries()) await service.castVote(person, fourth.id, optionId(fourth, index % 2 ? 'Luis' : 'Ana'))
     await service.closeRound(fourth.id)
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
 
+    await room.takeOutOfRoom(participantId)
     const fifth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === fourth.id)!
     assert.equal(fifth.eligibleCount, 4)
   })

@@ -1,6 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
+import { showTransientNotice } from './transient-notice'
 import { RESULT_WORDING, actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
@@ -50,9 +51,8 @@ const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
   const participants = state.value?.participants || []
-  // An inhabilitado still counts in the base, but no longer "falta"; one who already voted counts only in "votaron".
-  const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
-  const disabled = participants.filter((person) => person.votingDisabled && !person.voted).length
+  const disabled = participants.filter((person) => person.votingDisabled).length
+  const pending = record.status === 'open' ? Math.max(0, (record.eligibleCount ?? participants.length) - record.votedCount - disabled) : null
   return { ...record, pending, disabled }
 })
 const roomWarning = computed(() => {
@@ -283,7 +283,7 @@ async function confirmModeratorAction() {
   let succeeded = false
   try {
     const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
-    notice.value = 'Acción registrada.'
+    showTransientNotice(notice, 'Acción registrada.', (run, ms) => { setTimeout(run, ms) })
     succeeded = true
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
