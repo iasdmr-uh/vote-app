@@ -90,7 +90,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   started = Date.now()
   const nominees = ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora', 'Rosa Díaz', 'Carlos Gómez']
   await prepareBallot(mesa, { kind: 'committee', title: 'Comisión de Nombramiento', seats: 5, candidates: nominees })
-  await expect(mesa.getByText('Hasta 5 por persona')).toBeVisible()
+  await expect(mesa.getByText('Cada persona marca exactamente 5')).toBeVisible()
   await confirm(mesa, 'Abrir votación')
   await expect(phones[0].page.locator('.phone-ballot-heading .count-pill')).toHaveText('0 de 5')
   await snap(phones[0].page, 'telefono-nombramiento-T01')
