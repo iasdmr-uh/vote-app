@@ -8,7 +8,7 @@ const options = prophets.map((label, index) => ({ id: `o${index}`, label }))
 const results = [22, 12, 8, 8, 0].map((count, index) => ({ optionId: `o${index}`, label: prophets[index]!, count }))
 const outcome = { seats: 3, base: 38, threshold: 20, elected: ['o0'], runoff: ['o1', 'o2', 'o3'], openSeats: 2 }
 const explanation = { rule: 'simple', reasons: { o0: 'elected', o1: 'no_majority', o2: 'tied_at_cut', o3: 'tied_at_cut', o4: 'out' }, baseDelegates: 38, baseIncludesSecretary: false }
-const paragraph = 'Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22). Sin mayoría: Jeremías (12). Empate en el último puesto: Ezequiel (8) y Daniel (8). Pasan a la siguiente votación.'
+const paragraph = 'Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22). Sin mayoría: Jeremías (12). Desempate en el último puesto: Ezequiel (8) y Daniel (8). Pasan a la siguiente votación.'
 
 const finalRound = { id: 'f1', title: 'Comisión de Música', category: 'committee', memberCount: 2, electionSeats: 2, voteNumber: 1, participationCount: 38, eligibleCount: 38, status: 'published', options: options.slice(0, 2) }
 const finalResult = {
@@ -117,6 +117,6 @@ for (const [moment, state] of [
     await expect(page.locator(`.phone-screen[data-round-status="${state.currentRound.status}"]`)).toBeVisible()
     await expect(page.locator('.result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '¿Cómo se decidió?' })).toHaveCount(0)
-    await expect(page.getByText(/Mayoría simple|habilitados|Sin mayoría|Empate en el último puesto/)).toHaveCount(0)
+    await expect(page.getByText(/Mayoría simple|habilitados|Sin mayoría|Desempate en el último puesto/)).toHaveCount(0)
   })
 }
