@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { approvalText, completedCommittee, electedInVote, electedText, isDecision, notVotedText, REGIONAL_SECRETARY_NOTE, verdictOf, voteLabel } from '../resultados'
+import { approvalText, completedCommittee, electedInVote, electedText, isDecision, marksPerBallot, notVotedText, REGIONAL_SECRETARY_NOTE, resultRows, verdictOf, voteLabel } from '../resultados'
 import type { RoundRecord } from '../types'
 import ResultExplanation from './ResultExplanation.vue'
 import ResultsList from './ResultsList.vue'
@@ -7,7 +7,7 @@ import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
 
 const { state } = useAssembly()
-const { rootRoundOf, roundStatusLabels, eligibleOf, rankedRows, printActa } = useMesa()
+const { rootRoundOf, roundStatusLabels, eligibleOf, printActa } = useMesa()
 
 function categoryText(target: RoundRecord) {
   if (isDecision(target)) return ['Decisión', approvalText(target, target.outcome)].filter(Boolean).join(' · ')
@@ -21,7 +21,7 @@ function categoryText(target: RoundRecord) {
     <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
       <div class="section-heading"><div><h3>{{ rootRoundOf(historyRound)?.title || historyRound.title }}<span v-if="voteLabel(historyRound)" class="badge badge-info">{{ voteLabel(historyRound) }}</span></h3><p class="status-line">{{ categoryText(historyRound) }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}<template v-if="historyRound.results?.length"> · {{ historyRound.participationCount ?? 0 }} de {{ eligibleOf(historyRound) }} votaron · {{ notVotedText(historyRound.participationCount ?? 0, eligibleOf(historyRound)) }}</template><template v-if="historyRound.regionalSecretaryVotes"> · {{ REGIONAL_SECRETARY_NOTE }}</template><template v-if="historyRound.outcome && !isDecision(historyRound)"> · Mayoría: {{ historyRound.outcome.threshold }}</template></p></div></div>
       <p v-if="historyRound.status === 'annulled'" class="status-line">Anulada<template v-if="historyRound.annulReason">: {{ historyRound.annulReason }}</template></p>
-      <ResultsList v-if="historyRound.results?.length" :rows="rankedRows(historyRound.results, eligibleOf(historyRound))" :outcome="historyRound.outcome" :target="historyRound" compact :show-bar="false" />
+      <ResultsList v-if="historyRound.results?.length" :rows="resultRows(historyRound.results, eligibleOf(historyRound), historyRound.explanation)" :recorded="historyRound.participationCount ?? 0" :base="eligibleOf(historyRound)" :marks="marksPerBallot(historyRound)" :outcome="historyRound.outcome" :target="historyRound" compact :show-bar="false" />
       <ResultExplanation v-if="historyRound.results?.length" :target="historyRound" />
       <div v-if="historyRound.results?.length && historyRound.decisionFormat === 'boolean' && verdictOf(historyRound)" class="declared-result"><strong>{{ verdictOf(historyRound) }}</strong></div>
       <div v-else-if="electedInVote(historyRound).length" class="declared-result"><strong>{{ isDecision(historyRound) ? 'Aprobada' : electedInVote(historyRound).length === 1 ? electedText() : 'Electos' }}</strong><p>{{ electedInVote(historyRound).join(', ') }}</p><p v-if="completedCommittee(historyRound, state?.rounds ?? []).length" class="committee-members">Comisión completa, en orden de elección: {{ completedCommittee(historyRound, state?.rounds ?? []).join(', ') }}</p></div>
