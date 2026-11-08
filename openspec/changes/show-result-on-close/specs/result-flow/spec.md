@@ -107,7 +107,7 @@ Source: issue #76, cleared for build on 2026-11-08.
 
 ### Requirement: A result is preliminary until its election is complete
 
-A result SHALL be official only when its election is complete, meaning every seat of the office or committee is filled. Until then no view SHALL call it official or final. While seats are still open, the operator console, the phones and the public screen SHALL list everyone elected so far, each marked «Electo/a», with how many seats are filled out of the total. Someone elected SHALL NOT appear on a later ballot of the same election.
+A result SHALL be final only when its election is complete, meaning every seat of the office or committee is filled. Until then it is preliminary, and no view SHALL show «RESULTADO OFICIAL» or final wording. Only a final result SHALL go to «Agregar a oficiales». While seats are still open, the operator console, the phones and the public screen SHALL list everyone elected so far, each marked «Electo/a», with how many seats are filled out of the total. Someone elected SHALL NOT appear on a later ballot of the same election.
 
 Source: decision of the user on 2026-11-08 for issue #76.
 
@@ -115,12 +115,12 @@ Source: decision of the user on 2026-11-08 for issue #76.
 
 - **WHEN** a committee of five elects three in its first vote and sends others to a runoff
 - **THEN** the phones, the public screen and the operator console list the three, each marked «Electo/a», with «Electos hasta ahora · 3 de 5»
-- **AND** no view says official or final
+- **AND** no view shows «RESULTADO OFICIAL» or final wording
 
 #### Scenario: Committee of five complete
 
 - **WHEN** the runoff fills the last two seats of the committee of five
-- **THEN** the result says final and official and lists all five
+- **THEN** the result is final and lists all five
 
 #### Scenario: The elected leave the next ballot
 
