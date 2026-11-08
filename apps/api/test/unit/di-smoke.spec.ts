@@ -1,6 +1,6 @@
 import 'reflect-metadata'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { RequestMethod, type INestApplication, type Type } from '@nestjs/common'
@@ -65,7 +65,8 @@ function routesOf(modules: Type[]) {
 }
 
 test('the app module resolves every provider and controller and keeps its routes', async (t) => {
-  const outDir = mkdtempSync(`${apiRoot}/node_modules/.cache-di-smoke-`)
+  mkdirSync(`${apiRoot}/dist`, { recursive: true })
+  const outDir = mkdtempSync(`${apiRoot}/dist/.di-smoke-`)
   t.after(() => rmSync(outDir, { recursive: true, force: true }))
   compileWithDecoratorMetadata(outDir)
   process.env.DATABASE_URL ??= 'postgresql://unused@localhost:1/unused'
