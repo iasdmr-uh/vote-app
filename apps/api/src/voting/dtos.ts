@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer'
+import { LOG_PURPOSES, type LogPurpose } from './operator-log.js'
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
@@ -56,6 +57,11 @@ export class ResumeSessionDto {
   resumeCode!: string
 }
 
+export class LogDownloadDto {
+  @IsIn(LOG_PURPOSES)
+  purpose!: LogPurpose
+}
+
 export class CompleteAssemblyDto {
   @Equals(true)
   confirmation!: true
@@ -101,8 +107,8 @@ export class CreateRoundDto {
   decisionFormat?: 'boolean' | 'options'
 
   /** Decision only: mayoría simple (> 1/2) or 3/4 of the habilitados. Elections always use mayoría simple. */
-  @IsOptional() @IsIn(['simple', 'three_quarters'])
-  approvalRule?: 'simple' | 'three_quarters'
+  @IsOptional() @IsIn(['simple', 'three_quarters', 'two_thirds'])
+  approvalRule?: 'simple' | 'three_quarters' | 'two_thirds'
 
   @IsOptional() @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => BallotOptionDto)
   options?: BallotOptionDto[]

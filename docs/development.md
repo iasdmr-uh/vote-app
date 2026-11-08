@@ -82,17 +82,19 @@ La mesa abre, cierra, publica y puede anular; nunca elige ganadores. No existen 
 - Base: participantes habilitados al abrir la votación, congelada en `rounds.eligible_count`; inhabilitados y quienes no votaron cuentan. Mayoría = más de la mitad (38 → 20; la mitad exacta no alcanza).
 - Elecciones (`electionOutcome`): cargo = 1 puesto, comisión = `electionSeats` puestos. Electo = dentro de los N primeros y con mayoría. Un empate en el corte va a desempate solo entre los empatados. Si los puestos quedan abiertos, el servidor crea el desempate como borrador (`committee_root_round_id` = primera votación, `electionSeats` = puestos abiertos) con los N primeros sin mayoría y los empatados en el corte; si eso no supera los puestos abiertos, se agrega el siguiente (y sus empatados). La mesa lo abre; se repite hasta llenar los puestos. Los electos se acumulan en `official_results` de la primera votación (`declaredBy: results_engine`).
 - Selección exacta: en comisiones y desempates cada delegado marca exactamente `electionSeats ?? memberCount` nombres; el servidor rechaza otra cantidad (`422`).
-- Decisiones (`category: "decision"`, `decisionOutcome`): `decisionFormat` `boolean` (el servidor escribe «A favor» / «En contra») u `options`; `approvalRule` `simple` (> 1/2) o `three_quarters` (≥ 3/4, redondeo hacia arriba: 38 → 29). Booleana: aprobada si «A favor» alcanza el umbral; si no, no aprobada y no se repite. Con opciones, sin umbral se repite entre las 2 primeras y empatadas.
+- Decisiones (`category: "decision"`, `decisionOutcome`): `decisionFormat` `boolean` (el servidor escribe «A favor» / «En contra») u `options`; `approvalRule` `simple` (> 1/2), `two_thirds` (≥ 2/3, redondeo hacia arriba: 28 → 19) o `three_quarters` (≥ 3/4, redondeo hacia arriba: 38 → 29). Booleana: aprobada si «A favor» alcanza el umbral; si no, no aprobada y no se repite. Con opciones, sin umbral se repite entre las 2 primeras y empatadas.
 - Publicado: `recordedCount` y `eligibleCount`; «no votaron» = base − votos emitidos. `outcome` trae `threshold`, `elected`, `runoff` y `openSeats`; `voteNumber` y `runoff` indican la votación de la cadena.
 - `countingRule` ya no elige la regla: al crear se guarda `{ kind: "automatic", rule }` y el contenido que envíe el cliente se ignora. Los desempates y repeticiones guardan `reason: "runoff" | "repeat"` y `sourceRoundId` (con `kind: "count_only"` heredado como marcador interno).
 
 Migraciones: `20261102004200_decision_rounds` (categoría `decision`, `decision_format`, `approval_rule`), `20261102004300_participant_voting_disabled` (`participant_sessions.voting_disabled`) y `20261102004400_ballot_option_is_new` (`ballot_options.is_new`).
 
+E2E simulado: `npm run test:e2e` levanta su propio Vite en 5173 y falla si el puerto está ocupado, por ejemplo por `npm run dev`. Usa `PLAYWRIGHT_WEB_PORT=…` para otro puerto, o `PLAYWRIGHT_BASE_URL=…` para probar contra un servidor que ya levantaste.
+
 E2E real: `npm run test:e2e:real-stack`; si 3300 o 4174 están ocupados, `E2E_API_PORT=… E2E_WEB_PORT=… npm run test:e2e:real-stack` ([e2e-real-postgres.md](e2e-real-postgres.md)).
 
 ## Documentos de fundamento
 
-- `docs/foundation/ADR-001-architecture.md`: decisiones técnicas iniciales.
+- `docs/adr/ADR-001-architecture.md`: decisiones técnicas iniciales.
 - `docs/foundation/decisions-pending.md`: confirmaciones y pendientes institucionales.
 - `docs/foundation/state-transitions.md`: estados e invariantes.
 - `docs/foundation/data-model.md`: modelo lógico.

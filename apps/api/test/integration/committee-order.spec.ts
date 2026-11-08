@@ -2,16 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[] }
 
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
-  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id) })
   } finally {
@@ -41,7 +41,6 @@ test('a vote that fills several seats lists them from most voted to least voted'
     await service.closeRound(round.id)
     assert.deepEqual(await electedOnMesa(service, assemblyId, round.id), ['Ana', 'Bruno', 'Carla', 'Diego'])
 
-    await service.publishRound(round.id)
     const screen = await service.publicState(joinCode)
     assert.deepEqual(namesOf(screen.officialResult?.elected), ['Ana', 'Bruno', 'Carla', 'Diego'])
   })
@@ -54,7 +53,6 @@ test('a member elected in an earlier vote stays ahead of a later vote with more 
     const marks = [['Zoe', 'Ana'], ['Zoe', 'Ana'], ['Zoe', 'Luis']]
     for (const [index, names] of marks.entries()) await service.castVote(people[index]!, first.id, idsOf(first.options, names))
     await service.closeRound(first.id)
-    await service.publishRound(first.id)
 
     const draft = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === first.id)!
     await service.openRound(draft.id)

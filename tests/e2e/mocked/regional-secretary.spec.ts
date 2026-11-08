@@ -75,7 +75,7 @@ test('the mesa adds the regional secretary to a tied 4th vote, sees the larger b
   await expect(ballot.locator('.regional-secretary')).toContainText('Marta Regional vota en esta ronda')
   await expect(ballot.locator('.regional-secretary')).toContainText('11')
   await expect(page.locator('.regional-secretary-row')).toContainText('Marta Regional')
-  await expect(page.locator('.regional-secretary-row').getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(page.locator('.regional-secretary-row').getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
 
   await ballot.getByRole('button', { name: 'Quitar a la secretaría regional' }).click()
   await expect(ballot.getByRole('button', { name: 'Agregar a Marta Regional' })).toBeVisible()
@@ -126,6 +126,19 @@ test('a second election offers the same regional secretary by name', async ({ pa
   expect(bodies[0]).toEqual({ firstName: 'Marta', lastName: 'Regional' })
 })
 
+function openVote(regionalSecretaryVotes: boolean): Round {
+  return { ...draftVote(4), status: 'open', regionalSecretaryVotes, eligibleCount: regionalSecretaryVotes ? 11 : 10 }
+}
+
+for (const regionalSecretaryVotes of [true, false]) {
+  test(`the mesa card of an open vote ${regionalSecretaryVotes ? 'says' : 'does not say'} the regional secretary takes part`, async ({ page }) => {
+    await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), openVote(regionalSecretaryVotes)], () => null, () => ({ recordedCount: 3, eligibleCount: regionalSecretaryVotes ? 11 : 10 }))
+    const card = page.locator('.ballot-card')
+    await expect(card).toContainText('VOTACIÓN ABIERTA')
+    await expect(card.getByText('Con la secretaría regional')).toHaveCount(regionalSecretaryVotes ? 1 : 0)
+  })
+}
+
 test('the projector says the regional secretary takes part in the vote', async ({ page }) => {
   await page.route(api, async (route) => {
     await route.fulfill({ json: {
@@ -163,7 +176,7 @@ test('the record marks each vote with who that vote elected and lists the whole 
 
 test('the mesa sees the regional secretary in the list and takes them out without a way back', async ({ page }) => {
   const takeOuts: string[] = []
-  let secretary: Record<string, unknown> = { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active', voted: false }
+  let secretary: Record<string, unknown> = { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' }
   await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path) => {
     if (method !== 'POST' || !path.endsWith('/moderator/participants/rs/take-out')) return null
     takeOuts.push(path)

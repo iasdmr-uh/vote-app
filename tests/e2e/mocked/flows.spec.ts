@@ -166,7 +166,7 @@ test('en un desempate se marcan exactamente los puestos que faltan y la papeleta
   })
 
   await page.goto('/')
-  await expect(page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
   const review = page.getByRole('button', { name: 'Revisar mi voto' })
@@ -227,10 +227,11 @@ test('moderador anula una papeleta con motivo y la repite con las mismas opcione
 
   await page.goto('/moderator')
   const ranking = page.locator('.official-round').first().locator('.ranked-rows > li')
-  await expect(ranking).toHaveCount(3)
-  await expect(ranking.nth(0)).toHaveText(/^1\s*Beta\s*Desempate\s*4 votos\s*40 %/)
-  await expect(ranking.nth(1)).toHaveText(/^2\s*Alfa\s*Desempate\s*4 votos\s*40 %/)
-  await expect(ranking.nth(2)).toHaveText(/^3\s*Gama\s*1 voto\s*10 %/)
+  await expect(ranking).toHaveCount(4)
+  await expect(ranking.nth(0)).toHaveText(/^Beta\s*Desempate\s*4 votos\s*40 %/)
+  await expect(ranking.nth(1)).toHaveText(/^Alfa\s*Desempate\s*4 votos\s*40 %/)
+  await expect(ranking.nth(2)).toHaveText(/^Gama\s*1 voto\s*10 %/)
+  await expect(ranking.nth(3)).toHaveText(/^No votaron\s*1 voto\s*10 %/)
   await expect(page.locator('.official-round').first()).toContainText('9 de 10 votaron')
   await expect(page.locator('.official-round').first()).toContainText('Mayoría: 6')
   await expect(page.getByRole('button', { name: /Declarar|Repetir votación…/ })).toHaveCount(0)
@@ -251,7 +252,7 @@ test('moderador anula una papeleta con motivo y la repite con las mismas opcione
   expect(repeated).toEqual({ optionIds: ['x', 'y'] })
 })
 
-test('el teléfono muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
+test('el teléfono no muestra la declaración oficial aunque la última repetición esté cerrada sin publicar', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'declared-session'))
   await page.route(api, async (route) => {
     const url = new URL(route.request().url())
@@ -259,8 +260,9 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
       await route.fulfill({ json: {
         assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' },
         participationStatus: 'recorded',
-        openRound: { roundId: 'repeat', title: 'Presidencia — nueva votación', status: 'closed', format: 'single_choice', options: [] },
-        officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: 'Electa por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
+        openRound: { roundId: 'repeat', title: 'Presidencia, nueva votación', status: 'closed', format: 'single_choice', options: [] },
+        officialResult: { elected: [{ optionId: 'e', label: 'Ezequiel' }], note: 'Electo por la Asamblea', declaredAt: '2026-10-14T10:00:00.000Z' },
+        final: { elected: [{ optionId: 'e', label: 'Ezequiel' }], approved: null },
       } })
       return
     }
@@ -268,11 +270,9 @@ test('el teléfono muestra la declaración oficial aunque la última repetición
   })
 
   await page.goto('/')
-  const official = page.locator('.official-card')
-  await expect(official.getByText('RESULTADO OFICIAL', { exact: true })).toBeVisible()
-  await expect(official).toContainText('María López')
-  await expect(official).toContainText('Electa por la Asamblea')
-  await expect(page.locator('.ranked-rows')).toHaveCount(0)
+  await expect(page.locator('.phone-screen[data-round-status="closed"]')).toBeVisible()
+  await expect(page.locator('.result-summary, .ranked-rows')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText(/Ezequiel|Electo|resultado/i)
 })
 
 test('la mesa prepara una comisión escribiendo los candidatos y cuántos integrantes quedarán', async ({ page }) => {
@@ -328,6 +328,7 @@ test('la mesa prepara una comisión escribiendo los candidatos y cuántos integr
 
 test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también tras cerrar', async ({ page }) => {
   let status: 'open' | 'closed' = 'open'
+  let anaDisabled = false
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -338,16 +339,22 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
-        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía', voted: false }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: true }],
-        participantCount: 3, attendanceRound: { roundId: 'r1', status, votedCount: 2 },
-        rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null,
-          ...(status === 'closed' ? { privateResults: [{ optionId: 'a', label: 'Alfa', count: 2 }, { optionId: 'b', label: 'Beta', count: 0 }] } : {}) }],
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', votingDisabled: anaDisabled }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }, { id: 'p4', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
+        regionalSecretary: { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' },
+        leftParticipants: [{ id: 'p5', firstName: 'Jonás', lastName: 'Amitai' }],
+        participantCount: 4, attendanceRound: { roundId: 'r1', status, votedCount: 2, eligibleCount: 4 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
       } })
       return
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/r1/close')) {
       status = 'closed'
       await route.fulfill({ status: 201, json: { roundId: 'r1', status: 'closed' } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/participants/p1/disable-voting')) {
+      anaDisabled = true
+      await route.fulfill({ status: 201, json: { id: 'p1', firstName: 'Ana', lastName: 'Reyes', status: 'active', votingDisabled: true } })
       return
     }
     await route.fulfill({ status: 404, json: { message: 'No mock route for attendance test' } })
@@ -357,14 +364,81 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   const summary = page.locator('.attendance-summary')
   await expect(summary).toContainText('2 votaron')
   await expect(summary).toContainText('1 falta')
+  await expect(summary).toContainText('1 inhabilitado')
   await expect(page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })).toBeVisible()
   await expect(page.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
+  const secretaryRow = page.locator('.regional-secretary-row')
+  await expect(secretaryRow).toContainText('Marta Regional')
+  await expect(secretaryRow).not.toContainText('Votó')
+  await expect(secretaryRow).not.toContainText('Falta')
+  await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await expect(secretaryRow.getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
+  const luisMenu = page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })
+  await expect(page.getByLabel('Acciones para Luis Mejía')).toHaveCount(0)
+  await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
+  await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
+  await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Nuevo código' })).toHaveCount(0)
+  const jonasOut = page.locator('.out-of-room li', { hasText: 'Jonás Amitai' })
+  await expect(jonasOut).toBeVisible()
+  await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Presentar oficiales' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
   await expect(page.locator('.mesa-person-list').getByRole('img')).toHaveCount(0)
   await expect(summary).toContainText('2 votaron')
-  await expect(summary).toContainText('1 falta')
+  await expect(summary).not.toContainText('falta')
+  await expect(summary).toContainText('1 inhabilitado')
+  await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Nuevo código' })).toBeVisible()
+  await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Presentar oficiales' })).toBeVisible()
+  await page.getByLabel('Acciones para Luis Mejía').click()
+  await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toBeVisible()
+  await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
+  await page.getByLabel('Acciones para Luis Mejía').click()
+
+  await page.getByLabel('Acciones para Ana Reyes').click()
+  await page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' }).getByRole('button', { name: 'Inhabilitar' }).click()
+  await expect(summary).toContainText('2 inhabilitados')
+  await expect(summary).toContainText('2 votaron')
+  await expect(summary).not.toContainText('falta')
+})
+
+test('la mesa no ve acciones sobre la lista mientras una votación está abierta, aunque haya un borrador más reciente', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }, { id: 'p2', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
+        regionalSecretary: null, participantCount: 2, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 0, eligibleCount: 2 },
+        rounds: [
+          { id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 0, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null },
+          { id: 'r2', title: 'Secretaría', status: 'draft', format: 'single_choice', category: 'office', participationCount: 0, options: [{ id: 'c', label: 'Gama' }, { id: 'd', label: 'Delta' }], officialResult: null },
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for draft-after-open test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })).toBeVisible()
+  const ana = page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })
+  await expect(page.getByLabel('Acciones para Ana Reyes')).toHaveCount(0)
+  await expect(ana.getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
+  await expect(ana.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
+  await expect(ana.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
 })
 
 test('delegado conserva la sesión al recargar y no tiene botón Salir', async ({ page }) => {
@@ -470,6 +544,27 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('new-session-token')
 })
 
+test('el teléfono pide esperar si alguien intenta ingresar durante una votación abierta', async ({ page }) => {
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/DEMO-ROOM/join')) {
+      await route.fulfill({ status: 409, json: { message: 'Hay una votación en curso. Espera a que termine para ingresar.' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for join during vote test' } })
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Código de sala').fill('DEMO-ROOM')
+  await page.getByLabel('Nombre').fill('Delegado')
+  await page.getByLabel('Apellido').fill('Tardío')
+  await page.getByRole('button', { name: 'Entrar a la sala' }).click()
+  await expect(page.getByRole('alert')).toContainText('Hay una votación en curso. Espera a que termine para ingresar.')
+  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
+})
+
 test('un error de red conserva la selección y permite revisar y reintentar', async ({ page }) => {
   let voteCount = 0
   await page.route(api, async (route) => {
@@ -533,8 +628,7 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
         eligibleCount: 4,
         recordedCount: 4,
         currentRound: { id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }] },
-        rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }],
-          ...(closed ? { privateResults: [{ optionId: 'b', label: 'Opción Beta (prueba)', count: 3 }, { optionId: 'a', label: 'Opción Alfa (prueba)', count: 1 }] } : {}) }],
+        rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }] }],
       } })
       return
     }
@@ -554,17 +648,15 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(page.getByRole('dialog')).toContainText('Dejará de aceptar votos.')
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
-  const privateCounts = page.locator('.ballot-card')
-  await expect(privateCounts.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
-  await expect(privateCounts.getByText('Solo la mesa', { exact: true })).toBeVisible()
-  await expect(privateCounts).toContainText(/4 de 4\s*votaron/)
-  await expect(privateCounts.locator('.ranked-rows > li').first()).toHaveText(/^1\s*Opción Beta \(prueba\)\s*3 votos\s*75 %/)
-  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
-  // As on main, the mesa can move on to the next cargo without publishing this count.
+  const closedCard = page.locator('.ballot-card')
+  await expect(closedCard.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
+  await expect(closedCard).toContainText('Preparando el resultado')
+  await expect(closedCard.locator('.ranked-rows > li')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Publicar/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Preparar otra papeleta' }).click()
   await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Volver al conteo' }).click()
-  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
+  await expect(closedCard).toContainText('Preparando el resultado')
 })
 
 test('la mesa ve el resultado calculado de una comisión y abre el desempate por los puestos que faltan (M21)', async ({ page }) => {
@@ -606,10 +698,10 @@ test('la mesa ve el resultado calculado de una comisión y abre el desempate por
   await expect(ballot).toContainText('CONTEO PUBLICADO')
   await expect(ballot.locator('.majority-chip')).toHaveText('3 integrantes · Mayoría: 20')
   const rows = ballot.locator('.ranked-rows > li')
-  await expect(rows.nth(0)).toHaveText(/^1\s*Ana Ruiz\s*Electo\/a\s*30 votos\s*79 %/)
-  await expect(rows.nth(1)).toHaveText(/^2\s*Juan Mora\s*Desempate\s*19 votos/)
-  await expect(rows.nth(3)).toHaveText(/^4\s*Pedro Vargas\s*Desempate\s*17 votos/)
-  await expect(rows.nth(4)).toHaveText(/^5\s*Sofía Méndez\s*14 votos/)
+  await expect(rows.nth(0)).toHaveText(/^Ana Ruiz\s*Electo\/a\s*30 votos\s*79 %/)
+  await expect(rows.nth(1)).toHaveText(/^Juan Mora\s*Desempate\s*19 votos/)
+  await expect(rows.nth(3)).toHaveText(/^Pedro Vargas\s*Desempate\s*17 votos/)
+  await expect(rows.nth(4)).toHaveText(/^Sofía Méndez\s*14 votos/)
   await expect(page.getByRole('button', { name: /Declarar|Repetir votación|Retirar declaración/ })).toHaveCount(0)
   await expect(page.getByRole('group', { name: '¿Quién queda electo?' })).toHaveCount(0)
   const acta = page.locator('#acta-de-resultados')
@@ -749,6 +841,10 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
       deleteBody = request.postDataJSON()
       deleted = true
       await route.fulfill({ json: { assemblyId: 'synthetic-assembly', deleted: true, vacuumed: true } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/log')) {
+      await route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: '﻿"Hora","Tipo","Acción"\r\n' })
       return
     }
     if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
@@ -923,7 +1019,7 @@ test('el proyector muestra la dirección de la red que da el servidor, no la de 
   await expect(page.locator('.pj')).not.toContainText('127.0.0.1')
 })
 
-test('delegado y proyector ven que la Asamblea concluyó y conservan resultados publicados', async ({ page }) => {
+test('delegado y proyector ven que la Asamblea concluyó y solo el proyector conserva resultados publicados', async ({ page }) => {
   const completedAt = '2026-10-02T18:30:00.000Z'
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-participant-token')
@@ -956,7 +1052,7 @@ test('delegado y proyector ven que la Asamblea concluyó y conservan resultados 
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Asamblea finalizada' })).toBeVisible()
-  await expect(page.locator('.phone-results')).toContainText('Opción declarada')
+  await expect(page.getByText('Opción declarada')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toHaveCount(0)
   await expect(page.getByText('Espera la siguiente papeleta')).toHaveCount(0)
 
@@ -1147,6 +1243,23 @@ test('delegado reconecta su sesión en un dispositivo nuevo con el QR de la mesa
   expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('synthetic-resumed-token')
 })
 
+test('un QR de reconexión escaneado durante una votación abierta pide volver a escanearlo al terminar', async ({ page }) => {
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/resume')) {
+      await route.fulfill({ status: 409, json: { message: 'Hay una votación en curso. Vuelve a escanear este código cuando termine.' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for resume during vote test' } })
+  })
+
+  await page.goto('/?resume=synthetic-resume-code-0123456789')
+  await expect(page.getByRole('alert')).toContainText('Hay una votación en curso. Vuelve a escanear este código cuando termine.')
+  await expect(page).toHaveURL(/\/$/)
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
+})
+
 test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ page }) => {
   let publicStateCalls = 0
   await page.addInitScript(() => {
@@ -1175,6 +1288,76 @@ test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ pa
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(publicStateCalls).toBe(1)
+})
+
+test('durante una votación abierta la mesa ve la limpieza pendiente sin poder reintentarla', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null, participants: [], participantCount: 0,
+        rounds: [
+          { id: 'annulled-round', title: 'Presidencia', status: 'annulled', options: [{ id: 'a', label: 'A' }], participationCount: 1, secrecyCleanupPending: true },
+          { id: 'open-round', title: 'Presidencia, de nuevo', status: 'open', options: [{ id: 'b', label: 'B' }], participationCount: 0 },
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const panel = page.getByRole('alert').filter({ hasText: 'Limpieza del secreto del voto pendiente' })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Reintentar limpieza' })).toHaveCount(0)
+})
+
+test('durante una votación abierta la mesa no ofrece preparar la siguiente votación', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  const open = { id: 'open-round', title: 'Presidencia, de nuevo', status: 'open', options: [{ id: 'b', label: 'Opción Beta (prueba)' }, { id: 'c', label: 'Opción Gama (prueba)' }], participationCount: 0 }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participants: [{ id: 'synthetic-person', firstName: 'Delegado', lastName: 'Sintético' }],
+        participantCount: 4,
+        eligibleCount: 4,
+        recordedCount: 0,
+        regionalSecretary: { firstName: 'Secretaría', lastName: 'Regional' },
+        currentRound: open,
+        rounds: [
+          { id: 'annulled-round', title: 'Presidencia', status: 'annulled', annulReason: 'Error de la mesa', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }], participationCount: 1 },
+          open,
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const ballot = page.locator('.ballot-card')
+  await expect(ballot.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
+  await expect(ballot.getByRole('button', { name: 'Cerrar votación', exact: true })).toBeVisible()
+  await expect(ballot.getByRole('button', { name: 'Anular votación', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Preparar otra papeleta', exact: true })).toHaveCount(0)
+  await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Repetir con las mismas opciones', exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del departamento', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Agregar candidato', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Agregar opción', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del candidato', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre de la secretaría regional', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Agregar a Secretaría Regional', exact: true })).toHaveCount(0)
 })
 
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
@@ -1244,7 +1427,7 @@ test('un cargo con mayoría queda electo sin intervención de la mesa y la elecc
   const ballot = page.locator('.ballot-card')
   await expect(ballot).toContainText(/9 de 9\s*votaron/)
   const rows = ballot.locator('.ranked-rows > li')
-  await expect(rows).toHaveText([/^1\s*María López\s*Electo\/a\s*6 votos\s*67 %/, /^2\s*Carlos Gómez\s*2 votos\s*22 %/, /^3\s*Rosa Díaz\s*1 voto\s*11 %/])
+  await expect(rows).toHaveText([/^María López\s*Electo\/a\s*6 votos\s*67 %/, /^Carlos Gómez\s*2 votos\s*22 %/, /^Rosa Díaz\s*1 voto\s*11 %/, /^No votaron\s*0 votos\s*0 %/])
   await expect(ballot.locator('.majority-chip')).toHaveText('Mayoría: 5')
   await expect(ballot.getByRole('button', { name: /Abrir desempate|Declarar|Repetir/ })).toHaveCount(0)
   await expect(page.locator('.workflow-steps li.complete')).toHaveCount(5)
@@ -1522,6 +1705,7 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
         results: [{ optionId: 'm', label: 'María López', count: 22 }, { optionId: 'c', label: 'Carlos Gómez', count: 15 }],
         outcome: { seats: 1, base: 38, threshold: 20, elected: ['m'], runoff: [], openSeats: 0 },
         officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
+        final: { elected: [{ optionId: 'm', label: 'María López' }], approved: null },
       } })
       return
     }
@@ -1534,11 +1718,12 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
   await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
-  await expect(page.locator('.pj-elected')).toContainText('María López')
+  await expect(page.locator('.result-summary')).toContainText('María López')
+  await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
 })
 
-test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan» sin contarlos', async ({ page }) => {
+test('la mesa inhabilita y habilita entre votaciones: badge gris y «N inhabilitados», sin «faltan» tras cerrar', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
@@ -1549,12 +1734,12 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: true }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía', voted: false }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz', voted: false }]
+      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }]
       await route.fulfill({ json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
         participants: people.map((person) => ({ ...person, votingDisabled: disabled.has(person.id) })),
-        participantCount: 3, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 1, eligibleCount: 3 },
-        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 1, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
+        participantCount: 3, attendanceRound: { roundId: 'r1', status: 'closed', votedCount: 1, eligibleCount: 3 },
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'closed', format: 'single_choice', category: 'office', participationCount: 1, eligibleCount: 3, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null, privateResults: [{ optionId: 'a', label: 'Alfa', count: 1 }, { optionId: 'b', label: 'Beta', count: 0 }] }],
       } })
       return
     }
@@ -1572,7 +1757,7 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
   await page.goto('/moderator')
   const summary = page.locator('.attendance-summary')
   await expect(summary).toContainText('1 votó')
-  await expect(summary).toContainText('1 falta')
+  await expect(summary).not.toContainText('falta')
   await expect(summary).toContainText('1 inhabilitado')
   const rosa = page.locator('.mesa-person-list li', { hasText: 'Rosa Paz' })
   await expect(rosa.getByText('Inhabilitado', { exact: true })).toBeVisible()
@@ -1581,27 +1766,17 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
 
   await rosa.getByRole('button', { name: 'Habilitar' }).click()
   await expect(rosa.getByText('Inhabilitado', { exact: true })).toHaveCount(0)
-  await expect(summary).toContainText('2 faltan')
   await expect(summary).not.toContainText('inhabilitado')
+  await expect(summary).toContainText('1 votó')
 
   const luis = page.locator('.mesa-person-list li', { hasText: 'Luis Mejía' })
   await luis.locator('summary').click()
   await luis.getByRole('button', { name: 'Inhabilitar' }).click()
   await expect(luis.getByText('Inhabilitado', { exact: true })).toBeVisible()
   await expect(luis.getByRole('button', { name: 'Habilitar' })).toBeVisible()
-  await expect(summary).toContainText('1 falta')
   await expect(summary).toContainText('1 inhabilitado')
+  await expect(summary).not.toContainText('falta')
   expect(calls).toEqual(['p3:enable', 'p2:disable'])
-
-  // Someone who already voted counts only in «votaron», so the three numbers add up to the list.
-  const ana = page.locator('.mesa-person-list li', { hasText: 'Ana Reyes' })
-  await ana.locator('summary').click()
-  await ana.getByRole('button', { name: 'Inhabilitar' }).click()
-  await expect(ana.getByText('Inhabilitado', { exact: true })).toBeVisible()
-  await expect(summary).toContainText('1 votó')
-  await expect(summary).toContainText('1 falta')
-  await expect(summary).toContainText('1 inhabilitado')
-  await expect(summary).not.toContainText('2 inhabilitados')
 })
 
 test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin opciones ni botón', async ({ page }) => {
@@ -1635,7 +1810,7 @@ test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toHaveCount(0)
 })
 
-test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate', async ({ page }) => {
+test('un delegado inhabilitado en un desempate ve el rótulo de votación abierta sin el número de votación', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-session-token')
     localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
@@ -1652,5 +1827,5 @@ test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate'
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toBeVisible()
-  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · DESEMPATE · 2.ª VOTACIÓN')
+  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · VOTACIÓN ABIERTA')
 })

@@ -2,12 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common'
 import { RealtimeAuthService } from '../../src/auth/auth.service.js'
+import { OperatorLogService } from '../../src/voting/operator-log.service.js'
+import { RoomService } from '../../src/voting/room.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub, type GatewayEvent } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
-type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[]; auth: RealtimeAuthService; events: GatewayEvent[] }
+type Context = { service: VotingService; room: RoomService; assemblyId: string; joinCode: string; people: string[]; auth: RealtimeAuthService; events: GatewayEvent[]; log: OperatorLogService }
 type Ballot = Array<{ id: string; label: string }>
 type Vote = { id: string; options: Ballot }
 
@@ -16,12 +19,12 @@ const REGIONAL_SECRETARY = { firstName: 'Marta', lastName: 'Regional' }
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service, room, operatorLog } = buildProviders(prisma, gateway)
   const auth = new RealtimeAuthService(prisma)
   const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
-  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
-    await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id), auth, events })
+    await body({ service, room, assemblyId, joinCode, people: names.map((person) => people[person]!.id), auth, events, log: operatorLog })
   } finally {
     await cleanup()
     await prisma.$disconnect()
@@ -38,7 +41,6 @@ async function voteAndClose(service: VotingService, vote: Vote, people: string[]
   await service.openRound(vote.id)
   for (const [index, person] of people.entries()) await service.castVote(person, vote.id, optionId(vote, labels[index % labels.length]!))
   await service.closeRound(vote.id)
-  await service.publishRound(vote.id)
 }
 
 async function tiedVotes(service: VotingService, assemblyId: string, first: Vote, people: string[], times: number) {
@@ -84,7 +86,6 @@ test('the regional secretary breaks a tie in the 4th vote as one more secret vot
     for (const [index, person] of people.entries()) await service.castVote(person, fourth.id, optionId(fourth, index % 2 ? 'Luis' : 'Ana'))
     await service.castVote(invitation.participantId, fourth.id, optionId(fourth, 'Ana'))
     await service.closeRound(fourth.id)
-    await service.publishRound(fourth.id)
 
     const screen = await service.publicState(joinCode)
     assert.equal(screen.eligibleCount, 11)
@@ -93,6 +94,26 @@ test('the regional secretary breaks a tie in the 4th vote as one more secret vot
     assert.equal(screen.round?.regionalSecretaryVotes, true)
     assert.deepEqual(screen.officialResult?.elected.map((person) => person.label), ['Ana'])
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 11)
+  })
+})
+
+test('the log names the regional secretary added to a vote', async () => {
+  await withAssembly('secretary-in-log', 4, async ({ service, assemblyId, people, log }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const { csv } = await log.download(assemblyId, 'review')
+    assert.match(csv, /"Marta Regional agregado como secretario regional: /)
+  })
+})
+
+test('the log keeps the vote title of a regional secretary entry after its runoff is discarded', async () => {
+  await withAssembly('secretary-runoff-discarded', 4, async ({ service, assemblyId, people, log }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const third = (await service.moderatorAssembly(assemblyId)).rounds.filter((round) => round.status !== 'draft').at(-1)!
+    await service.annulRound(third.id, 'Error de conteo')
+    const { csv } = await log.download(assemblyId, 'review')
+    assert.match(csv, /"Marta Regional agregado como secretario regional: Presidencia"/)
   })
 })
 
@@ -198,10 +219,10 @@ test('adding the regional secretary again retires the previous device', async ()
 })
 
 test('adding the regional secretary again clears a voting block', async () => {
-  await withAssembly('secretary-readded-disabled', 10, async ({ service, assemblyId, people }) => {
+  await withAssembly('secretary-readded-disabled', 10, async ({ service, room, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const first = await service.addRegionalSecretary(fourth.id, { firstName: 'Elías', lastName: 'Regional' })
-    await service.setVotingDisabled(first.participantId, true)
+    await room.setVotingDisabled(first.participantId, true)
     const second = await service.addRegionalSecretary(fourth.id, { firstName: 'Elías', lastName: 'Regional' })
     await service.redeemResumeCode(resumeCodeOf(second.resumeUrl))
     await service.openRound(fourth.id)
@@ -210,26 +231,26 @@ test('adding the regional secretary again clears a voting block', async () => {
   })
 })
 
-test('the mesa list shows the regional secretary with whether they voted and never how', async () => {
+test('the mesa list shows the regional secretary and never whether or how they voted (#55)', async () => {
   await withAssembly('secretary-in-list', 4, async ({ service, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     assert.deepEqual(
       (await service.moderatorAssembly(assemblyId)).regionalSecretary,
-      { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active', voted: false },
+      { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active' },
     )
 
     await service.openRound(fourth.id)
     await service.castVote(participantId, fourth.id, optionId(fourth, 'Ana'))
     const mesa = await service.moderatorAssembly(assemblyId)
-    assert.deepEqual(mesa.regionalSecretary, { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active', voted: true })
+    assert.deepEqual(mesa.regionalSecretary, { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active' })
     assert.equal(mesa.participants.some((person) => person.id === participantId), false)
     assert.equal(mesa.participantCount, 4)
   })
 })
 
 test('the mesa takes the regional secretary out and the next vote drops them from the base', async () => {
-  await withAssembly('secretary-taken-out', 4, async ({ service, assemblyId, people, auth }) => {
+  await withAssembly('secretary-taken-out', 4, async ({ service, room, assemblyId, people, auth }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const invitation = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     const token = (await service.redeemResumeCode(resumeCodeOf(invitation.resumeUrl))).participantSessionToken
@@ -237,7 +258,7 @@ test('the mesa takes the regional secretary out and the next vote drops them fro
     const fifth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === fourth.id)!
     assert.equal(fifth.eligibleCount, 5)
 
-    const result = await service.takeOutOfRoom(invitation.participantId)
+    const result = await room.takeOutOfRoom(invitation.participantId)
     assert.equal(result.status, 'left')
 
     const mesa = await service.moderatorAssembly(assemblyId)
@@ -255,39 +276,40 @@ test('the mesa takes the regional secretary out and the next vote drops them fro
   })
 })
 
-test('a vote already open keeps the regional secretary in its base after they are taken out', async () => {
-  await withAssembly('secretary-taken-out-open', 4, async ({ service, assemblyId, people }) => {
+test('the regional secretary cannot be taken out while a vote is open and stays in its base (#55)', async () => {
+  await withAssembly('secretary-taken-out-open', 4, async ({ service, room, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     await service.openRound(fourth.id)
-    await service.takeOutOfRoom(participantId)
+    await assert.rejects(room.takeOutOfRoom(participantId), conflict(/cierre la votación/))
+    assert.equal((await service.moderatorAssembly(assemblyId)).regionalSecretary?.status, 'active')
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
     for (const [index, person] of people.entries()) await service.castVote(person, fourth.id, optionId(fourth, index % 2 ? 'Luis' : 'Ana'))
     await service.closeRound(fourth.id)
-    await service.publishRound(fourth.id)
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
 
+    await room.takeOutOfRoom(participantId)
     const fifth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === fourth.id)!
     assert.equal(fifth.eligibleCount, 4)
   })
 })
 
 test('the regional secretary cannot be returned to the room', async () => {
-  await withAssembly('secretary-no-return', 4, async ({ service, assemblyId, people }) => {
+  await withAssembly('secretary-no-return', 4, async ({ service, room, assemblyId, people }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
-    await service.takeOutOfRoom(participantId)
-    await assert.rejects(service.returnToRoom(participantId), conflict(/secretaría regional/i))
+    await room.takeOutOfRoom(participantId)
+    await assert.rejects(room.returnToRoom(participantId), conflict(/secretaría regional/i))
     assert.equal((await service.moderatorAssembly(assemblyId)).regionalSecretary?.status, 'left')
   })
 })
 
 test('adding the regional secretary after a take-out brings them back with a new device', async () => {
-  await withAssembly('secretary-readded-after-take-out', 4, async ({ service, assemblyId, people, auth }) => {
+  await withAssembly('secretary-readded-after-take-out', 4, async ({ service, room, assemblyId, people, auth }) => {
     const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
     const first = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     const oldToken = (await service.redeemResumeCode(resumeCodeOf(first.resumeUrl))).participantSessionToken
-    await service.takeOutOfRoom(first.participantId)
+    await room.takeOutOfRoom(first.participantId)
 
     const second = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
     assert.equal(second.participantId, first.participantId)
@@ -301,5 +323,18 @@ test('adding the regional secretary after a take-out brings them back with a new
     assert.equal(identity.audience === 'participant' && identity.sessionId, first.participantId)
     await service.openRound(fourth.id)
     await service.castVote(first.participantId, fourth.id, optionId(fourth, 'Ana'))
+  })
+})
+
+test('the regional secretary cannot use an unused entry QR while a vote is open, and can once it closes', async () => {
+  await withAssembly('secretary-qr-open-vote', 4, async ({ service, assemblyId, people }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const invitation = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    await service.openRound(fourth.id)
+    await assert.rejects(service.redeemResumeCode(resumeCodeOf(invitation.resumeUrl)), ConflictException)
+    for (const person of people) await service.castVote(person, fourth.id, optionId(fourth, 'Ana'))
+    await service.closeRound(fourth.id)
+    const redeemed = await service.redeemResumeCode(resumeCodeOf(invitation.resumeUrl))
+    assert.equal(redeemed.participant.firstName, 'Marta')
   })
 })

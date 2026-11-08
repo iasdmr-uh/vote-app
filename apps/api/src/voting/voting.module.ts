@@ -5,10 +5,26 @@ import { RealtimeModule } from '../realtime/realtime.module.js'
 import { ModeratorController, ParticipantController, ParticipantLeaveController, PublicAssemblyController } from './voting.controller.js'
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
+import { ConnectionCountService } from './connection-count.service.js'
+import { RoomService } from './room.service.js'
+import { OperatorLogService } from './operator-log.service.js'
+import { OfficialRosterService } from './official-roster.service.js'
 
 @Module({
   imports: [PrismaModule, AuthModule, RealtimeModule],
-  controllers: [PublicAssemblyController, ParticipantController, ParticipantLeaveController, ModeratorController],
-  providers: [VotingService, PresentationService],
+  controllers: [
+    ModeratorController,
+    ParticipantController,
+    ParticipantLeaveController,
+    PublicAssemblyController,
+  ],
+  providers: [
+    ConnectionCountService,
+    OfficialRosterService,
+    OperatorLogService,
+    PresentationService,
+    RoomService,
+    VotingService,
+  ],
 })
 export class VotingModule {}

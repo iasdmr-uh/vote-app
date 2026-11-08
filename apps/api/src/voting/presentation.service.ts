@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { MODERATOR_ACTOR } from '../auth/auth.service.js'
+import { MODERATOR_ACTOR } from '../auth/actors.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
+import { assertNoOpenRound } from './assembly-tx.js'
+import { ORGANIZATION_ID } from './constants.js'
 
 export type PresentationSlide = 0 | 1 | 2
 export type PresentationState = { active: boolean; slide: PresentationSlide }
-
-const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 
 /** The presentation as the projector and the mesa read it. */
 export function presentationOf(assembly: { presentationActive: boolean; presentationSlide: number }): PresentationState {
@@ -35,6 +35,7 @@ export class PresentationService {
       const current = rows[0]
       if (!current) throw new NotFoundException('Asamblea no encontrada')
       if (current.presentation_active === input.active && current.presentation_slide === input.slide) return false
+      await assertNoOpenRound(tx, assemblyId, 'Presenta los oficiales cuando cierre la votación abierta')
       await tx.assembly.update({ where: { id: assemblyId }, data: { presentationActive: input.active, presentationSlide: input.slide } })
       await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: 'presentation.changed', metadata: { active: input.active, slide: input.slide } } })
       return true

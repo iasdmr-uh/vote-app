@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndPublish, confirm, moderatorState, openRoom, participantState, prepareBallot, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectClosedByItself, expectPhoneShowsNoResult, moderatorState, openRoom, participantState, prepareBallot, runVote, voteAll } from './helpers'
 
 /**
  * G. «Quitar» on a candidate the mesa added (#40). Five habilitados, majority 3: two votes without majority
@@ -19,7 +19,7 @@ test('G · quitar un candidato nuevo: sale del borrador y ningún teléfono lo r
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez'], null])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('4')
-  await closeAndPublish(room)
+  await closeAndShow(room)
 
   // 3rd vote draft: add, then Quitar.
   await mesa.getByRole('button', { name: 'Abrir desempate', exact: true }).click()
@@ -42,14 +42,14 @@ test('G · quitar un candidato nuevo: sale del borrador y ningún teléfono lo r
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(2)
     await expect(phone.page.getByText('Elena Castro')).toHaveCount(0)
     const state = await participantState(request, phone.token)
     expect(state.openRound.options.map((option: { label: string }) => option.label)).toEqual(['Ana Ruiz', 'Carlos Gómez'])
   }
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
+  await expectClosedByItself(mesa)
+  await closeAndShow(room)
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

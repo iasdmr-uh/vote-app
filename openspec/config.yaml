@@ -1,0 +1,17 @@
+schema: spec-driven
+
+context: |
+  System: a secret-ballot voting app for one in-person delegate assembly of the Unión Hondureña (ASDMR), about 50 to 70 people. Delegates vote from their phones, the mesa operates a laptop that acts as the server, and a projector shows public state.
+  Stack: npm workspaces with Vue 3 (apps/web), NestJS and Prisma (apps/api), PostgreSQL, Socket.IO. PostgreSQL is the source of truth.
+  Authority, highest first: the Reglamento Interno, decisions confirmed by Secretaría or the mesa, this spec, the code.
+  The Reglamento is not in this repo. Article references were checked against a June 2022 copy. Confirm the current edition with Secretaría before relying on it.
+  Existing docs (docs/scope.md, docs/foundation/) are source material and may be out of date.
+  Language: specs are in English. On-screen terms stay in Spanish where they name something delegates see.
+
+rules:
+  specs:
+    - Write requirements from the Reglamento and confirmed decisions. Never derive a requirement from what the code does.
+    - Cite the source of each business rule, such as a Reglamento article or a dated decision.
+    - Mark a requirement as UNCONFIRMED when no source backs it.
+    - Record each mismatch between spec and code as a finding. Do not change the spec to match the code without a human decision.
+    - State accepted limits openly, such as the lack of cryptographic one-person-one-vote.

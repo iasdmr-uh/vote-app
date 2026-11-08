@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('after the acta, the mesa erases every record of a completed assembly', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
-  const { organizationId, assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'deletion-test', delegates: ['Ana', 'Luis', 'Marta'] })
+  const { voting: service, room, operatorLog, roster } = buildProviders(prisma, gateway)
+  const { organizationId, assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: 'deletion-test', delegates: ['Ana', 'Luis', 'Marta'] })
   const sessions = ['Ana', 'Luis', 'Marta'].map((name) => people[name]!.id)
 
   try {
@@ -21,9 +21,9 @@ test('after the acta, the mesa erases every record of a completed assembly', asy
       title: 'Presidencia', format: 'single_choice', options: [{ label: 'Rosa' }, { label: 'Pedro' }], countingRule: { kind: 'count_only' },
     })
     await service.openRound(round.id)
-    await service.castVote(sessions[0]!, round.id, round.options[0]!.id)
+    for (const session of sessions) await service.castVote(session, round.id, round.options[0]!.id)
     await service.closeRound(round.id)
-    await service.publishRound(round.id)
+    await roster.register(round.id)
 
     const committee = await service.createRound(assemblyId, {
       title: 'Comisión de Finanzas', format: 'multiple_choice', category: 'committee', memberCount: 1, options: [{ label: 'Luis' }, { label: 'Marta' }], countingRule: { kind: 'count_only' },
@@ -36,6 +36,7 @@ test('after the acta, the mesa erases every record of a completed assembly', asy
     assert.equal(await prisma.participantSession.count({ where: { assemblyId } }), 3, 'nothing is erased before the assembly is completed')
 
     await service.completeAssembly(assemblyId, true)
+    await operatorLog.download(assemblyId, 'delete')
     assert.deepEqual(await service.deleteAssemblyData(assemblyId, true), { assemblyId, deleted: true, vacuumed: true })
     assert.deepEqual(events.filter((event) => event.name === 'assemblyDeleted').map((event) => event.target), [assemblyId], 'live sockets of the assembly are closed')
 

@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import {
   OnGatewayConnection,
+  OnGatewayDisconnect,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets'
@@ -18,6 +19,8 @@ import {
 } from './realtime.types.js'
 import { isAllowedWebOrigin } from '../config/origins.js'
 import { isModeratorChannelAllowed } from '../config/moderator-channel.js'
+import { ConnectionPresence, scheduleWithTimers } from './connection-presence.js'
+import { HEARTBEAT_MS } from './connection-timing.js'
 
 export type RealtimeServer = Server<
   RealtimeClientToServerEvents,
@@ -55,16 +58,22 @@ function identityMatchesCredential(identity: RealtimeIdentity, credentials: Real
 
 @WebSocketGateway({
   namespace: '/events',
+  pingInterval: HEARTBEAT_MS,
+  pingTimeout: HEARTBEAT_MS,
   cors: { origin: (origin, callback) => callback(null, isAllowedWebOrigin(origin)), credentials: false },
 })
 @Injectable()
-export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
+export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnGatewayDisconnect<RealtimeSocket> {
   @WebSocketServer()
   private server!: RealtimeServer
 
   private readonly logger = new Logger(RealtimeGateway.name)
+  private readonly countedSockets = new WeakSet<RealtimeSocket>()
 
-  constructor(@Inject(REALTIME_AUTHORIZER) private readonly authorizer: RealtimeAuthorizer) {}
+  constructor(
+    @Inject(REALTIME_AUTHORIZER) private readonly authorizer: RealtimeAuthorizer,
+    @Optional() private readonly presence: ConnectionPresence = new ConnectionPresence(scheduleWithTimers),
+  ) {}
 
   async handleConnection(client: RealtimeSocket): Promise<void> {
     const credentials = readCredentials(client.handshake.auth)
@@ -85,12 +94,22 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
       await client.join(roomFor(identity))
       if (identity.audience === 'participant') {
         await client.join(participantBroadcastRoom(identity.assemblyId))
+        if (!client.disconnected) {
+          this.presence.connect(identity.assemblyId, identity.sessionId)
+          this.countedSockets.add(client)
+        }
       }
     } catch {
       // Do not log credentials, tokens, or auth-provider error bodies.
       this.logger.warn('Rejected unauthenticated realtime connection')
       client.disconnect(true)
     }
+  }
+
+  handleDisconnect(client: RealtimeSocket): void {
+    const identity = client.data.identity
+    if (identity?.audience !== 'participant' || !this.countedSockets.delete(client)) return
+    this.presence.disconnect(identity.assemblyId, identity.sessionId)
   }
 
   publisher(): RealtimePublisher {
@@ -112,7 +131,9 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket> {
   roundOpened(assemblyId: string, payload: Parameters<RealtimePublisher['roundOpened']>[1]): void { this.publisher().roundOpened(assemblyId, payload) }
   roundClosed(assemblyId: string, roundId: string): void { this.publisher().roundClosed(assemblyId, roundId) }
   participationCount(assemblyId: string, payload: Parameters<RealtimePublisher['participationCount']>[1]): void { this.publisher().participationCount(assemblyId, payload) }
+  connectionCount(assemblyId: string, payload: Parameters<RealtimePublisher['connectionCount']>[1]): void { this.publisher().connectionCount(assemblyId, payload) }
   resultsPublished(assemblyId: string, payload: Parameters<RealtimePublisher['resultsPublished']>[1]): void { this.publisher().resultsPublished(assemblyId, payload) }
+  resultsRegistered(assemblyId: string, payload: Parameters<RealtimePublisher['resultsRegistered']>[1]): void { this.publisher().resultsRegistered(assemblyId, payload) }
   presentationState(assemblyId: string, payload: Parameters<RealtimePublisher['presentationState']>[1]): void { this.publisher().presentationState(assemblyId, payload) }
 }
 
@@ -257,6 +278,14 @@ export class RealtimePublisher {
     })
   }
 
+  connectionCount(assemblyId: string, payload: RealtimeServerToClientEvents['connection.count'] extends (arg: infer P) => void ? P : never): void {
+    this.server.to([publicRoom(assemblyId), moderatorRoom(assemblyId)]).emit('connection.count', {
+      roundId: payload.roundId,
+      connected: payload.connected,
+      base: payload.base,
+    })
+  }
+
   resultsPublished(assemblyId: string, payload: RealtimeServerToClientEvents['results.published'] extends (arg: infer P) => void ? P : never): void {
     const sanitized = {
       roundId: payload.roundId,
@@ -264,6 +293,10 @@ export class RealtimePublisher {
     }
     this.server.to([publicRoom(assemblyId), participantBroadcastRoom(assemblyId)]).emit('results.published', sanitized)
     this.server.to(moderatorRoom(assemblyId)).emit('results.published', sanitized)
+  }
+
+  resultsRegistered(assemblyId: string, payload: { roundId: string }): void {
+    this.server.to([publicRoom(assemblyId), participantBroadcastRoom(assemblyId), moderatorRoom(assemblyId)]).emit('results.registered', { roundId: payload.roundId })
   }
 
   /** «Presentar oficiales»: the projector follows the mesa's slide; other mesa tabs stay in sync. */

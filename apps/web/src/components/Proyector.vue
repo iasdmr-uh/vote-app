@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { REGIONAL_SECRETARY_NOTE, voteLabel } from '../resultados'
+import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, electedSoFar, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
 import ProjectorLobby from './ProjectorLobby.vue'
 import ProjectorResults from './ProjectorResults.vue'
+import ResultSummary from './ResultSummary.vue'
 
 const {
-  error, state, code, realtimeActive, realtimeConnected, projectorFullscreen, assemblyStatus, lobbyStatus, round, completionTime, go,
+  error, state, code, realtimeActive, realtimeConnected, projectorFullscreen, assemblyStatus, lobbyStatus, round, connectionCount, completionTime, go,
 } = useAssembly()
 
 const eligible = computed(() => state.value?.eligibleCount ?? state.value?.participantCount ?? 0)
@@ -19,6 +20,7 @@ const progressPercent = computed(() => eligible.value > 0 ? Math.min(100, Math.r
 const presentationSlide = computed(() => state.value?.presentation?.active ? state.value.presentation.slide : null)
 // A settled published result is shown as its slide (P2, P3, P6); the detailed count stays one click away.
 const publishedSlide = computed(() => resultSlide(state.value))
+const soFar = computed(() => electedSoFar(round.value, state.value?.officialResult?.elected, state.value?.final))
 const showCount = ref(false)
 watch(() => round.value?.id, () => { showCount.value = false })
 
@@ -35,7 +37,7 @@ const view = computed(() => {
 
 const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · '))
 const statusLabel = computed(() => ({
-  voting: [round.value?.status === 'closed' ? 'Votación cerrada' : 'Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
+  voting: round.value?.status === 'closed' ? RESULT_WORDING.preparing : ['Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
   results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),
   annulled: 'Votación anulada',
   completed: 'Asamblea finalizada',
@@ -64,6 +66,7 @@ async function toggleProjectorFullscreen() {
   <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
   <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
     <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
+    <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
     <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
     <Diapositiva v-else :presentation="presentationSlide ?? 0" />
   </section>
@@ -78,10 +81,14 @@ async function toggleProjectorFullscreen() {
       <div class="pj-progress" aria-live="polite">
         <p><strong>{{ recorded }}</strong><span>de {{ eligible }} ya votaron</span></p>
         <div class="pj-track" role="progressbar" :aria-valuenow="recorded" :aria-valuemin="0" :aria-valuemax="eligible" aria-label="Personas que ya votaron"><span :style="{ width: `${progressPercent}%` }"></span></div>
+        <p v-if="connectionCount" class="pj-connected">{{ connectedText(connectionCount.connected, connectionCount.base) }}</p>
       </div>
     </template>
 
-    <ProjectorResults v-else-if="view === 'results'" :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
+    <template v-else-if="view === 'results'">
+      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
+      <ProjectorResults :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
+    </template>
 
     <template v-else-if="view === 'annulled'">
       <p class="pj-status pj-status-annulled">{{ statusLabel }}</p>
@@ -130,6 +137,7 @@ async function toggleProjectorFullscreen() {
 .pj-progress p { display: flex; align-items: baseline; gap: calc(var(--u) * 36); }
 .pj-progress strong { color: var(--blue); font-size: calc(var(--u) * 300); font-weight: 900; letter-spacing: -.04em; line-height: .85; }
 .pj-progress span { color: var(--muted); font-size: calc(var(--u) * 64); font-weight: 600; }
+.pj-progress .pj-connected { display: block; margin-top: calc(var(--u) * 28); color: var(--muted); font-size: calc(var(--u) * 52); font-weight: 600; }
 .pj-track { height: calc(var(--u) * 40); margin-top: calc(var(--u) * 64); overflow: hidden; border-radius: 999px; background: var(--soft); }
 .pj-track span { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width .3s ease; }
 

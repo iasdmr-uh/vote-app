@@ -119,8 +119,8 @@ export async function confirm(mesa: Page, button: string, dialogButton = button)
 type Ballot =
   | { kind: 'office'; title: string; candidates: string[] }
   | { kind: 'committee'; title: string; seats: number; candidates: string[] }
-  | { kind: 'decision'; title: string; format: 'boolean'; rule: 'simple' | 'three_quarters' }
-  | { kind: 'decision'; title: string; format: 'options'; rule: 'simple' | 'three_quarters'; options: string[] }
+  | { kind: 'decision'; title: string; format: 'boolean'; rule: 'simple' | 'two_thirds' | 'three_quarters' }
+  | { kind: 'decision'; title: string; format: 'options'; rule: 'simple' | 'two_thirds' | 'three_quarters'; options: string[] }
 
 export async function prepareBallot(mesa: Page, ballot: Ballot) {
   const another = mesa.getByRole('button', { name: 'Preparar otra papeleta' })
@@ -149,7 +149,7 @@ export async function prepareBallot(mesa: Page, ballot: Ballot) {
   } else {
     await mesa.getByLabel('Decisión', { exact: true }).fill(ballot.title)
     await mesa.getByRole('radio', { name: ballot.format === 'boolean' ? 'A favor / En contra' : 'Opciones', exact: true }).click()
-    await mesa.getByRole('radio', { name: ballot.rule === 'simple' ? 'Mayoría simple' : '3/4', exact: true }).click()
+    await mesa.getByRole('radio', { name: { simple: 'Mayoría simple', two_thirds: '2/3', three_quarters: '3/4' }[ballot.rule], exact: true }).click()
     if (ballot.format === 'options') names = ballot.options
   }
   const input = mesa.getByLabel(ballot.kind === 'decision' ? 'Agregar opción' : 'Agregar candidato')
@@ -177,30 +177,34 @@ export async function voteAll(phones: Phone[], ballots: Array<string[] | null>) 
   for (const [index, choices] of ballots.entries()) if (choices) await vote(phones[index], choices)
 }
 
-/** Open, let everyone vote, close and publish one vote, waiting for the mesa's counter in between. */
 export async function runVote(room: Room, ballots: Array<string[] | null>) {
   const { mesa } = room
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   await voteAll(room.phones, ballots)
   const cast = ballots.filter(Boolean).length
-  await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
-  await closeAndPublish(room)
+  if (cast === room.phones.length) await expectClosedByItself(mesa)
+  else await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
+  await closeAndShow(room)
 }
 
-export async function closeAndPublish(room: Room) {
-  const { mesa, projector } = room
-  await confirm(mesa, 'Cerrar votación')
-  await expect(mesa.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
-  await expect(projector.getByText(/Votación cerrada/)).toBeVisible()
-  // Closed results stay with the mesa until it publishes them.
-  await expect(projector.locator('.pj-results')).toHaveCount(0)
-  await confirm(mesa, 'Publicar conteo')
+export async function expectClosedByItself(mesa: Page) {
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
-  // A settled result opens on its slide (#48); the scenarios then check the detailed count behind it.
+}
+
+export async function closeAndShow(room: Room) {
+  const { mesa, projector, assemblyId } = room
+  const { rounds } = await moderatorState(mesa.request, assemblyId)
+  if (rounds.some((round: { status: string }) => round.status === 'open')) await confirm(mesa, 'Cerrar votación')
+  await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
   await expect(projector.locator('.pj-results, .slide').first()).toBeVisible()
   if (await projector.locator('.slide').isVisible()) await projector.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(projector.locator('.pj-results')).toBeVisible()
+}
+
+export async function addToOfficials(mesa: Page) {
+  await confirm(mesa, 'Agregar a oficiales')
+  await expect(mesa.locator('.ballot-card')).toContainText('Registrado como oficial')
 }
 
 /** A result row of the vote the mesa is looking at (not the acta below it). */
@@ -208,8 +212,18 @@ export function mesaRow(mesa: Page, label: string): Locator {
   return mesa.locator('.ballot-card .ranked-rows li').filter({ hasText: label })
 }
 
-export function phoneRow(phone: Phone, label: string): Locator {
-  return phone.page.locator('.phone-results .ranked-rows li').filter({ hasText: label })
+export async function expectPhoneShowsNoResult(phone: Phone) {
+  await expect(phone.page.locator('.phone-screen[data-round-status="closed"], .phone-screen[data-round-status="published"]')).toBeVisible()
+  await expect(phone.page.locator('.result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
+  await expect(phone.page.locator('.phone-screen')).not.toContainText(/electo|desempate|aprobada|resultado|pasan a/i)
+}
+
+// #115: the projector states a final result once, in its «Resultado final» summary, with no banner below.
+export async function expectProjectorFinal(projector: Page, result: string) {
+  const summary = projector.locator('.pj-result-summary .result-summary:not(.result-so-far)')
+  await expect(summary.locator('.eyebrow')).toHaveText('Resultado final')
+  await expect(summary).toContainText(result)
+  await expect(projector.locator('.pj-elected')).toHaveCount(0)
 }
 
 export function projectorRow(projector: Page, label: string): Locator {

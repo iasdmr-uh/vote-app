@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
-import type { Presentation, PublicState } from './types'
+import type { ConnectionCount, Presentation, PublicState } from './types'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 const origin = window.location.origin
@@ -29,6 +29,7 @@ const voteSubmitting = ref(false)
 const qrImage = ref('')
 const realtimeActive = ref(false)
 const realtimeConnected = ref(false)
+const phoneOnline = ref(false)
 const projectorFullscreen = ref(false)
 const printingActa = ref(false)
 const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
@@ -40,6 +41,7 @@ let lastRefreshAt = 0
 let incomingJoinChecked = false
 let refreshQueued = false
 let scheduledRefresh: number | undefined
+let phoneOfflineTimer: number | undefined
 const POLL_WHILE_DISCONNECTED_MS = 7_000
 const POLL_WHILE_CONNECTED_MS = 30_000
 
@@ -53,6 +55,10 @@ const eligibleVotes = computed(() => state.value?.eligibleCount ?? state.value?.
 const completionTime = computed(() => assemblyCompletedAt.value
   ? new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(assemblyCompletedAt.value))
   : '')
+const connectionCount = computed(() => {
+  const connection = state.value?.connection
+  return connection && round.value?.status === 'open' && connection.roundId === round.value.id ? connection : null
+})
 const ballotMaxChoices = computed(() => round.value?.electionSeats ?? round.value?.memberCount ?? null)
 const projectorJoinUrl = computed(() => {
   if (state.value?.joinUrl) return state.value.joinUrl
@@ -113,6 +119,18 @@ async function request<T>(path: string, init: RequestInit = {}, token = ''): Pro
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new ApiRequestError(body.message || 'No se pudo completar la solicitud. Intenta de nuevo.', response.status)
   return body as T
+}
+
+async function requestFile(path: string, body: unknown, token: string) {
+  const response = await fetch(`${API}${path}`, {
+    method: 'POST', body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}))
+    throw new ApiRequestError(failure.message || 'No se pudo completar la solicitud. Intenta de nuevo.', response.status)
+  }
+  return response.blob()
 }
 
 function isUnauthorized(e: unknown) {
@@ -366,11 +384,30 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+function markLinkUp() {
+  realtimeConnected.value = true
+  window.clearTimeout(phoneOfflineTimer)
+  phoneOfflineTimer = undefined
+  phoneOnline.value = true
+}
+
+function markLinkDown() {
+  realtimeConnected.value = false
+  if (!phoneOnline.value || phoneOfflineTimer !== undefined) return
+  phoneOfflineTimer = window.setTimeout(() => {
+    phoneOfflineTimer = undefined
+    phoneOnline.value = false
+  }, state.value?.connectionGraceMs ?? 0)
+}
+
 function syncRealtime() {
   realtimeSocket?.disconnect()
   realtimeSocket = null
   realtimeActive.value = false
   realtimeConnected.value = false
+  window.clearTimeout(phoneOfflineTimer)
+  phoneOfflineTimer = undefined
+  phoneOnline.value = false
   let auth: Record<string, string> | null = null
   if (role.value === 'participant' && sessionToken.value) auth = { audience: 'participant', participantSessionToken: sessionToken.value }
   else if (role.value === 'moderator' && moderatorToken.value && assemblyId.value) auth = { audience: 'moderator', moderatorCredential: moderatorToken.value, assemblyId: assemblyId.value }
@@ -378,8 +415,8 @@ function syncRealtime() {
   if (!auth) return
   const socketUrl = import.meta.env.VITE_SOCKET_URL || `${API.replace(/\/api\/v1\/?$/, '')}/events`
   realtimeActive.value = true
-  realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelayMax: 5000 })
-  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.left', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
+  realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelay: 500, reconnectionDelayMax: 1000 })
+  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.left', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published', 'results.registered']) {
     realtimeSocket.on(event, scheduleRefresh)
   }
   // The projector follows the mesa's slide at once, without waiting for the refresh.
@@ -387,9 +424,12 @@ function syncRealtime() {
     if (state.value && payload) state.value = { ...state.value, presentation: { active: payload.active, slide: payload.slide } }
     scheduleRefresh()
   })
-  realtimeSocket.on('connect', () => { realtimeConnected.value = true; void refresh() })
-  realtimeSocket.on('disconnect', () => { realtimeConnected.value = false })
-  realtimeSocket.on('connect_error', () => { realtimeConnected.value = false })
+  realtimeSocket.on('connection.count', (payload: ConnectionCount | undefined) => {
+    if (state.value && payload) state.value = { ...state.value, connection: { roundId: payload.roundId, connected: payload.connected, base: payload.base } }
+  })
+  realtimeSocket.on('connect', () => { markLinkUp(); void refresh() })
+  realtimeSocket.on('disconnect', markLinkDown)
+  realtimeSocket.on('connect_error', markLinkDown)
 }
 
 function startAssembly() {
@@ -418,6 +458,7 @@ function startAssembly() {
 function stopAssembly() {
   if (refreshTimer) window.clearInterval(refreshTimer)
   if (scheduledRefresh !== undefined) window.clearTimeout(scheduledRefresh)
+  window.clearTimeout(phoneOfflineTimer)
   realtimeSocket?.disconnect()
   document.removeEventListener('fullscreenchange', syncProjectorFullscreen)
 }
@@ -425,10 +466,10 @@ function stopAssembly() {
 export function useAssembly() {
   return {
     origin, route, loading, syncing, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode,
-    moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected,
+    moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected, phoneOnline,
     projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas,
-    role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, completionTime, ballotMaxChoices, projectorJoinUrl,
-    go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
+    role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, connectionCount, completionTime, ballotMaxChoices, projectorJoinUrl,
+    go, openProjectorWindow, request, requestFile, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
     setBrowsingActas, selectAssembly, loadAssemblyLists, recoverActiveAssembly, rememberJoinCode, refreshQr, formatDateTime,
     syncRealtime, startAssembly, stopAssembly,
   }

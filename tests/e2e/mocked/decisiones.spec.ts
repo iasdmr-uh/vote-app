@@ -67,12 +67,12 @@ test('la mesa prepara una decisión A favor / En contra con 3/4 y otra con opcio
   })
 })
 
-test('la mesa ve «Aprobada» y la regla en una decisión cerrada, y «No aprobada» en el acta', async ({ page }) => {
+test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No aprobada» en el acta', async ({ page }) => {
   await asModerator(page)
   const approved = {
-    id: 'presupuesto', title: 'Presupuesto 2027', status: 'closed', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false,
+    id: 'presupuesto', title: 'Presupuesto 2027', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false,
     participationCount: 36, eligibleCount: 38, options: budgetOptions,
-    privateResults: [{ optionId: 'favor', label: 'A favor', count: 30 }, { optionId: 'contra', label: 'En contra', count: 6 }],
+    results: [{ optionId: 'favor', label: 'A favor', count: 30 }, { optionId: 'contra', label: 'En contra', count: 6 }],
     outcome: { seats: 1, base: 38, threshold: 29, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved: true }, officialResult: null,
   }
   const rejected = {
@@ -91,7 +91,7 @@ test('la mesa ve «Aprobada» y la regla en una decisión cerrada, y «No aproba
 
   await page.goto('/moderator')
   const ballot = page.locator('.ballot-card')
-  await expect(ballot).toContainText('VOTACIÓN CERRADA')
+  await expect(ballot).toContainText('CONTEO PUBLICADO')
   await expect(ballot.locator('.majority-chip')).toHaveText('Se aprueba con 3/4 · 29 votos')
   await expect(ballot.locator('.decision-verdict')).toHaveText('Aprobada')
   await expect(ballot.locator('.ranked-rows > li').nth(0)).toHaveText(/A favor\s*30 votos\s*79 %/)
@@ -142,7 +142,7 @@ test('una decisión con opciones sin la mayoría marca Desempate y prepara la 2.
   await expect.poll(() => opened).toContain('/moderator/rounds/sede-2/open')
 })
 
-test('el teléfono vota una decisión A favor / En contra con una sola opción (T03) y ve el resultado', async ({ page }) => {
+test('el teléfono vota una decisión A favor / En contra con una sola opción (T03) y no ve el resultado', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'decision-session'))
   let recorded = false
   let published = false
@@ -186,8 +186,8 @@ test('el teléfono vota una decisión A favor / En contra con una sola opción (
 
   published = true
   await page.reload()
-  await expect(page.locator('.official-card')).toHaveText(/RESULTADO\s*Aprobada/)
-  await expect(page.locator('.phone-results .ranked-rows > li').nth(0)).toHaveText(/A favor\s*30 votos\s*79 %/)
+  await expect(page.locator('.phone-screen[data-round-status="published"]')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText(/Aprobada|A favor|30 votos|resultado/i)
 })
 
 test('el teléfono vota una decisión con opciones (T04)', async ({ page }) => {
@@ -264,6 +264,7 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
         results: [{ optionId: 's', label: 'San Pedro Sula', count: 22 }, { optionId: 't', label: 'Tegucigalpa', count: 15 }],
         outcome: { seats: 1, base: 38, threshold: 20, elected: ['s'], runoff: [], openSeats: 0, rule: 'simple', approved: true },
         officialResult: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
+        final: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], approved: true },
       } })
       return
     }
@@ -274,6 +275,7 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
   await expect(page.locator('.decision-pill')).toHaveText('✓ San Pedro Sula')
   await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con mayoría simple · 20 votos')
-  await expect(page.locator('.pj-elected')).toContainText('San Pedro Sula')
+  await expect(page.locator('.result-summary')).toContainText('San Pedro Sula')
+  await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Aprobada')
 })

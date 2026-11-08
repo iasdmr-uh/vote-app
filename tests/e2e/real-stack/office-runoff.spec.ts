@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndPublish, confirm, expectBadge, mesaRow, openRoom, phoneRow, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * A. An office without majority (#37, #38, #41). Five habilitados, so the majority is 3. Nobody reaches
@@ -31,9 +31,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
   await expectBadge(projectorRow(projector, 'Luis Pérez'), null)
   await expect(projector.locator('.pj-elected')).toHaveCount(0)
   // The phones mark the same runoff, not a bare "Empate" between the 2nd and the 3rd.
-  for (const name of ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz']) await expectBadge(phoneRow(phones[4], name), 'Desempate')
-  await expectBadge(phoneRow(phones[4], 'Luis Pérez'), null)
-  await expect(phones[4].page.locator('.official-card')).toHaveCount(0)
+  await expectPhoneShowsNoResult(phones[4])
 
   // The mesa never picks: it opens the runoff the server prepared.
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
@@ -41,15 +39,15 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
   await expect(mesa.locator('.ballot-card .eyebrow-row .badge-info')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
   await expect(projector.locator('.pj-status')).toHaveText(/Votación abierta · DESEMPATE · 2\.ª VOTACIÓN/)
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(3)
     await expect(phone.page.getByLabel('Luis Pérez', { exact: true })).toHaveCount(0)
   }
 
   // Everyone votes in the runoff: Ana 3 reaches the majority of 5.
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Rosa Díaz']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await expectClosedByItself(mesa)
+  await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 3')
   await expect(mesa.locator('.ballot-card .voters-total')).toContainText('votaron · 0 no votaron')
@@ -60,13 +58,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
 
   await expect(projector.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/)
   await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
+  await expectProjectorFinal(projector, 'Ana Ruiz')
 
-  // The phones show the official result of the election once it is published.
-  for (const phone of phones) {
-    await expect(phone.page.locator('.official-card')).toContainText('RESULTADO OFICIAL')
-    await expect(phone.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
-    await expectBadge(phoneRow(phone, 'Ana Ruiz'), 'Electo/a')
-    await expectBadge(phoneRow(phone, 'Carlos Gómez'), null)
-  }
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

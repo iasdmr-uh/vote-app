@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
-import { VotingService } from '../../src/voting/voting.service.js'
+import { buildProviders } from '../support/providers.js'
 
-const service = new VotingService({} as never, {} as never)
+const service = buildProviders({}, {}).voting
 const base = {
   title: 'Comisión de Finanzas',
   format: 'multiple_choice' as const,
@@ -22,10 +22,10 @@ test('a committee is a multiple-choice ballot of typed names, sized to its seats
   let created: Record<string, any> | undefined
   const tx = {
     $queryRaw: async () => [{ id: 'assembly', status: 'in_progress' }],
-    round: { create: async ({ data }: { data: Record<string, any> }) => { created = data; return { id: 'round', status: 'draft', ...data, options: data.options.create } } },
+    round: { count: async () => 0, create: async ({ data }: { data: Record<string, any> }) => { created = data; return { id: 'round', status: 'draft', ...data, options: data.options.create } } },
     auditEvent: { create: async () => ({}) },
   }
-  const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUnique: async () => null } } as never, {} as never)
+  const voting = buildProviders({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUnique: async () => null } }, {}).voting
   const round = await voting.createRound('assembly', { ...base, format: 'single_choice', category: 'committee', memberCount: 2 })
   assert.equal(created?.format, 'multiple_choice')
   assert.equal(created?.memberCount, 2)
@@ -37,10 +37,10 @@ test('"Voto nulo" is an ordinary name now: nothing is added to the ballot or res
   let labels: string[] = []
   const tx = {
     $queryRaw: async () => [{ id: 'assembly', status: 'in_progress' }],
-    round: { create: async ({ data }: { data: Record<string, any> }) => { labels = data.options.create.map((option: { label: string }) => option.label); return { id: 'round', ...data, options: [] } } },
+    round: { count: async () => 0, create: async ({ data }: { data: Record<string, any> }) => { labels = data.options.create.map((option: { label: string }) => option.label); return { id: 'round', ...data, options: [] } } },
     auditEvent: { create: async () => ({}) },
   }
-  const voting = new VotingService({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUnique: async () => null } } as never, {} as never)
+  const voting = buildProviders({ $transaction: async (work: (value: unknown) => unknown) => work(tx), round: { findUnique: async () => null } }, {}).voting
   await voting.createRound('assembly', { ...base, category: 'office', format: 'single_choice', options: [{ label: 'A' }, { label: 'B' }] })
   assert.deepEqual(labels, ['A', 'B'])
 })
@@ -59,7 +59,7 @@ function exactSeatsVoting(seats: { member_count: number | null; election_seats: 
     round: { findMany: async () => [{ id: 'round', committeeRootRoundId: null }] },
     $transaction: async (work: (value: unknown) => unknown) => work(tx),
   }
-  const voting = new VotingService(database as never, { participantState: () => undefined, participationCount: () => undefined } as never)
+  const voting = buildProviders(database, { participantState: () => undefined, participationCount: () => undefined }).voting
   Object.assign(voting, { participantState: async () => ({}) })
   return { voting, votes }
 }
@@ -95,7 +95,7 @@ test('an office ballot without seats still takes a single choice', async () => {
   assert.deepEqual(votes, [['a']])
 })
 
-test('the mesa sees who voted in the latest opened ballot, never what they chose', async () => {
+test('the mesa sees how many voted in the latest opened ballot and never who (#55)', async () => {
   const database = {
     assembly: { findUnique: async () => ({
       id: 'assembly', name: 'Asamblea', status: 'in_progress', completedAt: null,
@@ -103,17 +103,20 @@ test('the mesa sees who voted in the latest opened ballot, never what they chose
       rounds: [],
     }) },
     round: { findFirst: async ({ where, orderBy }: { where: Record<string, unknown>; orderBy: Record<string, string> }) => {
-      assert.deepEqual(where.openedAt, { not: null }, 'a closed ballot keeps its dots until the next one opens')
+      assert.deepEqual(where.openedAt, { not: null }, 'a closed ballot keeps its count until the next one opens')
       assert.deepEqual(orderBy, { openedAt: 'desc' })
       return { id: 'closed-round', status: 'closed' }
     }, findMany: async () => [{ id: 'closed-round', committeeRootRoundId: null }] },
-    participation: { findMany: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? [{ participantSessionId: 'ana' }] : [] },
+    participation: {
+      count: async ({ where }: { where: { roundId: string } }) => where.roundId === 'closed-round' ? 1 : 0,
+      findMany: async () => assert.fail('the mesa never reads who voted'),
+    },
     participantSession: { count: async () => 2, findMany: async () => [], findFirst: async () => null },
     position: { findMany: async () => [] },
   }
-  const voting = new VotingService(database as never, {} as never)
+  const voting = buildProviders(database, {}).voting
   const state = await voting.moderatorAssembly('assembly')
-  assert.deepEqual(state.participants.map((person) => [person.id, person.voted]), [['ana', true], ['luis', false]])
+  assert.deepEqual(state.participants.map((person) => 'voted' in person), [false, false])
   assert.deepEqual(state.attendanceRound, { roundId: 'closed-round', status: 'closed', votedCount: 1, eligibleCount: 2 })
 })
 
@@ -125,16 +128,16 @@ test('before any ballot opens, nobody carries a voted flag', async () => {
     participantSession: { count: async () => 1, findMany: async () => [], findFirst: async () => null },
     position: { findMany: async () => [] },
   }
-  const state = await new VotingService(database as never, {} as never).moderatorAssembly('assembly')
+  const state = await buildProviders(database, {}).voting.moderatorAssembly('assembly')
   assert.equal('voted' in state.participants[0]!, false)
   assert.equal(state.attendanceRound, null)
 })
 
 test('recovery lists completed assemblies still holding data, so a closed tab does not lose the acta', async () => {
   const completedAt = new Date('2026-10-14T20:00:00.000Z')
-  const voting = new VotingService({ assembly: {
+  const voting = buildProviders({ assembly: {
     findFirst: async () => null,
     findMany: async ({ where }: { where: { status: string } }) => where.status === 'completed' ? [{ id: 'done', name: 'Asamblea 2026', completedAt }] : [],
-  } } as never, {} as never)
+  } }, {}).voting
   assert.deepEqual(await voting.activeAssembly(), { assembly: null, completed: [{ id: 'done', name: 'Asamblea 2026', completedAt: completedAt.toISOString() }] })
 })

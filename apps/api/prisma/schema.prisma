@@ -126,6 +126,7 @@ model Round {
   annulReason    String?         @map("annul_reason")
   /** Percentage base frozen when the ballot stops taking votes, so later arrivals cannot change it. */
   eligibleCount  Int?            @map("eligible_count")
+  regionalSecretaryInBase Boolean? @map("regional_secretary_in_base")
   /** Office only, on the election's first vote: the org-chart box its elected fills. Runoffs inherit it from the root. */
   positionId     String?         @map("position_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -134,9 +135,10 @@ model Round {
   options        BallotOption[]
   participations Participation[]
   votes          AnonymousVote[]
-  officialResult OfficialResult?
+  officialResult OfficialResult? @relation("ElectionResult")
+  settledResult  OfficialResult? @relation("SettlingRound")
   auditEvents    AuditEvent[]
-  committeeRoot Round? @relation("committee_rounds", fields: [committeeRootRoundId], references: [id], onDelete: Cascade)
+  committeeRoot Round? @relation("committee_rounds", fields: [committeeRootRoundId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   committeeRounds Round[] @relation("committee_rounds")
 
   @@index([assemblyId, status])
@@ -167,8 +169,12 @@ model OfficialResult {
   note        String?
   actorRef    String                 @map("actor_ref")
   declaredAt  DateTime               @default(now()) @map("declared_at")
-  publishedAt DateTime?              @map("published_at")
-  round       Round                  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  publishedAt    DateTime?              @map("published_at")
+  settledRoundId String?                @unique @map("settled_round_id") @db.Uuid
+  approved       Boolean?
+  registeredAt   DateTime?              @map("registered_at")
+  round          Round                  @relation("ElectionResult", fields: [roundId], references: [id], onDelete: Cascade)
+  settledRound   Round?                 @relation("SettlingRound", fields: [settledRoundId], references: [id], onDelete: SetNull)
   options     OfficialResultOption[]
 
   @@map("official_results")
@@ -232,6 +238,7 @@ model AuditEvent {
   action     String
   occurredAt DateTime @default(now()) @map("occurred_at")
   metadata   Json?
+  sequence   BigInt   @default(autoincrement())
   assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   round      Round?   @relation(fields: [roundId], references: [id], onDelete: SetNull)
 

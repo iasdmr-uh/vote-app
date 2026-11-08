@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException } from '@nestjs/common'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('the mesa can annul a ballot, repeat it, and annulling takes back what it computed', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service, room } = buildProviders(prisma, gateway)
   const roundStates = () => events.filter((event) => event.name === 'roundState').map((event) => (event.payload as { status: string }).status)
-  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'annulment-test', delegates: ['Ana', 'Luis', 'Marta'] })
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: 'annulment-test', delegates: ['Ana', 'Luis', 'Marta'] })
   const voters = ['Ana', 'Luis', 'Marta'].map((name) => people[name]!.id)
 
   try {
@@ -32,7 +32,6 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 0, 'annulled votes can never be counted')
     assert.equal(await prisma.participation.count({ where: { roundId: round.id } }), 1, 'the participation receipt stays as a record')
     await assert.rejects(service.castVote(voters[1]!, round.id, round.options[0]!.id), ConflictException)
-    await assert.rejects(service.publishRound(round.id), ConflictException)
     const publicAfterAnnul = await service.publicState(joinCode)
     assert.equal(publicAfterAnnul.round?.status, 'annulled')
     assert.equal('results' in publicAfterAnnul, false)
@@ -47,8 +46,7 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     await service.castVote(voters[1]!, repeat.id, repeat.options[1]!.id)
     await service.castVote(voters[2]!, repeat.id, repeat.options[0]!.id)
     await service.closeRound(repeat.id)
-    assert.equal('officialResult' in await service.publicState(joinCode), false, 'the result stays with the mesa until published')
-    const results = (await service.publishRound(repeat.id)).results
+    const results = (await service.publicState(joinCode)).results!
     assert.deepEqual(results.map((option) => [option.label, option.count]), [['María López', 2], ['Juan Peres', 1]])
     assert.deepEqual((await service.publicState(joinCode)).officialResult?.elected.map((item) => item.label), ['María López'], '2 of 3 is a majority')
     assert.equal((await service.annulRound(round.id, 'otra vez')).status, 'annulled', 'annulling again is a no-op')

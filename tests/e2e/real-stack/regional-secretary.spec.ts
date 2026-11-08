@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
-import { closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll, type Phone, type Room } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll, type Phone, type Room } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -10,8 +10,8 @@ const tied = (first: string, second: string) => [[first], [first], [second], [se
 async function voteAndPublish(room: Room, ballots: string[][]) {
   await expect(room.mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   await voteAll(room.phones, ballots)
-  await expect(room.mesa.locator('.vote-progress strong')).toHaveText(String(ballots.length))
-  await closeAndPublish(room)
+  await expectClosedByItself(room.mesa)
+  await closeAndShow(room)
 }
 
 async function addRegionalSecretary(browser: Browser, mesa: Page): Promise<Phone> {
@@ -56,13 +56,13 @@ test('three tied votes bring in the regional secretary, whose secret vote settle
   await expect(projector.locator('.pj-progress')).toContainText('de 5 ya votaron')
   await voteAll(phones, tied('Ana Ruiz', 'Luis Mora'))
   await vote(secretary, ['Ana Ruiz'])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await expectClosedByItself(mesa)
+  await closeAndShow(room)
 
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
   await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
-  await expect(phones[3].page.locator('.official-card strong')).toHaveText('Ana Ruiz')
-  await expect(secretary.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
+  await expectPhoneShowsNoResult(phones[3])
+  await expectPhoneShowsNoResult(secretary)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('4')
 
   const record = mesa.locator('.official-round')
@@ -93,8 +93,8 @@ test('a decision with options that stays tied takes the regional secretary on it
   await confirm(mesa, 'Abrir votación')
   await voteAll(room.phones, tied('Tegucigalpa', 'La Ceiba'))
   await vote(secretary, ['La Ceiba'])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await expectClosedByItself(mesa)
+  await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .decision-verdict')).toHaveText('La Ceiba')
   const final = await moderatorState(request, assemblyId)

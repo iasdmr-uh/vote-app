@@ -43,7 +43,7 @@ const {
         <SegmentedSelector labelledby="decision-format-label" :options="[{ value: 'boolean', label: 'A favor / En contra' }, { value: 'options', label: 'Opciones' }]" v-model="decisionFormat" />
       </div>
       <div class="field-group"><span class="field-label" id="approval-rule-label">Se aprueba con</span>
-        <SegmentedSelector labelledby="approval-rule-label" :options="[{ value: 'simple', label: 'Mayoría simple' }, { value: 'three_quarters', label: '3/4' }]" v-model="approvalRule" />
+        <SegmentedSelector labelledby="approval-rule-label" :options="[{ value: 'simple', label: 'Mayoría simple' }, { value: 'two_thirds', label: '2/3' }, { value: 'three_quarters', label: '3/4' }]" v-model="approvalRule" />
       </div>
     </template>
     <div v-if="roundCategory !== 'decision' || decisionFormat === 'options'" class="field-group"><span class="field-label">{{ roundCategory === 'decision' ? 'Opciones' : 'Candidatos' }}</span>

@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { decisionVerdict, displayOrder, isDecision, isTied, percentOf, voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 import PhoneBallot from './PhoneBallot.vue'
 import PhoneJoinForm from './PhoneJoinForm.vue'
-import PhoneResults from './PhoneResults.vue'
 import PhoneVoteReview from './PhoneVoteReview.vue'
 
 const {
@@ -21,22 +19,6 @@ const voteRecorded = computed(() => state.value?.participationStatus === 'record
 const ballotShown = computed(() => assemblyStatus.value !== 'completed' && round.value?.status === 'open' && Boolean(round.value.options?.length) && !voteRecorded.value)
 // The mesa inhabilitó this delegate: during an open vote they see the state, never the ballot.
 const votingDisabled = computed(() => Boolean(state.value?.votingDisabled) && assemblyStatus.value !== 'completed' && round.value?.status === 'open' && !voteRecorded.value)
-const resultBase = computed(() => state.value?.eligibleCount ?? 0)
-const resultVoters = computed(() => state.value?.recordedCount ?? round.value?.participationCount ?? 0)
-const resultRows = computed(() => {
-  const results = displayOrder(round.value, state.value?.results || [])
-  const outcome = state.value?.outcome
-  return results.map((result, index) => ({
-    key: result.optionId || result.label,
-    label: result.label,
-    count: result.count,
-    rank: index + 1,
-    // A decision's result is its verdict, so a tie needs no badge.
-    tied: !outcome && !isDecision(round.value) && isTied(results, index),
-    percent: percentOf(result.count, resultBase.value),
-  }))
-})
-const verdict = computed(() => round.value ? decisionVerdict(round.value, state.value?.outcome, state.value?.results) : '')
 
 function switchToIncomingAssembly() {
   const incoming = pendingJoinCode.value
@@ -81,23 +63,22 @@ async function submitVote() {
 
 <template>
   <PhoneJoinForm v-if="!sessionToken" />
-  <section v-else class="card participant-card phone-screen">
+  <section v-else class="card participant-card phone-screen" :data-round-status="round?.status">
     <div v-if="pendingJoinCode" class="notice error" role="alert">
       Este QR corresponde a otra Asamblea.
       <button class="secondary" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
     </div>
     <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
-      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · VOTACIÓN ABIERTA</p>
       <h1>Voto inhabilitado</h1>
     </template>
     <PhoneBallot v-else-if="ballotShown && round" :round="round" :seats-to-fill="seatsToFill" :selection-complete="selectionComplete" @review="reviewVote" />
     <template v-else>
       <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
       <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
-      <PhoneResults v-if="resultRows.length || state?.officialResult || verdict" :round="round" :rows="resultRows" :verdict="verdict" :base="resultBase" :voters="resultVoters" :official-result="state?.officialResult" :outcome="state?.outcome" />
-      <h1 v-else-if="round?.status === 'annulled' && assemblyStatus !== 'completed'">Votación anulada</h1>
-      <h1 v-else-if="assemblyStatus !== 'completed' && !voteRecorded">Sala de espera</h1>
+      <h1 v-else-if="round?.status === 'annulled'">Votación anulada</h1>
+      <h1 v-else-if="!voteRecorded">Sala de espera</h1>
       <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? 'Votación en curso' : 'Espera la siguiente papeleta' }}</p>
     </template>
   </section>

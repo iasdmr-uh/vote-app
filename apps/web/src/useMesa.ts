@@ -1,13 +1,14 @@
 import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
-import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
+import { showTransientNotice } from './transient-notice'
+import { RESULT_WORDING, actaSheetRows, decisionTie } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
 const {
   loading, error, notice, state, code, moderatorToken, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies,
-  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
+  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, request, requestFile, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
@@ -41,6 +42,7 @@ const newBallotCandidate = ref('')
 const preparingRunoffId = ref('')
 const newRunoffCandidate = ref('')
 const secrecyCleanupPendingRounds = computed(() => (state.value?.rounds || []).filter((item) => item.secrecyCleanupPending))
+const voteOpen = computed(() => Boolean(state.value?.rounds?.some((item) => item.status === 'open')))
 const assemblyStatusLabels: Record<string, string> = { preparing: 'En preparación', lobby_open: 'Ingreso abierto', lobby_closed: 'Ingreso cerrado', in_progress: 'En curso', completed: 'Finalizada' }
 const roundStatusLabels: Record<string, string> = { draft: 'preparada', open: 'abierta', closed: 'cerrada', published: 'publicada', annulled: 'anulada' }
 function roundChain(target: RoundRecord) {
@@ -50,9 +52,8 @@ const attendance = computed(() => {
   const record = state.value?.attendanceRound
   if (!record) return null
   const participants = state.value?.participants || []
-  // An inhabilitado still counts in the base, but no longer "falta"; one who already voted counts only in "votaron".
-  const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
-  const disabled = participants.filter((person) => person.votingDisabled && !person.voted).length
+  const disabled = participants.filter((person) => person.votingDisabled).length
+  const pending = record.status === 'open' ? Math.max(0, (record.eligibleCount ?? participants.length) - record.votedCount - disabled) : null
   return { ...record, pending, disabled }
 })
 const roomWarning = computed(() => {
@@ -112,18 +113,6 @@ function eligibleOf(target: RoundRecord) {
   if (own !== undefined) return own
   if (target.id === round.value?.id && eligibleVotes.value) return eligibleVotes.value
   return state.value?.participants?.length ?? 0
-}
-
-function rankedRows(unsorted: Array<{ optionId?: string; label: string; count: number }>, base: number) {
-  const results = [...unsorted].sort((a, b) => b.count - a.count)
-  return results.map((result, index) => ({
-    key: result.optionId || result.label,
-    label: result.label,
-    count: result.count,
-    rank: index + 1,
-    tied: isTied(results, index),
-    percent: percentOf(result.count, base),
-  }))
 }
 
 function annulRound(target: { id: string; title: string }) {
@@ -264,8 +253,6 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown, on
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
           : path.endsWith('/repeat')
             ? { title: '¿Repetir la votación?', consequence: 'Se prepara una papeleta con las mismas opciones.', label: 'Repetir votación' }
-          : path.endsWith('/publish')
-            ? { title: '¿Publicar el conteo?', consequence: 'Teléfonos y proyector mostrarán el conteo y los electos.', label: 'Publicar conteo' }
             : removed
               ? { title: '¿Retirar a esta persona?', consequence: 'Ya no podrá participar desde esta sesión.', label: 'Retirar participante' }
               : { title: '¿Guardar los cambios?', consequence: 'Se actualizarán los datos de esta persona en la lista.', label: 'Guardar cambios' }
@@ -285,13 +272,28 @@ async function confirmModeratorAction() {
   let succeeded = false
   try {
     const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
-    notice.value = 'Acción registrada.'
+    showTransientNotice(notice, 'Acción registrada.', (run, ms) => { setTimeout(run, ms) })
     succeeded = true
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
   if (succeeded && action.path.endsWith('/complete')) notice.value = 'La Asamblea quedó finalizada. Imprime o guarda el acta antes de borrar los datos.'
   if (succeeded) await refresh(true)
+}
+
+function registerOfficial(record: RoundRecord) {
+  const root = rootRoundOf(record) ?? record
+  const result = root.officialResult
+  const named = result?.approved === null || result?.approved === undefined
+    ? result?.elected.map((person) => person.label).join(' · ') ?? ''
+    : `${root.title}: ${result.approved ? RESULT_WORDING.approved : RESULT_WORDING.notApproved}`
+  moderationConfirmation.value = {
+    title: `¿${RESULT_WORDING.register}?`,
+    consequence: `${named}. No se podrá deshacer.`,
+    label: RESULT_WORDING.register,
+    path: `/moderator/elections/${encodeURIComponent(root.id)}/register`,
+    method: 'POST',
+  }
 }
 
 function rotateJoinCode() {
@@ -421,21 +423,45 @@ async function printActa() {
   window.print()
 }
 
+function assemblyFileSlug() {
+  return (state.value?.assembly?.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'asamblea'
+}
+
 function downloadActaSpreadsheet() {
   const rows = actaSheetRows(state.value?.rounds || [], roundStatusLabels)
   const link = document.createElement('a')
   link.href = URL.createObjectURL(xlsxBlob('Acta', rows))
-  link.download = `acta-${(state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}.xlsx`
+  link.download = `acta-${assemblyFileSlug()}.xlsx`
   link.click()
   URL.revokeObjectURL(link.href)
 }
 
-function deleteAssemblyData() {
+async function downloadOperatorLog(purpose: 'review' | 'delete' = 'review') {
+  if (!assemblyId.value || loading.value) return false
+  error.value = ''
+  loading.value = true
+  try {
+    const blob = await requestFile(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/log`, { purpose }, moderatorToken.value)
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `registro-${assemblyFileSlug()}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    notice.value = purpose === 'delete' ? 'Se descargó el registro para «Borrar datos». Guárdalo antes de borrar.' : 'Se descargó el registro.'
+    return true
+  } catch (e) {
+    error.value = (e as Error).message
+    return false
+  } finally { loading.value = false }
+}
+
+async function deleteAssemblyData() {
   if (!assemblyId.value || assemblyStatus.value !== 'completed') return
   const deletedId = assemblyId.value
+  if (!await downloadOperatorLog('delete')) return
   moderationConfirmation.value = {
     title: '¿Borrar todos los datos de la Asamblea?',
-    consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta.',
+    consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta y guardar el registro que se acaba de descargar.',
     label: 'Borrar datos',
     reasonLabel: 'Escribe BORRAR para confirmar',
     typedConfirmation: 'BORRAR',
@@ -558,12 +584,12 @@ export function useMesa() {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
     showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
-    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
+    secrecyCleanupPendingRounds, voteOpen, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
-    roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
-    annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
+    roundChain, voteNumber, rootRoundOf, eligibleOf, electionComplete, runoffOf,
+    annulRound, registerOfficial, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
-    openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
+    openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData,
     createAssembly, editParticipant, createRound, signInModerator,
   }
 }

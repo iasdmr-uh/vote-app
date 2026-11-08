@@ -3,17 +3,15 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { NotFoundException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PresentationService } from '../../src/voting/presentation.service.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('«Presentar oficiales»: the mesa moves the slide, it is audited, broadcast and read by the projector and the mesa', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const voting = new VotingService(prisma, gateway)
-  const presentation = new PresentationService(prisma, gateway)
+  const { voting, presentation } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
 
   try {
@@ -54,8 +52,7 @@ test('«Presentar oficiales»: the mesa moves the slide, it is audited, broadcas
 test('opening a vote ends «Presentar oficiales», audits it and tells the projector', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const voting = new VotingService(prisma, gateway)
-  const presentation = new PresentationService(prisma, gateway)
+  const { voting, presentation, roster } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
 
   try {
@@ -75,6 +72,7 @@ test('opening a vote ends «Presentar oficiales», audits it and tells the proje
 
     // With the presentation already off, opening the next vote records nothing more.
     await voting.closeRound(budget.id)
+    await roster.register(budget.id)
     const next = await voting.createRound(assemblyId, { title: 'Reforma', format: 'multiple_choice', category: 'decision', decisionFormat: 'boolean' })
     events.length = 0
     await voting.openRound(next.id)

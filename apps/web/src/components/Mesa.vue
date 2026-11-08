@@ -17,9 +17,9 @@ const {
 } = useAssembly()
 const {
   moderatorCredential, assemblyName, assemblyPeriod, showNextBallotForm, preparedRunoff,
-  secrecyCleanupPendingRounds, moderatorWorkflow, currentRoundRecord, moderatorWorkflowStep, otherPendingActas,
+  secrecyCleanupPendingRounds, voteOpen, moderatorWorkflow, currentRoundRecord, moderatorWorkflowStep, otherPendingActas,
   repeatAllOptions, openCompletedAssembly, openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa,
-  downloadActaSpreadsheet, deleteAssemblyData, createAssembly, signInModerator,
+  downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData, createAssembly, signInModerator,
 } = useMesa()
 </script>
 
@@ -53,12 +53,12 @@ const {
       <p v-if="otherPendingActas.length" class="status-line pending-actas">{{ otherPendingActas.length === 1 ? '1 Asamblea finalizada' : `${otherPendingActas.length} Asambleas finalizadas` }} con datos guardados. <button class="link-button" @click="showPendingActas">Ver actas pendientes</button></p>
       <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
         <strong>Limpieza del secreto del voto pendiente</strong> ({{ secrecyCleanupPendingRounds.map((item) => item.title).join(', ') }}).
-        <button class="secondary" :disabled="loading" @click="retrySecrecyCleanup">Reintentar limpieza</button>
+        <button v-if="!voteOpen" class="secondary" :disabled="loading" @click="retrySecrecyCleanup">Reintentar limpieza</button>
       </section>
       <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>Asamblea finalizada</strong><p v-if="completionTime">{{ completionTime }}</p></div></section>
       <section v-if="assemblyStatus === 'completed'" class="card after-assembly"><p class="eyebrow">DESPUÉS DE LA ASAMBLEA</p><h2>Acta y borrado de datos</h2>
         <ol class="after-steps"><li>Imprime o guarda el acta.</li><li>Entrégala a Secretaría.</li><li>Borra los datos de esta laptop.</li></ol>
-        <div class="action-row"><button class="primary" @click="printActa">Imprimir o guardar PDF</button><button class="secondary" @click="downloadActaSpreadsheet">Descargar hoja de cálculo</button><button class="danger" :disabled="loading" @click="deleteAssemblyData">Borrar datos de la Asamblea</button></div>
+        <div class="action-row"><button class="primary" @click="printActa">Imprimir o guardar PDF</button><button class="secondary" @click="downloadActaSpreadsheet">Descargar hoja de cálculo</button><button class="secondary" :disabled="loading" @click="downloadOperatorLog()">Descargar registro</button><button class="danger" :disabled="loading" @click="deleteAssemblyData">Borrar datos de la Asamblea</button></div>
         <p class="status-line"><button class="link-button" @click="showPendingActas">Cerrar el acta sin borrar</button></p>
       </section>
       <div v-else class="mesa-layout">

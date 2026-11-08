@@ -9,11 +9,14 @@ import {
   actaSummary,
   approvalText,
   completedCommittee,
+  connectedText,
+  marksPerPersonText,
   countsOf,
   decisionTie,
   decisionVerdict,
   displayOrder,
   electedInVote,
+  electedSoFar,
   formatNames,
   isTied,
   majorityText,
@@ -159,6 +162,30 @@ describe('turnout', () => {
   })
 })
 
+describe('connectedText', () => {
+  test('shows connected phones out of the base', () => {
+    assert.equal(connectedText(47, 50), '47 de 50 conectados')
+  })
+
+  test('shows a full room', () => {
+    assert.equal(connectedText(50, 50), '50 de 50 conectados')
+  })
+
+  test('shows an empty base', () => {
+    assert.equal(connectedText(0, 0), '0 de 0 conectados')
+  })
+})
+
+describe('marksPerPersonText', () => {
+  test('asks each person for exactly the open seats', () => {
+    assert.equal(marksPerPersonText(5), 'Cada persona marca exactamente 5')
+  })
+
+  test('asks for exactly one when one seat is open', () => {
+    assert.equal(marksPerPersonText(1), 'Cada persona marca exactamente 1')
+  })
+})
+
 describe('rankedResults', () => {
   test('rankedResults: orders by votes with place, share and tie', () => {
     const results = [{ label: 'Eliseo', count: 3 }, { label: 'Elías', count: 5 }, { label: 'Isaías', count: 3 }]
@@ -230,12 +257,6 @@ describe('decisionTie', () => {
 
     assert.equal(tie?.text, 'Empate por los últimos 2 cupos: Eliseo, Isaías y Jeremías, 10 votos cada uno.')
     assert.equal(tie?.openSeats, 2)
-  })
-
-  test('decisionTie: the mesa sees a tie in the private results before they are published', () => {
-    const target = round({ privateResults: counted([['Elías', 9], ['Eliseo', 9]]).results })
-
-    assert.equal(decisionTie(target)?.count, 9)
   })
 
   test('decisionTie: there is no tie when one candidate leads', () => {
@@ -333,6 +354,16 @@ describe('labels', () => {
     assert.equal(approvalText(decision(), decision().outcome), 'Se aprueba con 3/4 · 29 votos')
   })
 
+  test('approvalText: names the 2/3 rule and the votes it needs', () => {
+    const amendment = decision({ approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(approvalText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
+  test('majorityText: a closed 2/3 decision names its rule before the count is published', () => {
+    const amendment = decision({ status: 'closed', approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(majorityText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
   test('approvalText: names the simple majority and uses the singular for one vote', () => {
     assert.equal(approvalText(decision({ approvalRule: 'simple' }), { ...outcome(1, []), rule: undefined }), 'Se aprueba con mayoría simple · 1 voto')
   })
@@ -395,10 +426,8 @@ describe('decisions', () => {
 })
 
 describe('counts', () => {
-  test('countsOf: falls back to private results before publishing', () => {
-    const privateResults = counted([['Elías', 3]]).results
-
-    assert.deepEqual(countsOf(round({ privateResults })), privateResults)
+  test('countsOf: a vote whose result is still being prepared has no counts', () => {
+    assert.deepEqual(countsOf(round({ status: 'closed' })), [])
   })
 
   test('voteCountOf: finds an option by id', () => {
@@ -599,7 +628,7 @@ describe('actaRows', () => {
   test('actaRows: without a computed result only a tie is marked, and without a base there is no share', () => {
     const target = round({ eligibleCount: undefined, ...counted([['Elías', 2], ['Eliseo', 2]]) })
 
-    assert.deepEqual(actaRows(target).map(({ tag, percent }) => [tag, percent]), [['Empate', null], ['Empate', null]])
+    assert.deepEqual(actaRows(target).map(({ tag, percent }) => [tag, percent]), [['Desempate', null], ['Desempate', null]])
   })
 })
 
@@ -651,5 +680,35 @@ describe('orgChart', () => {
 
   test('orgChart: no positions give an empty chart', () => {
     assert.deepEqual(orgChart([]), { boardTop: [], boardBottom: [], departmentRows: [] })
+  })
+})
+
+describe('electedSoFar', () => {
+  const committee = { category: 'committee' as const, memberCount: 5 }
+  const three = [{ label: 'Isaías' }, { label: 'Jeremías' }, { label: 'Ezequiel' }]
+  const five = [...three, { label: 'Daniel' }, { label: 'Oseas' }]
+
+  test('electedSoFar: a committee of five with three elected lists them with the seat count', () => {
+    assert.deepEqual(electedSoFar(committee, three, null), { title: 'Electos hasta ahora · 3 de 5', names: 'Isaías · Jeremías · Ezequiel' })
+  })
+
+  test('electedSoFar: the wording never says final or official while seats are open', () => {
+    assert.doesNotMatch(electedSoFar(committee, three, null)!.title, /final|oficial/i)
+  })
+
+  test('electedSoFar: a complete election has no preliminary block', () => {
+    assert.equal(electedSoFar(committee, five, null), null)
+    assert.equal(electedSoFar(committee, five, { elected: five, approved: null }), null)
+  })
+
+  test('electedSoFar: nobody elected yet shows nothing', () => {
+    assert.equal(electedSoFar(committee, [], null), null)
+    assert.equal(electedSoFar(committee, undefined, null), null)
+  })
+
+  test('electedSoFar: an office or decision is never partial', () => {
+    assert.equal(electedSoFar({ category: 'office', memberCount: null }, [{ label: 'Isaías' }], null), null)
+    assert.equal(electedSoFar({ category: 'decision', memberCount: null }, [{ label: 'Sí' }], null), null)
+    assert.equal(electedSoFar(undefined, three, null), null)
   })
 })

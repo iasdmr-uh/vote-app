@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { api, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * C. A new candidate (#40). The mesa may add one from the 3rd vote on, never in the first runoff. Five
@@ -38,7 +38,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   // 2nd vote: Ana 2, Carlos 2, one does not vote; still no majority.
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez'], null])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('4')
-  await closeAndPublish(room)
+  await closeAndShow(room)
   await expect(mesa.locator('.ballot-card .voters-total')).toContainText('votaron · 1 no votó')
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Desempate')
   await expectBadge(mesaRow(mesa, 'Carlos Gómez'), 'Desempate')
@@ -62,19 +62,19 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(3)
     await expect(phone.page.getByLabel('Elena Castro', { exact: true })).toBeVisible()
   }
   await voteAll(phones, [['Elena Castro'], ['Elena Castro'], ['Elena Castro'], ['Ana Ruiz'], ['Carlos Gómez']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await expectClosedByItself(mesa)
+  await closeAndShow(room)
 
   await expectBadge(mesaRow(mesa, 'Elena Castro'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), null)
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
   await expectBadge(projectorRow(projector, 'Elena Castro'), '✓ Electo/a')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Elena Castro')
+  await expectProjectorFinal(projector, 'Elena Castro')
   await expect(projector.locator('.pj-status')).toHaveText(/DESEMPATE · 3\.ª VOTACIÓN/)
-  for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Elena Castro')
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

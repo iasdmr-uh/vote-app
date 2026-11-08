@@ -5,11 +5,11 @@ import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
 import { writeChain, type ChainVote } from '../scenarios/chain-diagram.js'
 import { assertVoteInvariants, candidatesOf, delegateName, expandBallots, seatsOf, seededShuffle, sorted } from '../scenarios/session-tools.js'
 import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
+import { buildProviders } from '../support/providers.js'
 
 const outputDirectory = process.env.SCENARIOS_OUT ?? fileURLToPath(new URL('../../../../test-results/scenarios/', import.meta.url))
 
@@ -18,9 +18,9 @@ type Mesa = Awaited<ReturnType<VotingService['moderatorAssembly']>>
 
 async function withAssembly(name: string, count: number, body: (context: { service: VotingService; assemblyId: string; people: string[] }) => Promise<void>) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => delegateName(index + 1))
-  const seeded = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const seeded = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, assemblyId: seeded.assemblyId, people: names.map((person) => seeded.people[person]!.id) })
   } finally {
@@ -104,7 +104,7 @@ async function playFixture(fixture: Fixture, seed: number | null) {
       const outcome = closed.outcome!
       assert.equal(closed.eligibleCount, vote.expect.base, `${context}: base`)
       assert.equal(outcome.threshold, vote.expect.threshold, `${context}: threshold`)
-      const counts = Object.fromEntries(closed.privateResults!.map((row) => [row.label, row.count]))
+      const counts = Object.fromEntries(closed.results!.map((row) => [row.label, row.count]))
       assert.deepEqual(counts, vote.expect.tally, `${context}: tally`)
       const elected = labelsOf(closed.options, outcome.elected)
       const continuing = labelsOf(closed.options, outcome.runoff)
@@ -130,7 +130,7 @@ async function playFixture(fixture: Fixture, seed: number | null) {
         number: index + 1,
         base: closed.eligibleCount,
         threshold: outcome.threshold,
-        tally: closed.privateResults!.map((row) => ({ label: row.label, count: row.count })),
+        tally: closed.results!.map((row) => ({ label: row.label, count: row.count })),
         abstained: closed.eligibleCount - closed.participationCount,
         elected,
         continuing,
@@ -138,7 +138,6 @@ async function playFixture(fixture: Fixture, seed: number | null) {
         approved: fixture.kind === 'decision' ? (outcome as { approved?: boolean }).approved : undefined,
       })
 
-      await service.publishRound(current.id)
       if (next) current = next
     }
 
