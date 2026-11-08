@@ -41,7 +41,7 @@ The base counts people, never marks. A delegate can mark a candidate only once, 
 | New candidate allowed from the 3rd vote | Offices, committees | Project decision, 2 Nov 2026, explained by the union representatives |
 | Regional secretary joins as one more secret voter, base + 1 | Offices, committees and Opciones decisions, from the 4th vote, after a tie at the cut. Stays for the later votes of that election while in the room | Reglamento 05-09 02: «El representante de la Conferencia General tendrá derecho a voto dirimente, cuando persiste un empate en las votaciones hasta tres votaciones.» 03-06 06 names the Secretario Regional as that representative. Mechanism is a project decision, 6 Nov 2026 |
 | 3/4 of the base, rounded up | Decisions, when the ballot asks for it | Board decision, final, 8 Nov 2026, #88 |
-| A result is official only when its election is complete, with every seat filled. Until then it is preliminary | Offices, committees | Project decision, 8 Nov 2026 |
+| A result is final only when its election is complete, with every seat filled. Until then it is preliminary. Only a final result goes to «Agregar a oficiales» | Offices, committees | Project decision, 8 Nov 2026 |
 | 2/3 of the base, rounded up | Decisions, when the ballot asks for it. Not implemented yet | Reglamento 01-02 03: «sólo pueden ser modificados con las 2/3 partes de los votos de la Asamblea». Planned in #87 |
 
 Reglamento 05-12 03 is written for the comisión de nombramiento. The tool applies it to every committee and office.
@@ -192,7 +192,7 @@ Every candidate has 0, so nobody has a majority and every candidate goes to the 
 | 3rd and later | The mesa may add a new candidate |
 | 4th and later, after a tie at the cut | The mesa may add the regional secretary as one more secret voter. The base grows by 1. The secretary stays for the later votes of that election while in the room |
 
-While seats stay open, the result is preliminary. People already elected show «Electo/a» and keep their seats while the later votes fill the rest. The result becomes official when the last seat is filled.
+While seats stay open, the result is preliminary. People already elected show «Electo/a» and keep their seats while the later votes fill the rest. The result becomes final when the last seat is filled, and only then does the mesa add it to the officials.
 
 The tool and the mesa never choose between tied candidates. Only another vote separates them. No rule yet ends a chain that keeps tying.
 
