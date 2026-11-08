@@ -103,6 +103,17 @@ test('the download is the last entry of its own file, and the file keeps votes s
   }
 })
 
+test('the download sorts last even after an entry stamped later than the download began', { skip }, async () => {
+  const { prisma, log, assemblyId, cleanup } = await setup()
+  try {
+    await prisma.auditEvent.create({ data: { assemblyId, actorRef: 'test', action: 'lobby.closed', occurredAt: new Date(Date.now() + 60_000), metadata: {} } })
+    const { csv } = await log.download(assemblyId, 'delete')
+    assert.deepEqual(actionsOf(csv), ['Sala cerrada', 'Registro descargado para «Borrar datos»'])
+  } finally {
+    await cleanup()
+  }
+})
+
 test('a refused action is not logged', { skip }, async () => {
   const { prisma, voting, assemblyId, cleanup } = await setup()
   try {

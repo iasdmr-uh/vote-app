@@ -32,7 +32,8 @@ export class OperatorLogService {
       const rows = await tx.$queryRaw<Array<{ name: string }>>`SELECT name FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE`
       if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
       const entryCount = await tx.auditEvent.count({ where: loggedWhere(assemblyId) }) + 1
-      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: LOG_DOWNLOADED, metadata: { purpose, entryCount } } })
+      const [{ at }] = await tx.$queryRaw<Array<{ at: Date }>>`SELECT GREATEST(clock_timestamp() AT TIME ZONE 'UTC', (SELECT max(occurred_at) FROM audit_events WHERE assembly_id = ${assemblyId}::uuid)) AS at`
+      await tx.auditEvent.create({ data: { assemblyId, actorRef: MODERATOR_ACTOR, action: LOG_DOWNLOADED, occurredAt: at, metadata: { purpose, entryCount } } })
       const events = await tx.auditEvent.findMany({
         where: loggedWhere(assemblyId),
         select: { action: true, occurredAt: true, sequence: true, metadata: true, round: { select: { title: true } } },

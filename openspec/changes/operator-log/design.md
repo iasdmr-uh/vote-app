@@ -36,7 +36,7 @@ A migration adds `audit_events.sequence BIGSERIAL`. The file orders by `occurred
 
 ### Download is a POST that writes, then reads
 
-`POST /moderator/assemblies/:id/log` with `{ "purpose": "review" | "delete" }` returns `text/csv`. In one transaction it locks the assembly row, counts the catalogue entries, inserts `log.downloaded` with `{ purpose, entryCount }` where `entryCount` includes the new entry, and reads all catalogue entries. POST fits because the request changes state.
+`POST /moderator/assemblies/:id/log` with `{ "purpose": "review" | "delete" }` returns `text/csv`. In one transaction it locks the assembly row, counts the catalogue entries, inserts `log.downloaded` with `{ purpose, entryCount }` where `entryCount` includes the new entry, and reads all catalogue entries. The new entry takes the later of `clock_timestamp()` and the newest entry's time, read after the lock, so it sorts last in its own file. POST fits because the request changes state.
 
 ### The gate compares counts
 
