@@ -275,6 +275,7 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
   await expect(page.locator('.decision-pill')).toHaveText('✓ San Pedro Sula')
   await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con mayoría simple · 20 votos')
-  await expect(page.locator('.pj-elected')).toContainText('San Pedro Sula')
+  await expect(page.locator('.result-summary')).toContainText('San Pedro Sula')
+  await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Aprobada')
 })
