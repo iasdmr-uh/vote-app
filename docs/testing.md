@@ -17,7 +17,7 @@
 
 | Level | Folder | Calls | Proves | Runs in |
 |---|---|---|---|---|
-| Unit | `apps/api/test/unit/`, `apps/web/test/unit/` | Pure functions | Election rules and display helpers | Local, CI |
+| Unit | `apps/api/test/unit/`, `apps/web/test/unit/` | Pure functions and single classes with stubs | Election rules, display helpers, guards and the realtime gateway | Local, CI |
 | Integration | `apps/api/test/integration/` | `VotingService` on PostgreSQL | Stored state, locks and vote secrecy | Local, CI |
 | HTTP | `apps/api/test/http/` | Nest in the test process, through `fetch` | Access, request validation and the moderator channel | Local, CI |
 | Scenarios | `tests/scenarios/` | Data replayed by other levels | Whole sessions give the same result at every level | With the level that replays them |
@@ -61,22 +61,23 @@ test('electionOutcome: a tie at the last seat sends only the tied candidates to 
 
 ## Data
 
-- Each test creates its own records. (Goldberg integration 6.1)
+- Each test creates its own organization, then its own records. (Goldberg integration 6.1)
 - Only reference data is seeded ahead of time. (Goldberg integration 6.2)
-- Each test removes its own records when it ends. (Goldberg 2.8)
 - Unique fields get a random suffix. (Goldberg integration 6.5)
+- Each test removes its own records when it ends, so the next test finds no live assembly. Goldberg 2.8 allows this after-each strategy.
+- Integration files run one at a time, because the API allows one live assembly and `VACUUM FULL` locks the whole votes table.
 - The integration script fails when `TEST_DATABASE_URL` is missing.
 
 ## Outcomes to check
 
-A command can change four things, and its tests check each one that applies. (Goldberg 2.12)
+Goldberg 2.12 names five outcomes a command can have. This app has no message queue, so four apply, and tests check each one that a command touches.
 
 | Outcome | Example check |
 |---|---|
 | The response | The vote returns `recorded` |
 | Stored state | One `Participation` and one `AnonymousVote` exist |
-| Realtime events | `assemblyState` is emitted after commit |
-| Logs | No selection, token or session id appears |
+| Outgoing notices | The gateway stub records `assemblyState`, which emits `assembly.state` after commit |
+| Logs | A spy on `Logger` with `mock.method` sees no selection, token or session id |
 
 ## Scenarios
 
@@ -101,6 +102,8 @@ A command can change four things, and its tests check each one that applies. (Go
 | `npm run test:integration` | Integration and HTTP tests | `TEST_DATABASE_URL` |
 | `npm run test:e2e` | Mocked end-to-end | Playwright browsers |
 | `npm run test:e2e:real-stack` | Real-stack end-to-end | Docker or local PostgreSQL |
+| `npm run test:scenarios` | Scenarios at the unit and integration levels | `TEST_DATABASE_URL` |
+| `npm run test:scenarios:browser` | Scenarios in the real-stack browser, add `:headed` to watch | Docker or local PostgreSQL |
 | `npm run test:load` | Load test | k6 and a running stack |
 
 ## Sources
