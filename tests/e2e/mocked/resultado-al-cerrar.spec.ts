@@ -213,9 +213,8 @@ for (const item of finals) {
   })
 }
 
-test('el teléfono no suma la opción aprobada al resultado final', async ({ page }) => {
+test('el teléfono no muestra el resultado final de una decisión con opciones', async ({ page }) => {
   const item = finals[1]
   await phoneWith(page, () => ({ currentRound: item.round, results: item.results, outcome: item.outcome, officialResult: null, final: item.final, recordedCount: 4, eligibleCount: 4 }))
-  await expect(page.getByText('RESULTADOS', { exact: true })).toBeVisible()
-  await expect(page.locator('.result-summary', { hasText: 'San Pedro Sula' })).toHaveCount(0)
+  await expectNoPhoneResult(page, /resultado|San Pedro Sula|Tegucigalpa|aprobada/i)
 })
