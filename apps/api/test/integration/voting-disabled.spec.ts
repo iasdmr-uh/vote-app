@@ -60,6 +60,7 @@ test('an inhabilitado keeps their place in the base but gets no ballot, and the 
 
     await service.closeRound(round.id)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).eligibleCount, 4)
+    await service.annulRound(round.id, 'Empate sin desempate')
 
     events.length = 0
     await room.setVotingDisabled(people.Luis!.id, false)
