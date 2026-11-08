@@ -6,8 +6,8 @@ Issue #55: delegates must trust that the operator at the laptop cannot use the t
 
 - **BREAKING** The moderator assembly state no longer includes a per-person voted flag for participants or for the regional secretary. Only the aggregate count of people who voted and the base remain.
 - The operator console stops showing «Votó/Falta» for the regional secretary and the «falta/faltan» count, which is derived from the per-person flag.
-- Disabling a delegate («Inhabilitar») and «Retirar de la sala» are refused while a vote is open.
-- The console hides those two actions while a vote is open.
+- Disabling («Inhabilitar»), re-enabling («Habilitar») and «Retirar de la sala» are refused while a vote is open.
+- The console hides those three actions while a vote is open.
 - `docs/scope.md` sections 9 and 18 and section 8 rule 15 stop describing the operator's list of who voted and these actions during a vote.
 
 Out of scope, owned by other issues:

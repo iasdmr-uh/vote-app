@@ -8,10 +8,10 @@
 
 ## 2. Actions during an open vote
 
-- [ ] 2.1 Failing API tests: disable and take-out are refused while a vote is open, for a delegate and for the regional secretary, and work between votes
-- [ ] 2.2 Add the open-round check to `setVotingDisabled` (disable) and to take-out
-- [ ] 2.3 Console hides «Inhabilitar» and «Retirar de la sala» while a vote is open
-- [ ] 2.4 E2E: the menu has no «Inhabilitar» or «Retirar de la sala» while a vote is open
+- [ ] 2.1 Failing API tests: disable, re-enable and take-out are refused while a vote is open, for a delegate and for the regional secretary, and work between votes
+- [ ] 2.2 Add the open-round check to `setVotingDisabled` (disable and re-enable) and to take-out
+- [ ] 2.3 Console hides «Inhabilitar», «Habilitar» and «Retirar de la sala» while a vote is open
+- [ ] 2.4 E2E: the menu has no «Inhabilitar», «Habilitar» or «Retirar de la sala» while a vote is open
 
 ## 3. One vote per person
 

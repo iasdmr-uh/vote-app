@@ -33,16 +33,21 @@ Source: issue #55, owner decision of 8 Nov 2026.
 - **WHEN** a vote is open and ballots have been cast
 - **THEN** the moderator assembly state carries no counts per option for that vote
 
-### Requirement: No disabling or take-out during an open vote
+### Requirement: No disabling, re-enabling or take-out during an open vote
 
-While a vote is open, the tool SHALL refuse to disable a delegate and SHALL refuse to take anyone out of the room, including the regional secretary. The open vote's base stays as it opened.
+While a vote is open, the tool SHALL refuse to disable a delegate, SHALL refuse to re-enable a disabled delegate, and SHALL refuse to take anyone out of the room, including the regional secretary. The open vote's base and its voters stay as they were when it opened.
 
-Source: issue #55, owner decision of 8 Nov 2026. This replaces that part of `docs/scope.md` section 8 rule 15.
+Source: issue #55 and owner decision of 8 Nov 2026 for disabling and take-out. Owner decision of 8 Nov 2026 for re-enabling, not yet recorded in an issue. This replaces that part of `docs/scope.md` section 8 rule 15.
 
 #### Scenario: Disable during an open vote
 
 - **WHEN** a vote is open and the operator disables a delegate
 - **THEN** the request is refused and the delegate's voting stays enabled
+
+#### Scenario: Re-enable during an open vote
+
+- **WHEN** a vote is open and the operator re-enables a disabled delegate
+- **THEN** the request is refused and the delegate cannot vote in the open vote
 
 #### Scenario: Take-out during an open vote
 
@@ -52,7 +57,7 @@ Source: issue #55, owner decision of 8 Nov 2026. This replaces that part of `doc
 #### Scenario: Between votes
 
 - **WHEN** no vote is open
-- **THEN** disabling a delegate and taking a person out work as before
+- **THEN** disabling, re-enabling and taking a person out work as before
 
 ### Requirement: One vote per person per vote
 
