@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { nameSize, positionsOf, votesText, type ResultSlide } from '../diapositivas'
+import { es } from '../locale/es'
+import { nameSize, positionsOf, type ResultSlide } from '../diapositivas'
 import type { PresentationSlide } from '../types'
 import { useAssembly } from '../useAssembly'
 
@@ -87,7 +88,7 @@ const u = (value: number) => `calc(var(--u) * ${value})`
         <h1 class="slide-kicker committee-kicker">{{ result.title }}</h1>
         <span class="slide-rule" aria-hidden="true"></span>
         <ol class="committee-rows">
-          <li v-for="(row, index) in committee.rows" :key="`${row.label}-${index}`"><span class="committee-rank">{{ index + 1 }}</span><span class="committee-name">{{ row.label }}</span><span v-if="row.count !== null" class="committee-votes">{{ votesText(row.count) }}</span></li>
+          <li v-for="(row, index) in committee.rows" :key="`${row.label}-${index}`"><span class="committee-rank">{{ index + 1 }}</span><span class="committee-name">{{ row.label }}</span><span v-if="row.count !== null" class="committee-votes">{{ es.common.votes(row.count) }}</span></li>
         </ol>
         <p class="committee-members">{{ result.members }}</p>
       </section>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { computed } from 'vue'
-import { RESULT_WORDING, decisionVerdict, displayOrder, electedSoFar, isDecision, isTied, percentOf, voteLabel } from '../resultados'
+import { decisionVerdict, displayOrder, electedSoFar, isDecision, isTied, percentOf, voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 import PhoneBallot from './PhoneBallot.vue'
 import PhoneJoinForm from './PhoneJoinForm.vue'
@@ -102,7 +103,7 @@ async function submitVote() {
       <ResultSummary v-if="round?.status === 'published'" :final="state?.final" :continuing="state?.continuing" :so-far="electedSoFar(round, state?.officialResult?.elected, state?.final)" />
       <PhoneResults v-if="resultRows.length || officialResult || verdict" :round="round" :rows="resultRows" :verdict="verdict" :base="resultBase" :voters="resultVoters" :official-result="officialResult" :outcome="state?.outcome" />
       <h1 v-else-if="round?.status === 'annulled' && assemblyStatus !== 'completed'">Votación anulada</h1>
-      <h1 v-else-if="round?.status === 'closed' && assemblyStatus !== 'completed'">{{ RESULT_WORDING.preparing }}</h1>
+      <h1 v-else-if="round?.status === 'closed' && assemblyStatus !== 'completed'">{{ es.results.preparing }}</h1>
       <h1 v-else-if="assemblyStatus !== 'completed' && !voteRecorded">Sala de espera</h1>
       <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? 'Votación en curso' : 'Espera la siguiente papeleta' }}</p>
     </template>

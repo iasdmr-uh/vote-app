@@ -82,6 +82,7 @@ Changes to voting, backups or logging must preserve these rules. `docs/foundatio
   - `/projector` renders `Proyector.vue` for the public screen.
 - `useAssembly.ts` holds shared state in module-level refs, plus HTTP and socket handling. `useMesa.ts` adds moderator actions on top of it.
 - `resultados.ts` holds the ranking, tie and percentage helpers shared by views.
+- `locale/es.ts` holds every on-screen Spanish string, and components read it by key, such as `es.phone.reviewVote`.
 
 ### Deployment modes
 

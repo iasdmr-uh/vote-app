@@ -1,8 +1,9 @@
+import { es } from './locale/es'
 import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { showTransientNotice } from './transient-notice'
-import { RESULT_WORDING, actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
+import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -297,11 +298,11 @@ function registerOfficial(record: RoundRecord) {
   const result = root.officialResult
   const named = result?.approved === null || result?.approved === undefined
     ? result?.elected.map((person) => person.label).join(' · ') ?? ''
-    : `${root.title}: ${result.approved ? RESULT_WORDING.approved : RESULT_WORDING.notApproved}`
+    : `${root.title}: ${result.approved ? es.results.approved : es.results.notApproved}`
   moderationConfirmation.value = {
-    title: `¿${RESULT_WORDING.register}?`,
+    title: `¿${es.results.register}?`,
     consequence: `${named}. No se podrá deshacer.`,
-    label: RESULT_WORDING.register,
+    label: es.results.register,
     path: `/moderator/elections/${encodeURIComponent(root.id)}/register`,
     method: 'POST',
   }

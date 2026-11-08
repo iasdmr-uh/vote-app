@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { computed, ref, watch } from 'vue'
-import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, electedSoFar, voteLabel } from '../resultados'
+import { connectedText, electedSoFar, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
@@ -35,9 +36,9 @@ const view = computed(() => {
   return 'idle'
 })
 
-const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · '))
+const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? es.results.regionalSecretaryNote : ''].filter(Boolean).join(' · '))
 const statusLabel = computed(() => ({
-  voting: round.value?.status === 'closed' ? RESULT_WORDING.preparing : ['Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
+  voting: round.value?.status === 'closed' ? es.results.preparing : ['Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
   results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),
   annulled: 'Votación anulada',
   completed: 'Asamblea finalizada',

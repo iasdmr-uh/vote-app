@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { RESULT_WORDING, countsOf, electedSoFar, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
+import { es } from '../locale/es'
+import { countsOf, electedSoFar, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import ResultExplanation from './ResultExplanation.vue'
 import ResultsList from './ResultsList.vue'
@@ -35,8 +36,8 @@ function runoffButtonText(target: RoundRecord) {
   </div>
   <p v-if="verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === 'No aprobada' }]">{{ verdictOf(currentRoundRecord) }}</p>
   <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" :so-far="soFar" />
-  <p v-if="final && election?.registeredAt" class="status-line">{{ RESULT_WORDING.registered }}</p>
-  <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ RESULT_WORDING.register }}</button></div>
+  <p v-if="final && election?.registeredAt" class="status-line">{{ es.results.registered }}</p>
+  <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ es.results.register }}</button></div>
   <ResultsList :rows="rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
   <ResultExplanation :target="currentRoundRecord" />
   <div class="action-row ballot-actions">

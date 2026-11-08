@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { approvalText, completedCommittee, electedInVote, electedText, isDecision, notVotedText, REGIONAL_SECRETARY_NOTE, verdictOf, voteLabel } from '../resultados'
+import { es } from '../locale/es'
+import { approvalText, completedCommittee, electedInVote, electedText, isDecision, notVotedText, verdictOf, voteLabel } from '../resultados'
 import type { RoundRecord } from '../types'
 import ResultExplanation from './ResultExplanation.vue'
 import ResultsList from './ResultsList.vue'
@@ -19,7 +20,7 @@ function categoryText(target: RoundRecord) {
   <section v-if="state?.rounds?.length" id="acta-de-resultados" class="card official-history">
     <div class="section-heading"><div><p class="eyebrow">ACTA DE RESULTADOS</p><h2>Resultados</h2></div><button class="secondary" @click="printActa">Imprimir acta</button></div>
     <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
-      <div class="section-heading"><div><h3>{{ rootRoundOf(historyRound)?.title || historyRound.title }}<span v-if="voteLabel(historyRound)" class="badge badge-info">{{ voteLabel(historyRound) }}</span></h3><p class="status-line">{{ categoryText(historyRound) }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}<template v-if="historyRound.results?.length"> · {{ historyRound.participationCount ?? 0 }} de {{ eligibleOf(historyRound) }} votaron · {{ notVotedText(historyRound.participationCount ?? 0, eligibleOf(historyRound)) }}</template><template v-if="historyRound.regionalSecretaryVotes"> · {{ REGIONAL_SECRETARY_NOTE }}</template><template v-if="historyRound.outcome && !isDecision(historyRound)"> · Mayoría: {{ historyRound.outcome.threshold }}</template></p></div></div>
+      <div class="section-heading"><div><h3>{{ rootRoundOf(historyRound)?.title || historyRound.title }}<span v-if="voteLabel(historyRound)" class="badge badge-info">{{ voteLabel(historyRound) }}</span></h3><p class="status-line">{{ categoryText(historyRound) }} · papeleta {{ roundStatusLabels[historyRound.status] || historyRound.status }}<template v-if="historyRound.results?.length"> · {{ historyRound.participationCount ?? 0 }} de {{ eligibleOf(historyRound) }} votaron · {{ notVotedText(historyRound.participationCount ?? 0, eligibleOf(historyRound)) }}</template><template v-if="historyRound.regionalSecretaryVotes"> · {{ es.results.regionalSecretaryNote }}</template><template v-if="historyRound.outcome && !isDecision(historyRound)"> · Mayoría: {{ historyRound.outcome.threshold }}</template></p></div></div>
       <p v-if="historyRound.status === 'annulled'" class="status-line">Anulada<template v-if="historyRound.annulReason">: {{ historyRound.annulReason }}</template></p>
       <ResultsList v-if="historyRound.results?.length" :rows="rankedRows(historyRound.results, eligibleOf(historyRound))" :outcome="historyRound.outcome" :target="historyRound" compact :show-bar="false" />
       <ResultExplanation v-if="historyRound.results?.length" :target="historyRound" />

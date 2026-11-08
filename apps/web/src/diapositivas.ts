@@ -1,5 +1,6 @@
-import { approvalText, displayOrder, percentOf, REGIONAL_SECRETARY_NOTE, voteLabel } from './resultados'
-import type { Position, PresentationSlide, PublicState } from './types'
+import { es } from './locale/es'
+import { approvalText, displayOrder, percentOf, voteLabel } from './resultados'
+import type { Position, PublicState } from './types'
 
 /** Agenda UH 2026 slides on the projector (Figma 160:9, P1–P6). */
 export type ResultSlide =
@@ -7,24 +8,15 @@ export type ResultSlide =
   | { kind: 'decision'; title: string; verdict: string; approved: boolean; details: string }
   | { kind: 'committee'; title: string; rows: Array<{ label: string; count: number | null }>; members: string }
 
-export const SLIDE_NAMES: Record<PresentationSlide, string> = { 0: 'Portada', 1: 'Junta directiva', 2: 'Departamentos' }
-
-const BOARD = ['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3']
-const DEPARTMENTS = ['Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia', 'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción']
-
 /** The org chart's puestos, all blank, for a server that does not send `positions` yet. */
 export const DEFAULT_POSITIONS: Position[] = [
-  ...BOARD.map((label, index) => ({ id: `board-${index}`, group: 'board' as const, label, sortOrder: index, custom: false, elected: null })),
-  ...DEPARTMENTS.map((label, index) => ({ id: `department-${index}`, group: 'department' as const, label, sortOrder: index, custom: false, elected: null })),
+  ...es.projector.boardPositions.map((label, index) => ({ id: `board-${index}`, group: 'board' as const, label, sortOrder: index, custom: false, elected: null })),
+  ...es.projector.departmentPositions.map((label, index) => ({ id: `department-${index}`, group: 'department' as const, label, sortOrder: index, custom: false, elected: null })),
 ]
 
 export function positionsOf(state: PublicState | null | undefined, group: Position['group']) {
   const positions = state?.positions?.length ? state.positions : DEFAULT_POSITIONS
   return positions.filter((position) => position.group === group).sort((a, b) => a.sortOrder - b.sortOrder)
-}
-
-export function votesText(count: number) {
-  return `${count} ${count === 1 ? 'voto' : 'votos'}`
 }
 
 /**
@@ -46,7 +38,7 @@ export function resultSlide(state: PublicState | null | undefined): ResultSlide 
     const rule = approvalText(round, outcome)
     if (round.decisionFormat === 'boolean') {
       const approved = Boolean(outcome.approved)
-      return { kind: 'decision', title: round.title, verdict: approved ? 'Aprobada' : 'No aprobada', approved, details: [...ordered.map((result) => `${result.label} ${result.count}`), rule].join(' · ') }
+      return { kind: 'decision', title: round.title, verdict: approved ? es.results.approved : es.results.notApproved, approved, details: [...ordered.map((result) => `${result.label} ${result.count}`), rule].join(' · ') }
     }
     const winner = results.find((result) => result.optionId === outcome.elected[0])
     if (!winner) return null
@@ -60,14 +52,14 @@ export function resultSlide(state: PublicState | null | undefined): ResultSlide 
     return {
       kind: 'committee', title: round.title,
       rows: elected.map((person) => ({ label: person.label, count: countOf(person) })),
-      members: `${members} ${members === 1 ? 'integrante' : 'integrantes'}`,
+      members: es.results.members(members),
     }
   }
 
   const person = elected[0]
   if (!person) return null
   const count = countOf(person) ?? 0
-  return { kind: 'office', title: round.title, name: person.label, votes: `${count} de ${base} votos · ${percentOf(count, base)} %`, label: [voteLabel(round), round.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · ') }
+  return { kind: 'office', title: round.title, name: person.label, votes: es.projector.officeVotes(count, base, percentOf(count, base)), label: [voteLabel(round), round.regionalSecretaryVotes ? es.results.regionalSecretaryNote : ''].filter(Boolean).join(' · ') }
 }
 
 /** P2: the elected name in one or two lines at most, as large as fits the 1680-wide column. */
