@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { ApiRequestError, useAssembly } from '../useAssembly'
 
 const {
@@ -24,7 +25,7 @@ async function join() {
   } catch (e) {
     if (!handleParticipantUnauthorized(e, sessionToken.value)) {
       error.value = e instanceof ApiRequestError && e.status === 404
-        ? 'El código no corresponde a una sala abierta.'
+        ? es.phone.codeNotFound
         : (e as Error).message
     }
   }
@@ -34,12 +35,12 @@ async function join() {
 
 <template>
   <section class="card join-card phone-screen">
-    <h1>Bienvenido</h1>
+    <h1>{{ es.phone.welcome }}</h1>
     <form class="phone-form" @submit.prevent="join">
-      <label>Código de sala<input v-model="code" autocomplete="off" required /></label>
-      <label>Nombre<input v-model="firstName" autocomplete="given-name" required maxlength="80" placeholder="Tu nombre" /></label>
-      <label>Apellido<input v-model="lastName" autocomplete="family-name" required maxlength="100" placeholder="Tu apellido" /></label>
-      <button class="primary phone-action" :disabled="loading">{{ loading ? 'Entrando…' : 'Entrar a la sala' }}</button>
+      <label>{{ es.common.roomCode }}<input v-model="code" autocomplete="off" required /></label>
+      <label>{{ es.phone.firstName }}<input v-model="firstName" autocomplete="given-name" required maxlength="80" :placeholder="es.phone.firstNamePlaceholder" /></label>
+      <label>{{ es.phone.lastName }}<input v-model="lastName" autocomplete="family-name" required maxlength="100" :placeholder="es.phone.lastNamePlaceholder" /></label>
+      <button class="primary phone-action" :disabled="loading">{{ loading ? es.phone.joining : es.phone.joinRoom }}</button>
     </form>
   </section>
 </template>

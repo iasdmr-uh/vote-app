@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { actaKind, actaMetaText, actaRows, actaSummary, completedCommittee, orgChart, votesText } from '../resultados'
+import { es } from '../locale/es'
+import { actaKind, actaMetaText, actaRows, actaSummary, completedCommittee, orgChart } from '../resultados'
 import type { Position, PublicState, RoundRecord } from '../types'
 
 const props = defineProps<{ state: PublicState }>()
@@ -16,7 +17,7 @@ const habilitados = computed(() => {
 
 const dateText = computed(() => {
   const at = props.state.assembly?.completedAt || props.state.assemblyCompletedAt
-  return new Intl.DateTimeFormat('es-HN', { day: 'numeric', month: 'long', year: 'numeric' }).format(at ? new Date(at) : new Date())
+  return new Intl.DateTimeFormat(es.common.dateLocale, { day: 'numeric', month: 'long', year: 'numeric' }).format(at ? new Date(at) : new Date())
 })
 const assemblyName = computed(() => props.state.assembly?.name || props.state.assemblyName || '')
 const chart = computed(() => props.state.positions?.length ? orgChart(props.state.positions) : null)
@@ -33,13 +34,13 @@ function nameOf(position: Position) {
 <template>
   <section class="acta-print">
     <img class="acta-map" src="/brand/mapa.png" alt="" />
-    <img class="acta-footer-logo" src="/brand/uh-gris.png" alt="Unión Hondureña" />
+    <img class="acta-footer-logo" src="/brand/uh-gris.png" :alt="es.common.unionName" />
     <table class="acta-pages acta-history">
       <thead>
         <tr><td>
           <header class="acta-header">
-            <img class="acta-logo" src="/brand/conpoder.png" alt="Con poder y gloria" />
-            <h1>ACTA DE VOTACIONES</h1>
+            <img class="acta-logo" src="/brand/conpoder.png" :alt="es.projector.slogan" />
+            <h1>{{ es.acta.title }}</h1>
             <p class="acta-subtitle">{{ [assemblyName, dateText].filter(Boolean).join(' · ') }}</p>
             <div class="acta-rule"></div>
           </header>
@@ -56,16 +57,16 @@ function nameOf(position: Position) {
                 <span class="acta-kind" :class="`tone-${actaKind(item).tone}`">{{ actaKind(item).text }}</span>
               </header>
               <p v-if="actaMetaText(item)" class="acta-meta">{{ actaMetaText(item) }}</p>
-              <p v-if="completedCommittee(item, rounds).length" class="acta-meta acta-members">Comisión completa, en orden de elección: {{ completedCommittee(item, rounds).join(', ') }}</p>
+              <p v-if="completedCommittee(item, rounds).length" class="acta-meta acta-members">{{ es.moderator.completeCommittee(completedCommittee(item, rounds).join(', ')) }}</p>
               <ol v-if="item.results?.length" class="acta-results">
                 <li v-for="row in actaRows(item)" :key="row.key" :class="{ winner: row.winner }">
                   <span class="acta-rank">{{ row.rank }}</span>
-                  <span class="acta-name">{{ row.label }}<span v-if="row.tag" class="acta-tag" :class="row.tag === 'Desempate' ? 'tag-amber' : 'tag-green'">{{ row.tag }}</span></span>
-                  <strong class="acta-votes">{{ votesText(row.count) }}</strong>
-                  <span class="acta-percent">{{ row.percent === null ? '' : `${row.percent} %` }}</span>
+                  <span class="acta-name">{{ row.label }}<span v-if="row.tag" class="acta-tag" :class="row.tag === es.results.runoffTag ? 'tag-amber' : 'tag-green'">{{ row.tag }}</span></span>
+                  <strong class="acta-votes">{{ es.common.votes(row.count) }}</strong>
+                  <span class="acta-percent">{{ row.percent === null ? '' : es.common.percent(row.percent) }}</span>
                 </li>
               </ol>
-              <p v-else-if="item.status !== 'annulled'" class="acta-meta">Conteo no publicado</p>
+              <p v-else-if="item.status !== 'annulled'" class="acta-meta">{{ es.acta.countNotPublished }}</p>
             </article>
           </td>
         </tr>
@@ -76,8 +77,8 @@ function nameOf(position: Position) {
       <thead>
         <tr><td>
           <header class="acta-header">
-            <img class="acta-logo" src="/brand/conpoder.png" alt="Con poder y gloria" />
-            <h1>OFICIALES DE UNIÓN HONDUREÑA</h1>
+            <img class="acta-logo" src="/brand/conpoder.png" :alt="es.projector.slogan" />
+            <h1>{{ es.projector.coverTitle }}</h1>
             <p v-if="state.period" class="acta-subtitle">{{ state.period }}</p>
             <div class="acta-rule"></div>
           </header>
@@ -86,7 +87,7 @@ function nameOf(position: Position) {
       <tfoot><tr><td class="acta-bottom-space"></td></tr></tfoot>
       <tbody><tr><td>
       <div v-if="chart.boardTop.length" class="acta-board" :style="{ '--n': Math.max(1, chart.boardBottom.length) }">
-        <h3>JUNTA DIRECTIVA</h3>
+        <h3>{{ es.common.boardTitle }}</h3>
         <div class="acta-board-top" :class="{ single: chart.boardTop.length === 1 }">
           <div v-for="position in chart.boardTop" :key="position.id" class="acta-puesto" :data-position="position.label"><div class="acta-puesto-label">{{ position.label }}</div><div class="acta-puesto-name">{{ nameOf(position) }}</div></div>
         </div>
@@ -101,7 +102,7 @@ function nameOf(position: Position) {
       </div>
       <div v-if="chart.departmentRows.length" class="acta-departments">
         <div class="acta-line acta-spine"></div>
-        <h3>DEPARTAMENTOS</h3>
+        <h3>{{ es.common.departmentsTitle }}</h3>
         <div v-for="(row, rowIndex) in chart.departmentRows" :key="rowIndex" class="acta-department-row">
           <div v-for="position in row" :key="position.id" class="acta-puesto" :data-position="position.label"><div class="acta-puesto-label">{{ position.label }}</div><div class="acta-puesto-name">{{ nameOf(position) }}</div></div>
           <div class="acta-line acta-branch" :class="{ half: row.length === 1 }"></div>

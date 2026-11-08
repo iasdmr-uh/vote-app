@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import QRCode from 'qrcode'
 import { io, type Socket } from 'socket.io-client'
+import { es } from './locale/es'
 import type { ConnectionCount, Presentation, PublicState } from './types'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
@@ -53,7 +54,7 @@ const assemblyCompletedAt = computed(() => state.value?.assembly?.completedAt ||
 const totalParticipants = computed(() => state.value?.participantCount ?? state.value?.participants?.length ?? 0)
 const eligibleVotes = computed(() => state.value?.eligibleCount ?? state.value?.participantCount ?? 0)
 const completionTime = computed(() => assemblyCompletedAt.value
-  ? new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(assemblyCompletedAt.value))
+  ? new Intl.DateTimeFormat(es.common.dateLocale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(assemblyCompletedAt.value))
   : '')
 const connectionCount = computed(() => {
   const connection = state.value?.connection
@@ -84,20 +85,20 @@ function go(path: string) {
 
 function openProjectorWindow() {
   if (!code.value) {
-    error.value = 'Primero crea una Asamblea para abrir su proyección.'
+    error.value = es.moderator.createAssemblyFirst
     return
   }
   const projectorUrl = new URL('/projector', window.location.origin)
   projectorUrl.searchParams.set('code', code.value)
   const projectorWindow = window.open(projectorUrl, 'asdmr-projector', 'popup,width=1600,height=900')
   if (!projectorWindow) {
-    error.value = 'El navegador bloqueó la ventana. Permite las ventanas emergentes para abrir la proyección.'
+    error.value = es.moderator.popupBlocked
     return
   }
   projectorWindow.opener = null
   projectorWindow.focus()
   error.value = ''
-  notice.value = 'Proyección abierta en otra ventana. Muévela a la pantalla del televisor y actívala en pantalla completa.'
+  notice.value = es.moderator.projectorOpened
 }
 
 function syncProjectorFullscreen() {
@@ -117,7 +118,7 @@ async function request<T>(path: string, init: RequestInit = {}, token = ''): Pro
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const response = await fetch(`${API}${path}`, { ...init, headers })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ApiRequestError(body.message || 'No se pudo completar la solicitud. Intenta de nuevo.', response.status)
+  if (!response.ok) throw new ApiRequestError(body.message || es.common.requestFailed, response.status)
   return body as T
 }
 
@@ -128,7 +129,7 @@ async function requestFile(path: string, body: unknown, token: string) {
   })
   if (!response.ok) {
     const failure = await response.json().catch(() => ({}))
-    throw new ApiRequestError(failure.message || 'No se pudo completar la solicitud. Intenta de nuevo.', response.status)
+    throw new ApiRequestError(failure.message || es.common.requestFailed, response.status)
   }
   return response.blob()
 }
@@ -140,7 +141,7 @@ function isUnauthorized(e: unknown) {
 function handleParticipantUnauthorized(e: unknown, token: string) {
   if (!isUnauthorized(e) || role.value !== 'participant' || !token || token !== sessionToken.value) return false
   clearParticipantSession()
-  error.value = 'La sesión de delegado ya no está activa. Vuelve a ingresar mientras el ingreso a la asamblea esté abierto.'
+  error.value = es.phone.sessionEnded
   notice.value = ''
   return true
 }
@@ -281,7 +282,7 @@ async function loadState() {
         moderatorAuthState.value = 'unauthenticated'
         state.value = null
         sessionStorage.removeItem('moderatorToken')
-        error.value = 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
+        error.value = es.moderator.credentialStale
       } else if (state.value && realtimeActive.value && !realtimeConnected.value) {
         error.value = ''
       } else {
@@ -307,7 +308,7 @@ async function loadState() {
         moderatorToken.value = ''
         moderatorAuthState.value = 'unauthenticated'
         sessionStorage.removeItem('moderatorToken')
-        error.value = 'La credencial guardada ya no es válida. Ingresa de nuevo la clave de moderación.'
+        error.value = es.moderator.credentialStale
       } else {
         moderatorAuthState.value = 'validation_error'
         error.value = message
@@ -328,10 +329,10 @@ async function resumeParticipantSession(resumeCode: string) {
     localStorage.setItem('participantSessionToken', resumed.participantSessionToken)
     if (sessionAssemblyId.value) localStorage.setItem('participantAssemblyId', sessionAssemblyId.value)
     state.value = normalizeState(resumed)
-    notice.value = 'Tu sesión se reconectó en este dispositivo.'
+    notice.value = es.phone.reconnected
   } catch (e) {
     error.value = e instanceof ApiRequestError && e.status === 404
-      ? 'El código de reconexión no es válido o ya venció. Pide uno nuevo a la mesa.'
+      ? es.phone.resumeCodeInvalid
       : (e as Error).message
   } finally { loading.value = false }
 }
@@ -366,7 +367,7 @@ async function recoverActiveAssembly() {
   }
   if (!assembly || browsingActas.value) return
   selectAssembly(assembly.id)
-  notice.value = `Se recuperó la Asamblea activa: ${assembly.name}.`
+  notice.value = es.moderator.recoveredAssembly(assembly.name)
 }
 
 function rememberJoinCode(joinCode: string) {
@@ -381,7 +382,7 @@ async function refreshQr() {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  return new Intl.DateTimeFormat(es.common.dateLocale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
 function markLinkUp() {

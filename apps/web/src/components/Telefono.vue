@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { computed } from 'vue'
 import { useAssembly } from '../useAssembly'
 import PhoneBallot from './PhoneBallot.vue'
@@ -65,21 +66,21 @@ async function submitVote() {
   <PhoneJoinForm v-if="!sessionToken" />
   <section v-else class="card participant-card phone-screen" :data-round-status="round?.status">
     <div v-if="pendingJoinCode" class="notice error" role="alert">
-      Este QR corresponde a otra Asamblea.
-      <button class="secondary" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
+      {{ es.phone.otherAssemblyQr }}
+      <button class="secondary" @click="switchToIncomingAssembly">{{ es.phone.switchAssembly }}</button>
     </div>
     <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
-      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · VOTACIÓN ABIERTA</p>
-      <h1>Voto inhabilitado</h1>
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ es.common.voteOpen }}</p>
+      <h1>{{ es.phone.voteDisabled }}</h1>
     </template>
     <PhoneBallot v-else-if="ballotShown && round" :round="round" :seats-to-fill="seatsToFill" :selection-complete="selectionComplete" @review="reviewVote" />
     <template v-else>
-      <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
-      <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
-      <h1 v-else-if="round?.status === 'annulled'">Votación anulada</h1>
-      <h1 v-else-if="!voteRecorded">Sala de espera</h1>
-      <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? 'Votación en curso' : 'Espera la siguiente papeleta' }}</p>
+      <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>{{ es.phone.voteRecorded }}</p>
+      <h1 v-if="assemblyStatus === 'completed'">{{ es.common.assemblyEnded }}</h1>
+      <h1 v-else-if="round?.status === 'annulled'">{{ es.common.voteAnnulled }}</h1>
+      <h1 v-else-if="!voteRecorded">{{ es.phone.waitingRoom }}</h1>
+      <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? es.phone.voteInProgress : es.phone.waitForNextBallot }}</p>
     </template>
   </section>
 </template>

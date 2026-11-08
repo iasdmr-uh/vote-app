@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { es } from '../locale/es'
 import { useAssembly } from '../useAssembly'
 import { latestTabId, voteProgress } from '../vote-progress'
 
@@ -12,8 +13,8 @@ const selected = computed(() => tabs.value.find((tab) => tab.id === chosenId.val
 
 <template>
   <section v-if="tabs.length" class="card election-progress">
-    <div class="section-heading"><div><p class="eyebrow">AVANCE DE VOTACIONES</p><h2>Avance por elección</h2></div></div>
-    <div class="progress-tabs" role="tablist" aria-label="Elecciones y decisiones">
+    <div class="section-heading"><div><p class="eyebrow">{{ es.moderator.progress.eyebrow }}</p><h2>{{ es.moderator.progress.heading }}</h2></div></div>
+    <div class="progress-tabs" role="tablist" :aria-label="es.moderator.progress.tabsLabel">
       <button
         v-for="tab in tabs"
         :id="`progress-tab-${tab.id}`"

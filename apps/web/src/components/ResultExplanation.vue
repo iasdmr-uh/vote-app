@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue'
+import { es } from '../locale/es'
 import { explanationText } from '../resultados'
 import type { RoundRecord } from '../types'
 
@@ -12,7 +13,7 @@ const text = computed(() => explanationText(props.target, props.target.outcome, 
 
 <template>
   <div v-if="text" class="result-explanation">
-    <button type="button" class="link-button" :aria-expanded="open" :aria-controls="id" @click="open = !open">¿Cómo se decidió?</button>
+    <button type="button" class="link-button" :aria-expanded="open" :aria-controls="id" @click="open = !open">{{ es.results.howDecided }}</button>
     <p v-show="open" :id="id" class="result-explanation-text">{{ text }}</p>
   </div>
 </template>

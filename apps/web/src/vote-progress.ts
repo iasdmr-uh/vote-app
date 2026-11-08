@@ -1,4 +1,5 @@
-import { RESULT_WORDING, chainVoteNumber, countsOf, decisionVerdict, displayOrder, formatNames, isDecision, majorityText, outcomeTag, voteLabel, winnerText } from './resultados'
+import { es } from './locale/es'
+import { chainVoteNumber, countsOf, decisionVerdict, displayOrder, formatNames, isDecision, majorityText, outcomeTag, voteLabel, winnerText } from './resultados'
 import type { RoundRecord } from './types'
 
 export type ProgressState = 'open' | 'counting' | 'counted' | 'annulled'
@@ -21,17 +22,10 @@ export type ProgressColumn = {
 export type ProgressTab = { id: string; title: string; columns: ProgressColumn[] }
 
 const STATE_TEXT: Record<ProgressState, string> = {
-  open: 'Votación abierta',
-  counting: RESULT_WORDING.preparing,
+  open: es.moderator.progress.voteOpen,
+  counting: es.results.preparing,
   counted: '',
-  annulled: 'Anulada',
-}
-
-const NEXT_STEP = {
-  electionComplete: 'Elección completa',
-  decided: 'Decisión tomada',
-  runoff: 'Corresponde desempate',
-  boardDecides: 'La Mesa Directiva decide cómo continuar',
+  annulled: es.moderator.progress.annulled,
 }
 
 function tabIdOf(round: RoundRecord) {
@@ -61,7 +55,7 @@ function progressColumn(round: RoundRecord, rounds: RoundRecord[]): ProgressColu
   const counted = state === 'counted'
   return {
     id: round.id,
-    heading: voteLabel({ voteNumber: chainVoteNumber(round, rounds), runoff: round.runoff }) || '1.ª VOTACIÓN',
+    heading: voteLabel({ voteNumber: chainVoteNumber(round, rounds), runoff: round.runoff }) || es.results.firstVote,
     state,
     stateText: STATE_TEXT[state],
     reason: state === 'annulled' ? round.annulReason ?? '' : '',
@@ -86,7 +80,7 @@ function rowsOf(round: RoundRecord): ProgressRow[] {
       key: result.optionId || result.label,
       label: result.label,
       count: result.count,
-      tag: tag === 'elected' ? winnerText(round, result.label) : tag === 'runoff' ? 'Desempate' : null,
+      tag: tag === 'elected' ? winnerText(round, result.label) : tag === 'runoff' ? es.results.runoffTag : null,
     }
   })
 }
@@ -103,20 +97,20 @@ function outcomeText(round: RoundRecord) {
   const continuing = namesOf(round, outcome.runoff)
   const parts: string[] = []
   if (elected.length) {
-    const heading = isDecision(round) ? RESULT_WORDING.approved : elected.length === 1 ? winnerText(round, elected[0]) : RESULT_WORDING.elected
+    const heading = isDecision(round) ? es.results.approved : elected.length === 1 ? winnerText(round, elected[0]) : es.results.elected
     parts.push(`${heading}: ${formatNames(elected)}`)
   }
-  if (continuing.length) parts.push(`${RESULT_WORDING.continuing}: ${formatNames(continuing)}`)
-  return parts.join(' · ') || 'Sin electos'
+  if (continuing.length) parts.push(`${es.results.continuing}: ${formatNames(continuing)}`)
+  return parts.join(' · ') || es.moderator.progress.noneElected
 }
 
 function nextStepOf(round: RoundRecord) {
   const outcome = round.outcome!
   if (isDecision(round)) {
-    if (round.decisionFormat === 'boolean' || outcome.elected.length) return NEXT_STEP.decided
-    return outcome.runoff.length ? NEXT_STEP.runoff : NEXT_STEP.boardDecides
+    if (round.decisionFormat === 'boolean' || outcome.elected.length) return es.moderator.progress.decided
+    return outcome.runoff.length ? es.moderator.progress.runoff : es.moderator.progress.boardDecides
   }
-  if (outcome.openSeats <= 0) return NEXT_STEP.electionComplete
-  if (!outcome.runoff.length) return NEXT_STEP.boardDecides
-  return `${NEXT_STEP.runoff} por ${outcome.openSeats} ${outcome.openSeats === 1 ? 'puesto' : 'puestos'}`
+  if (outcome.openSeats <= 0) return es.moderator.progress.electionComplete
+  if (!outcome.runoff.length) return es.moderator.progress.boardDecides
+  return es.moderator.progress.runoffForSeats(outcome.openSeats)
 }
