@@ -1,7 +1,5 @@
 # Testing
 
-**Status:** DRAFT, not yet approved
-
 ## Runners
 
 | Runner | Used for |
