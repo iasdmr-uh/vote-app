@@ -62,7 +62,6 @@ test('a vote that fills several seats lists them from most voted to least voted'
     await service.closeRound(round.id)
     assert.deepEqual(await electedOnMesa(service, assemblyId, round.id), ['Ana', 'Bruno', 'Carla', 'Diego'])
 
-    await service.publishRound(round.id)
     const screen = await service.publicState(joinCode)
     assert.deepEqual(namesOf(screen.officialResult?.elected), ['Ana', 'Bruno', 'Carla', 'Diego'])
   })
@@ -75,7 +74,6 @@ test('a member elected in an earlier vote stays ahead of a later vote with more 
     const marks = [['Zoe', 'Ana'], ['Zoe', 'Ana'], ['Zoe', 'Luis']]
     for (const [index, names] of marks.entries()) await service.castVote(people[index]!, first.id, idsOf(first.options, names))
     await service.closeRound(first.id)
-    await service.publishRound(first.id)
 
     const draft = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === first.id)!
     await service.openRound(draft.id)

@@ -97,7 +97,7 @@ test('a cargo with a puesto takes its name; only a cargo has a puesto and an ele
   })
 })
 
-test('a runoff elects into its root\'s puesto; phones and projector see it only once published', { skip }, async () => {
+test('a runoff elects into its root\'s puesto; phones, projector and mesa see it on close', { skip }, async () => {
   await withAssembly(4, async ({ service, prisma, assemblyId, joinCode, people }) => {
     await service.changeLobby(assemblyId, 'lobby_closed')
     const president = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Presidente' } })).id
@@ -119,13 +119,9 @@ test('a runoff elects into its root\'s puesto; phones and projector see it only 
     for (const person of people) await service.castVote(person, runoff.id, ana)
     await service.closeRound(runoff.id)
     state = await service.moderatorAssembly(assemblyId)
-    assert.deepEqual(state.positions.find((item) => item.id === president)?.elected, { label: 'Ana Ruiz', roundId: runoff.id }, 'the mesa sees a closed result')
-    let projector = await service.publicState(joinCode)
-    assert.equal(projector.positions.find((item) => item.id === president)?.elected, null, 'not published yet')
+    assert.deepEqual(state.positions.find((item) => item.id === president)?.elected, { label: 'Ana Ruiz', roundId: runoff.id })
+    const projector = await service.publicState(joinCode)
     assert.equal(projector.round?.positionId, president)
-
-    await service.publishRound(runoff.id)
-    projector = await service.publicState(joinCode)
     assert.deepEqual(projector.positions.find((item) => item.id === president)?.elected, { label: 'Ana Ruiz', roundId: runoff.id })
     assert.equal(projector.positions.filter((item) => item.elected).length, 1)
   })

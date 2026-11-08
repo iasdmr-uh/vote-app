@@ -125,7 +125,7 @@ async function playFixture(fixture: Fixture, seed: number | null) {
       const outcome = closed.outcome!
       assert.equal(closed.eligibleCount, vote.expect.base, `${context}: base`)
       assert.equal(outcome.threshold, vote.expect.threshold, `${context}: threshold`)
-      const counts = Object.fromEntries(closed.privateResults!.map((row) => [row.label, row.count]))
+      const counts = Object.fromEntries(closed.results!.map((row) => [row.label, row.count]))
       assert.deepEqual(counts, vote.expect.tally, `${context}: tally`)
       const elected = labelsOf(closed.options, outcome.elected)
       const continuing = labelsOf(closed.options, outcome.runoff)
@@ -151,7 +151,7 @@ async function playFixture(fixture: Fixture, seed: number | null) {
         number: index + 1,
         base: closed.eligibleCount,
         threshold: outcome.threshold,
-        tally: closed.privateResults!.map((row) => ({ label: row.label, count: row.count })),
+        tally: closed.results!.map((row) => ({ label: row.label, count: row.count })),
         abstained: closed.eligibleCount - closed.participationCount,
         elected,
         continuing,
@@ -159,7 +159,6 @@ async function playFixture(fixture: Fixture, seed: number | null) {
         approved: fixture.kind === 'decision' ? (outcome as { approved?: boolean }).approved : undefined,
       })
 
-      await service.publishRound(current.id)
       if (next) current = next
     }
 

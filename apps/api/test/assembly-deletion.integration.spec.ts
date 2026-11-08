@@ -44,7 +44,6 @@ test('after the acta, the mesa erases every record of a completed assembly', {
     await service.openRound(round.id)
     await service.castVote(sessions[0]!, round.id, round.options[0]!.id)
     await service.closeRound(round.id)
-    await service.publishRound(round.id)
 
     const committee = await service.createRound(assemblyId, {
       title: 'Comisión de Finanzas', format: 'multiple_choice', category: 'committee', memberCount: 1, options: [{ label: 'Luis' }, { label: 'Marta' }], countingRule: { kind: 'count_only' },

@@ -62,7 +62,6 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.deepEqual(closedBudget.outcome, { seats: 1, base: 8, threshold: 6, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved: true })
     assert.equal(closedBudget.officialResult, null, 'nobody is elected in a boolean decision')
     assert.equal((await service.moderatorAssembly(activeAssemblyId)).rounds.length, 1, 'a boolean decision never repeats')
-    await service.publishRound(budget.id)
     const projector = await service.publicState(joinCode)
     assert.equal(projector.round?.approvalRule, 'three_quarters')
     assert.equal(projector.outcome && 'approved' in projector.outcome && projector.outcome.approved, true)
@@ -80,7 +79,6 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     const closedStatute = (await service.moderatorAssembly(activeAssemblyId)).rounds.find((item) => item.id === statute.id)!
     assert.equal(closedStatute.outcome && 'approved' in closedStatute.outcome && closedStatute.outcome.approved, false)
     assert.equal(closedStatute.outcome?.threshold, 5)
-    await service.publishRound(statute.id)
 
     // 3 · Options with mayoría simple: Tegucigalpa 3, San Pedro Sula 3, La Ceiba 1, Choluteca 1 → nobody has 5,
     // so a draft repeats between the two tied first, as a runoff of the same decision and rule.
@@ -104,14 +102,12 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.equal(repeat.voteNumber, 2)
     assert.equal(repeat.runoff, true)
     assert.deepEqual(repeat.options.map((option) => option.label), ['Tegucigalpa', 'San Pedro Sula'])
-    await service.publishRound(venue.id)
 
     // 2nd vote: San Pedro Sula 5 of 8 wins; no further vote is prepared.
     await service.openRound(repeat.id)
     for (const index of [0, 1, 2]) await vote(index, repeat.id, repeat.options[0])
     for (const index of [3, 4, 5, 6, 7]) await vote(index, repeat.id, repeat.options[1])
     await service.closeRound(repeat.id)
-    await service.publishRound(repeat.id)
     const final = await service.moderatorAssembly(activeAssemblyId)
     const second = final.rounds.find((item) => item.id === repeat.id)!
     assert.deepEqual(second.outcome?.elected, [repeat.options[1]!.id])

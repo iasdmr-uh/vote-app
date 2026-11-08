@@ -212,11 +212,6 @@ export class ModeratorController {
     return this.voting.closeRound(roundId)
   }
 
-  @Post('rounds/:roundId/publish')
-  publishRound(@Param('roundId', ParseUUIDPipe) roundId: string) {
-    return this.voting.publishRound(roundId)
-  }
-
   @Post('rounds/:roundId/annul')
   annulRound(@Param('roundId', ParseUUIDPipe) roundId: string, @Body() input: AnnulRoundDto) {
     return this.voting.annulRound(roundId, input.reason)

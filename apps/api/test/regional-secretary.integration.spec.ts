@@ -62,7 +62,6 @@ async function voteAndClose(service: VotingService, vote: Vote, people: string[]
   await service.openRound(vote.id)
   for (const [index, person] of people.entries()) await service.castVote(person, vote.id, optionId(vote, labels[index % labels.length]!))
   await service.closeRound(vote.id)
-  await service.publishRound(vote.id)
 }
 
 async function tiedVotes(service: VotingService, assemblyId: string, first: Vote, people: string[], times: number) {
@@ -108,7 +107,6 @@ test('the regional secretary breaks a tie in the 4th vote as one more secret vot
     for (const [index, person] of people.entries()) await service.castVote(person, fourth.id, optionId(fourth, index % 2 ? 'Luis' : 'Ana'))
     await service.castVote(invitation.participantId, fourth.id, optionId(fourth, 'Ana'))
     await service.closeRound(fourth.id)
-    await service.publishRound(fourth.id)
 
     const screen = await service.publicState(joinCode)
     assert.equal(screen.eligibleCount, 11)
@@ -308,7 +306,6 @@ test('a vote already open keeps the regional secretary in its base after they ar
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
     for (const [index, person] of people.entries()) await service.castVote(person, fourth.id, optionId(fourth, index % 2 ? 'Luis' : 'Ana'))
     await service.closeRound(fourth.id)
-    await service.publishRound(fourth.id)
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
 
     const fifth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === fourth.id)!

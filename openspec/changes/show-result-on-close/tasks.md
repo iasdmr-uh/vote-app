@@ -1,10 +1,10 @@
 ## 1. Show the result on close
 
-- [ ] 1.1 Failing service tests: closing a vote whose separation succeeds makes it `published` and emits `results.published` once, to every room
-- [ ] 1.2 Failing service test: when separation fails the vote stays `closed`, no screen state carries counts, and a successful retry makes it `published`
-- [ ] 1.3 Failing test: the mesa state carries no counts for a `closed` vote
-- [ ] 1.4 Show closed rounds automatically after separation in `closeRound`, the cleanup retry and startup cleanup
-- [ ] 1.5 Remove `publishRound`, its route and `privateResults`
+- [x] 1.1 Failing service tests: closing a vote whose separation succeeds makes it `published` and emits `results.published` once, to every room
+- [x] 1.2 Failing service test: when separation fails the vote stays `closed`, no screen state carries counts, and a successful retry makes it `published`
+- [x] 1.3 Failing test: the mesa state carries no counts for a `closed` vote
+- [x] 1.4 Show closed rounds automatically after separation in `closeRound`, the cleanup retry and startup cleanup
+- [x] 1.5 Remove `publishRound`, its route and `privateResults`
 
 ## 2. Final result and who goes on
 

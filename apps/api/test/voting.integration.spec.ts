@@ -74,30 +74,20 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
     assert.equal('optionId' in (snapshot.openRound ?? {}), false)
 
     await service.closeRound(round.id)
-    const closedSnapshot = await service.participantState(participant.id)
-    assert.equal(closedSnapshot.openRound?.status, 'closed')
-    assert.equal(closedSnapshot.participationStatus, 'recorded')
     await assert.rejects(service.castVote(participant.id, round.id, round.options[0].id), ConflictException)
-    const hidden = await service.publicState(joinCode)
-    assert.equal('results' in hidden, false)
-    assert.equal('results' in closedSnapshot, false, 'delegates do not see counts before publication')
-    const closedModeratorRound = (await service.moderatorAssembly(assemblyId)).rounds[0]
-    assert.equal(closedModeratorRound?.privateResults?.reduce((sum, option) => sum + option.count, 0), 1, 'the mesa reviews the counts before publishing')
-    assert.equal('results' in (closedModeratorRound ?? {}), false)
-
-    const published = await service.publishRound(round.id)
+    const published = (await service.moderatorAssembly(assemblyId)).rounds[0]!
     assert.equal(published.status, 'published')
-    assert.equal(published.results.reduce((sum, option) => sum + option.count, 0), 1)
+    assert.equal(published.results!.reduce((sum, option) => sum + option.count, 0), 1)
     const publishedSnapshot = await service.participantState(participant.id)
+    assert.equal(publishedSnapshot.participationStatus, 'recorded')
     assert.equal(publishedSnapshot.openRound?.status, 'published')
     assert.equal(publishedSnapshot.results?.reduce((sum, option) => sum + option.count, 0), 1)
     const visible = await service.publicState(joinCode)
     assert.equal('results' in visible, true)
     // One delegate of one voted: a majority, so closing elected that option and publishing shows it.
-    const winner = published.results.find((option) => option.count === 1)!
+    const winner = published.results!.find((option) => option.count === 1)!
     assert.deepEqual(visible.officialResult?.elected, [{ optionId: winner.optionId, label: winner.label }])
     assert.deepEqual(visible.outcome, { seats: 1, base: 1, threshold: 1, elected: [winner.optionId], runoff: [], openSeats: 0 })
-    assert.equal('officialResult' in hidden, false, 'a closed, unpublished result stays with the mesa')
     const moderatorView = await service.moderatorAssembly(assemblyId)
     assert.deepEqual(moderatorView.rounds[0]?.officialResult?.elected.map((person) => person.label), [winner.label])
     assert.equal(moderatorView.rounds[0]?.officialResult?.declaredBy, 'results_engine')
@@ -210,10 +200,7 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     assert.equal(runoff1.runoff, true)
     assert.deepEqual(runoff1.options.map((option) => option.label), ['Luis Mejía', 'Rosa Paz', 'José Díaz'], 'only the candidates that pass, in ballot order')
     assert.equal(closed.currentRound?.id, round.id, 'the mesa keeps the closed vote in front until it opens the runoff')
-    assert.equal('results' in await service.publicState(joinCode), false)
-    assert.equal('officialResult' in await service.publicState(joinCode), false, 'nothing is public before publishing')
-
-    const ranked = (await service.publishRound(round.id)).results
+    const ranked = (await service.moderatorAssembly(activeAssemblyId)).rounds.find((item) => item.id === round.id)!.results!
     assert.deepEqual(ranked.map((option) => [option.label, option.count]), [['Ana Reyes', 5], ['Luis Mejía', 3], ['Rosa Paz', 3], ['José Díaz', 3], ['Carlos Ruiz', 1]], 'every candidate, most voted first')
     const projector = await service.publicState(joinCode)
     assert.deepEqual(projector.results?.map((option) => option.label), ranked.map((option) => option.label), 'the projector shows the same ranking')
@@ -237,8 +224,6 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     await vote(3, runoff1.id, [luis2, jose2])
     await vote(4, runoff1.id, [rosa2, jose2])
     await service.closeRound(runoff1.id)
-    assert.deepEqual((await service.publicState(joinCode)).officialResult?.elected.map((person) => person.label), ['Ana Reyes'], 'Luis appears once the 2nd vote is published')
-    await service.publishRound(runoff1.id)
     assert.deepEqual((await service.publicState(joinCode)).officialResult?.elected.map((person) => person.label), ['Ana Reyes', 'Luis Mejía'])
     const afterSecond = await service.moderatorAssembly(activeAssemblyId)
     const runoff2 = afterSecond.rounds.find((item) => item.runoffSourceRoundId === runoff1.id)!
@@ -254,7 +239,6 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     for (const index of [0, 1, 2, 3]) await vote(index, runoff2.id, [rosa3])
     await vote(4, runoff2.id, [jose3])
     await service.closeRound(runoff2.id)
-    await service.publishRound(runoff2.id)
     const final = await service.moderatorAssembly(activeAssemblyId)
     assert.equal(final.rounds.length, 3)
     assert.deepEqual(final.rounds.find((item) => item.id === round.id)?.officialResult?.elected.map((person) => person.label), ['Ana Reyes', 'Luis Mejía', 'Rosa Paz'])

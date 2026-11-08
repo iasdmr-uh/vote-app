@@ -54,7 +54,6 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id } }), 0, 'annulled votes can never be counted')
     assert.equal(await prisma.participation.count({ where: { roundId: round.id } }), 1, 'the participation receipt stays as a record')
     await assert.rejects(service.castVote(voters[1]!, round.id, round.options[0]!.id), ConflictException)
-    await assert.rejects(service.publishRound(round.id), ConflictException)
     const publicAfterAnnul = await service.publicState(created.joinCode)
     assert.equal(publicAfterAnnul.round?.status, 'annulled')
     assert.equal('results' in publicAfterAnnul, false)
@@ -69,8 +68,7 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     await service.castVote(voters[1]!, repeat.id, repeat.options[1]!.id)
     await service.castVote(voters[2]!, repeat.id, repeat.options[0]!.id)
     await service.closeRound(repeat.id)
-    assert.equal('officialResult' in await service.publicState(created.joinCode), false, 'the result stays with the mesa until published')
-    const results = (await service.publishRound(repeat.id)).results
+    const results = (await service.publicState(created.joinCode)).results!
     assert.deepEqual(results.map((option) => [option.label, option.count]), [['María López', 2], ['Juan Peres', 1]])
     assert.deepEqual((await service.publicState(created.joinCode)).officialResult?.elected.map((item) => item.label), ['María López'], '2 of 3 is a majority')
     assert.equal((await service.annulRound(round.id, 'otra vez')).status, 'annulled', 'annulling again is a no-op')
