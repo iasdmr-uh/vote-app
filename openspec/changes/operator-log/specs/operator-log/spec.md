@@ -29,7 +29,7 @@ Source: issue #79, cleared for build on 2026-11-08.
 
 The system SHALL NOT add a log entry when someone only views a screen, or for a delegate's own actions, such as joining, voting or redeeming a «Reconectar dispositivo» code.
 
-Source: issue #79, cleared for build on 2026-11-08.
+Source: issue #79, cleared for build on 2026-11-08. UNCONFIRMED: leaving out «Reconectar dispositivo» redemptions, which the tool records today.
 
 #### Scenario: A delegate joins
 

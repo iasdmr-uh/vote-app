@@ -12,7 +12,7 @@
 
 - [ ] 3.1 Write failing integration tests that taking out, re-admitting, disabling, enabling, correcting, removing and «Reconectar dispositivo» store the person's name at the time
 - [ ] 3.2 Add `personName` to those write sites in `voting.service.ts`
-- [ ] 3.3 Write a failing integration test that redeeming a «Reconectar dispositivo» code adds no entry, then stop writing it
+- [ ] 3.3 Write a failing integration test that a downloaded file holds no «Reconectar dispositivo» redemption
 
 ## 4. Download and gate
 

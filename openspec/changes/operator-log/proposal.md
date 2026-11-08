@@ -10,7 +10,7 @@ Delegates cannot see the laptop that runs the vote. A record of each operator ac
 - Each download is itself logged. The last entry in the file is that download.
 - «Borrar datos» is refused until the operator downloads the log for «Borrar datos» and nothing is logged after that download.
 - The log never records how anyone voted or who voted, and never records delegates' own actions or viewing a screen.
-- A delegate redeeming a «Reconectar dispositivo» code stops writing an entry, because it is a delegate's own action.
+- A delegate redeeming a «Reconectar dispositivo» code is left out of the log, because it is a delegate's own action.
 
 ## Capabilities
 

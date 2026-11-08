@@ -28,7 +28,7 @@ Rendering at download keeps the wording in one module and testable without a dat
 
 `operator-log.ts` lists every action that appears in the log and its kind. Rows whose action is not in the catalogue stay in `audit_events` but are left out of the file. This excludes `round.result_computed`, which the results engine writes and which is not an operator action. UNCONFIRMED: leaving system computations out of the log.
 
-`participant.resume_code_redeemed` stops being written, because the spec does not record delegates' own actions.
+`participant.resume_code_redeemed` is still written to `audit_events` but left out of the catalogue, because the spec does not record delegates' own actions. Adding it to the catalogue restores it in one line. UNCONFIRMED.
 
 ### Order by a sequence column
 
