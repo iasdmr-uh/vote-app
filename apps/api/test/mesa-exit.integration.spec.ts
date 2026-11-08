@@ -70,7 +70,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
 
     const audit = await prisma.auditEvent.findFirstOrThrow({ where: { assemblyId, action: 'participant.taken_out' } })
     assert.equal(audit.actorRef, MODERATOR_ACTOR)
-    assert.deepEqual(audit.metadata, { participantId: people.Isaías!.id })
+    assert.deepEqual(audit.metadata, { participantId: people.Isaías!.id, personName: 'Isaías Delegado' })
 
     await assert.rejects(auth.participantForToken(people.Isaías!.token), UnauthorizedException)
     await assert.rejects(service.participantState(people.Isaías!.id), NotFoundException)
@@ -115,7 +115,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     assert.equal(back.status, 'active')
     await assert.rejects(auth.participantForToken(people.Isaías!.token), UnauthorizedException, 'the old device stays revoked')
     const returnAudit = await prisma.auditEvent.findFirstOrThrow({ where: { assemblyId, action: 'participant.returned' } })
-    assert.deepEqual(returnAudit.metadata, { participantId: people.Isaías!.id })
+    assert.deepEqual(returnAudit.metadata, { participantId: people.Isaías!.id, personName: 'Isaías Delegado' })
 
     mesa = await service.moderatorAssembly(assemblyId)
     assert.deepEqual(mesa.participants.map((person) => person.firstName), ['Eliseo', 'Isaías', 'Jeremías'])

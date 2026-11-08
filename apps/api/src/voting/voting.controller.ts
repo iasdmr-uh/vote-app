@@ -10,15 +10,17 @@ import {
   Patch,
   Post,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common'
-import type { Request } from 'express'
+import type { Request, Response } from 'express'
 import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
 import { ConnectionCountService } from './connection-count.service.js'
 import { CONNECTION_GRACE_MS } from '../realtime/connection-timing.js'
+import { OperatorLogService } from './operator-log.service.js'
 import {
   AddPositionDto,
   AnnulRoundDto,
@@ -28,6 +30,7 @@ import {
   CreateRoundDto,
   JoinAssemblyDto,
   LobbyPatchDto,
+  LogDownloadDto,
   ParticipantPatchDto,
   PresentationDto,
   RepeatRoundDto,
@@ -102,6 +105,7 @@ export class ModeratorController {
     private readonly voting: VotingService,
     private readonly presentation: PresentationService,
     private readonly connections: ConnectionCountService,
+    private readonly operatorLog: OperatorLogService,
   ) {}
 
   @Get('session')
@@ -134,6 +138,16 @@ export class ModeratorController {
   @HttpCode(200)
   setPresentation(@Body() input: PresentationDto) {
     return this.presentation.setPresentation(input)
+  }
+
+  @Post('assemblies/:assemblyId/log')
+  @HttpCode(200)
+  async downloadLog(@Param('assemblyId', ParseUUIDPipe) assemblyId: string, @Body() input: LogDownloadDto, @Res({ passthrough: true }) response: Response) {
+    const { fileName, csv } = await this.operatorLog.download(assemblyId, input.purpose)
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    response.setHeader('Cache-Control', 'no-store')
+    return csv
   }
 
   @Get('assemblies/:assemblyId')

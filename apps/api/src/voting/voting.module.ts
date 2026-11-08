@@ -6,10 +6,11 @@ import { ModeratorController, ParticipantController, ParticipantLeaveController,
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
 import { ConnectionCountService } from './connection-count.service.js'
+import { OperatorLogService } from './operator-log.service.js'
 
 @Module({
   imports: [PrismaModule, AuthModule, RealtimeModule],
   controllers: [PublicAssemblyController, ParticipantController, ParticipantLeaveController, ModeratorController],
-  providers: [VotingService, PresentationService, ConnectionCountService],
+  providers: [VotingService, PresentationService, ConnectionCountService, OperatorLogService],
 })
 export class VotingModule {}

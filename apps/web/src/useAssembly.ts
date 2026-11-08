@@ -121,6 +121,18 @@ async function request<T>(path: string, init: RequestInit = {}, token = ''): Pro
   return body as T
 }
 
+async function requestFile(path: string, body: unknown, token: string) {
+  const response = await fetch(`${API}${path}`, {
+    method: 'POST', body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}))
+    throw new ApiRequestError(failure.message || 'No se pudo completar la solicitud. Intenta de nuevo.', response.status)
+  }
+  return response.blob()
+}
+
 function isUnauthorized(e: unknown) {
   return e instanceof ApiRequestError && e.status === 401
 }
@@ -457,7 +469,7 @@ export function useAssembly() {
     moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected, phoneOnline,
     projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas,
     role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, connectionCount, completionTime, ballotMaxChoices, projectorJoinUrl,
-    go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
+    go, openProjectorWindow, request, requestFile, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
     setBrowsingActas, selectAssembly, loadAssemblyLists, recoverActiveAssembly, rememberJoinCode, refreshQr, formatDateTime,
     syncRealtime, startAssembly, stopAssembly,
   }
