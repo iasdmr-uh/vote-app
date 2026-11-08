@@ -98,6 +98,7 @@ export const es = {
     workflow: ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado'],
     pendingActas: (count: number) => `${count === 1 ? '1 Asamblea finalizada' : `${count} Asambleas finalizadas`} con datos guardados.`,
     viewPendingActas: 'Ver actas pendientes',
+    awaitingRegistration: 'Agrega a oficiales antes de abrir otra elección',
     secrecyPending: 'Limpieza del secreto del voto pendiente',
     retryCleanup: 'Reintentar limpieza',
     afterAssemblyEyebrow: 'DESPUÉS DE LA ASAMBLEA',

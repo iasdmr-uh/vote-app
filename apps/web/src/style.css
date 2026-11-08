@@ -62,6 +62,8 @@ button:not(:disabled):active { transform: translateY(1px); }
 .notice { margin: 0 auto 1rem; padding: .9rem 1rem; border-radius: .65rem; line-height: 1.5; }
 .notice.error { border: 1px solid #f2b9b4; background: #fff2f0; color: #80251e; }
 .notice.success { border: 1px solid #abd9bf; background: #effaf3; color: #205a38; }
+.notice.awaiting-registration { display: grid; gap: .5rem; border: 1px solid #e0c068; background: #fff8e6; color: #5c4400; }
+.notice.awaiting-registration .action-row { align-items: center; margin: 0; }
 .connection-warning { margin: 0 auto 1rem; padding: .8rem 1rem; border: 1px solid #efd19f; border-radius: .65rem; background: #fff8e9; color: #634b1b; font-size: .9rem; line-height: 1.5; }
 .sync { min-height: 1.3rem; color: var(--muted); font-size: .8rem; text-align: right; }
 .status-panel { display: flex; align-items: flex-start; gap: .9rem; padding: 1.15rem; border-radius: .75rem; background: #f4f7fc; }

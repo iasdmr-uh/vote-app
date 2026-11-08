@@ -1360,6 +1360,50 @@ test('durante una votación abierta la mesa no ofrece preparar la siguiente vota
   await expect(page.getByRole('button', { name: 'Agregar a Secretaría Regional', exact: true })).toHaveCount(0)
 })
 
+test('la mesa agrega a oficiales una elección pendiente aunque ya preparó la siguiente papeleta', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  let registered = false
+  const musica = {
+    id: 'musica', title: 'Música', status: 'published', category: 'office', final: true, participationCount: 3,
+    options: [{ id: 'axel', label: 'Axel Avelar' }, { id: 'adriana', label: 'Adriana Blanco' }],
+    results: [{ optionId: 'axel', label: 'Axel Avelar', count: 2 }, { optionId: 'adriana', label: 'Adriana Blanco', count: 1 }],
+  }
+  const draft = { id: 'finanzas', title: 'Comisión de Finanzas', status: 'draft', category: 'committee', memberCount: 3, electionSeats: 3, options: [{ id: 'j', label: 'Jary' }, { id: 'd', label: 'Daniel' }, { id: 'i', label: 'Isaí' }] }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      const officialResult = { roundId: 'musica', elected: [{ optionId: 'axel', label: 'Axel Avelar' }], note: null, declaredBy: 'results_engine', declaredAt: '2026-11-08T19:20:19.000Z', publishedAt: '2026-11-08T19:20:19.000Z', settledRoundId: 'musica', approved: null, registeredAt: registered ? '2026-11-08T19:30:00.000Z' : null }
+      await route.fulfill({ json: {
+        assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participants: [], participantCount: 3, eligibleCount: 3,
+        currentRound: draft,
+        rounds: [{ ...musica, officialResult }, draft],
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/elections/musica/register')) {
+      registered = true
+      await route.fulfill({ status: 201, json: { roundId: 'musica', registered: true } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { name: 'Comisión de Finanzas' })).toBeVisible()
+  const pending = page.getByRole('status', { name: 'Agrega a oficiales antes de abrir otra elección' })
+  await expect(pending).toContainText('Música · Axel Avelar')
+  await pending.getByRole('button', { name: 'Agregar a oficiales' }).click()
+  await expect(page.getByRole('dialog')).toContainText('Axel Avelar')
+  await page.getByRole('dialog').getByRole('button', { name: 'Agregar a oficiales' }).click()
+  await expect.poll(() => registered).toBe(true)
+  await expect(pending).toHaveCount(0)
+})
+
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
   let cleanupDone = false
   let cleanupRequests = 0
