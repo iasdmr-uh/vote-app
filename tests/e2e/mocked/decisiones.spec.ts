@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 // Decisions (#42): A favor / En contra or options, approved with mayoría simple or 3/4 of the habilitados.
 
@@ -96,6 +97,7 @@ test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No apro
   await expect(ballot.locator('.decision-verdict')).toHaveText('Aprobada')
   await expect(ballot.locator('.ranked-rows > li').nth(0)).toHaveText(/A favor\s*30 votos\s*79 %/)
   await expect(ballot.locator('.ranked-rows .badge')).toHaveCount(0)
+  await openActa(page)
   const acta = page.locator('#acta-de-resultados')
   await expect(acta.locator('.official-round').nth(0)).toContainText('Decisión · Se aprueba con mayoría simple · 20 votos')
   await expect(acta.locator('.official-round').nth(0).locator('.declared-result')).toHaveText('No aprobada')

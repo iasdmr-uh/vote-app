@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 /** Reads the downloaded acta sheet back as typed values: inline strings stay strings, <v> cells are numbers. */
 function sheetRows(xml: string) {
@@ -226,6 +227,7 @@ test('moderador anula una papeleta con motivo y la repite con las mismas opcione
   })
 
   await page.goto('/moderator')
+  await openActa(page)
   const ranking = page.locator('.official-round').first().locator('.ranked-rows > li')
   await expect(ranking).toHaveCount(4)
   await expect(ranking.nth(0)).toHaveText(/^Beta\s*Desempate\s*4 votos\s*40 %/)
@@ -704,6 +706,7 @@ test('la mesa ve el resultado calculado de una comisión y abre el desempate por
   await expect(rows.nth(4)).toHaveText(/^Sofía Méndez\s*14 votos/)
   await expect(page.getByRole('button', { name: /Declarar|Repetir votación|Retirar declaración/ })).toHaveCount(0)
   await expect(page.getByRole('group', { name: '¿Quién queda electo?' })).toHaveCount(0)
+  await openActa(page)
   const acta = page.locator('#acta-de-resultados')
   await expect(acta.locator('.declared-result')).toContainText('Ana Ruiz')
   await expect(acta).toContainText('DESEMPATE · 2.ª VOTACIÓN')
@@ -739,6 +742,7 @@ test('cargo sin mayoría: chip de mayoría, desempate entre los dos primeros y b
   await expect(ballot.locator('.ranked-rows > li .badge-warning')).toHaveCount(2)
   await expect(ballot.locator('.ranked-rows > li').nth(2)).not.toContainText('Desempate')
   await expect(ballot.locator('.voters-total')).toHaveText(/36 de 38\s*votaron · 2 no votaron/)
+  await openActa(page)
   await expect(page.locator('#acta-de-resultados')).toContainText('36 de 38 votaron · 2 no votaron')
   await expect(ballot.getByRole('button', { name: 'Abrir desempate', exact: true })).toBeVisible()
   await expect(page.locator('.workflow-steps li.current')).toContainText('Resultado')

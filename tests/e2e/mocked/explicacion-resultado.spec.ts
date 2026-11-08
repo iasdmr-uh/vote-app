@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 const api = '**/api/v1/**'
 const assembly = { id: 'a1', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' }
@@ -65,6 +66,7 @@ test('the mesa opens and closes the explanation of a final result', async ({ pag
 
 test('the results record explains each result', async ({ page }) => {
   await mesaWith(page, { ...committee, status: 'published', options, results, outcome, explanation })
+  await openActa(page)
   await expectToggle(page, '.official-history', paragraph)
 })
 

@@ -114,7 +114,7 @@ Basado en el manual de identidad compartido:
 - Mantener el logotipo y sus proporciones según el manual; no cambiar la paleta institucional ni aplicar efectos no autorizados.
 - Usar tipografía institucional disponible o una alternativa web legible; el manual menciona Noto Sans para lenguajes inusuales.
 - Interfaz de alto contraste, botones amplios, lenguaje cotidiano, instrucciones breves y confirmaciones visibles. En la papeleta puede usarse “Papeleta” para mantener familiaridad con el proceso actual.
-- Diseñar vistas diferenciadas para teléfono del delegado, panel del moderador y proyector. En la sala de espera se exhiben nombres; al abrir la votación, el proyector pasa a mostrar el cargo, estado y progreso.
+- Diseñar vistas diferenciadas para teléfono del delegado, panel del moderador y proyector. En la sala de espera se exhiben nombres; al abrir la votación, el proyector pasa a mostrar el cargo, estado y progreso. Desde el 8 de noviembre de 2026, el acta de resultados ya no ocupa el final del panel de la mesa: «Acta» en el menú de la mesa la abre y «Cerrar acta» la oculta; la impresión no cambia.
 
 ## 11. Arquitectura técnica propuesta
 

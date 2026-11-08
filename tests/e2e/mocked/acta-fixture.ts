@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
 // The completed Asamblea of Figma A1–A3 (section 160:9): every kind of vote, and an org chart with blanks and an added department.
 
@@ -68,4 +68,10 @@ export async function mockCompletedAssembly(page: Page, extra: Record<string, un
     if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null } }); return }
     await route.fulfill({ status: 404, json: { message: 'No mock route for acta test' } })
   })
+}
+
+// The acta de resultados stays hidden in the mesa panel until «Acta» in the mesa menu opens it.
+export async function openActa(page: Page) {
+  await page.getByRole('link', { name: 'Acta', exact: true }).click()
+  await expect(page.locator('#acta-de-resultados')).toBeVisible()
 }
