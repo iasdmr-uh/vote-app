@@ -98,6 +98,14 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     assert.equal((await service.publicState(joinCode)).eligibleCount, 2)
 
     events.length = 0
+    await assert.rejects(service.returnToRoom(people.Isaías!.id), ConflictException, 'no return while a vote is open')
+    assert.equal(events.length, 0)
+    assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: people.Isaías!.id } })).status, 'left')
+    assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.returned' } }), 0)
+    await service.closeRound(second.id)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: second.id } })).eligibleCount, 2)
+
+    events.length = 0
     const returned = await service.returnToRoom(people.Isaías!.id)
     assert.deepEqual(returned, { id: people.Isaías!.id, firstName: 'Isaías', lastName: 'Delegado', status: 'active' })
     assert.deepEqual(events.find((event) => event.name === 'lobbyState')?.payload, { status: 'closed', participantCount: 3 })
@@ -112,12 +120,9 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     mesa = await service.moderatorAssembly(assemblyId)
     assert.deepEqual(mesa.participants.map((person) => person.firstName), ['Eliseo', 'Isaías', 'Jeremías'])
     assert.deepEqual(mesa.leftParticipants, [])
-    assert.equal(mesa.rounds.find((round) => round.id === second.id)?.eligibleCount, 2, 'returning does not change the open vote')
+    assert.equal(mesa.rounds.find((round) => round.id === second.id)?.eligibleCount, 2, 'returning does not change a closed vote')
     const resume = await service.issueResumeCode(people.Isaías!.id)
     assert.match(resume.resumeUrl, /resume=/)
-
-    await service.closeRound(second.id)
-    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: second.id } })).eligibleCount, 2)
 
     const third = await service.createRound(assemblyId, { title: 'Tercera', ...twoOptions })
     await service.openRound(third.id)
@@ -151,11 +156,11 @@ test('in an election, someone who voted and was taken out keeps counting in the 
     await service.openRound(runoff.id)
     assert.equal((await service.publicState(joinCode)).eligibleCount, 2)
 
-    await service.returnToRoom(people.Oseas!.id)
-    await service.returnToRoom(people.Joel!.id)
-    assert.equal((await service.publicState(joinCode)).eligibleCount, 2, 'the open vote is not changed by returns')
+    await assert.rejects(service.returnToRoom(people.Joel!.id), ConflictException, 'Joel is not in the open vote base, so he cannot come back and vote in it')
     await service.closeRound(runoff.id)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).eligibleCount, 2)
+    await service.returnToRoom(people.Oseas!.id)
+    await service.returnToRoom(people.Joel!.id)
 
     const next = await service.createRound(assemblyId, { title: 'Otra', ...twoOptions })
     await service.openRound(next.id)
