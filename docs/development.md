@@ -20,7 +20,7 @@
 
 Registro reproducible más reciente: 2026-10-01. En Node.js 22.22.1/npm 11.13.0, `npm run typecheck` y `npm run build` terminaron correctamente. `npm run test:e2e` pasó 6/6 pruebas (Chromium de escritorio y móvil); Playwright intercepta la API con datos sintéticos, por lo que no valida el recorrido integrado contra API y PostgreSQL. La primera ejecución E2E dentro del sandbox no pudo abrir `127.0.0.1:5173` (`EPERM`); al autorizar el servidor local, la misma suite pasó.
 
-La suite integrada real se ejecuta por separado con `npm run test:e2e:integration` (requiere Docker o las herramientas locales de PostgreSQL y Chromium de Playwright). Instrucciones y formato de evidencia: [e2e-real-postgres.md](e2e-real-postgres.md).
+La suite integrada real se ejecuta por separado con `npm run test:e2e:real-stack` (requiere Docker o las herramientas locales de PostgreSQL y Chromium de Playwright). Instrucciones y formato de evidencia: [e2e-real-postgres.md](e2e-real-postgres.md).
 
 
 Docker 28.0.4 estaba instalado, pero su daemon no estaba disponible. Se usó PostgreSQL local 15.15 para crear un clúster nuevo y desechable en `/private/tmp`, escuchando solo en `127.0.0.1:55432`, con una base vacía `asdmr_integration`; no se conectó a la base local habitual ni a datos reales. `prisma migrate deploy` aplicó `20261001000000_initial`; `TEST_DATABASE_URL=... npm run test --workspace @asdmr/api` pasó 11/11, incluido el caso de concurrencia, cierre y publicación que antes se omitía. El clúster de prueba se detuvo después de la corrida. La repetición limpia requiere los comandos de abajo.
@@ -42,7 +42,7 @@ createdb -h 127.0.0.1 -p 55432 asdmr_integration
 DATABASE_URL="postgresql://$(id -un)@127.0.0.1:55432/asdmr_integration?schema=public" \
   npm run db:deploy --workspace @asdmr/api
 TEST_DATABASE_URL="postgresql://$(id -un)@127.0.0.1:55432/asdmr_integration?schema=public" \
-  npm run test --workspace @asdmr/api
+  npm run test:integration --workspace @asdmr/api
 pg_ctl -D "$TEST_PG_DIR/data" -m fast -w stop
 ```
 
@@ -50,7 +50,7 @@ Si falla antes de `pg_ctl ... stop`, detén explícitamente el clúster con el m
 
 La API implementa el flujo esencial de Asamblea, sesiones, rondas, votos, cierre y publicación. La conexión en tiempo real es una capa separada; no usar datos personales reales en desarrollo.
 
-Para unit tests y suite de Socket.IO: `npm run test --workspace @asdmr/api`. El test de concurrencia/voto/cierre/publicación se ejecuta cuando `TEST_DATABASE_URL` apunta a una base PostgreSQL desechable con la migración aplicada; usa esa base únicamente para pruebas.
+Unit tests y suite de Socket.IO: `npm test --workspace @asdmr/api`. Las pruebas de integración se ejecutan con `npm run test:integration --workspace @asdmr/api` y fallan si `TEST_DATABASE_URL` no apunta a una base PostgreSQL desechable con la migración aplicada; usa esa base únicamente para pruebas.
 
 ## Variables
 
@@ -77,7 +77,7 @@ Para preparar una instalación candidata reproducible con Caddy/HTTPS, servicios
 
 ## Resultados automáticos (noviembre 2026)
 
-La mesa abre, cierra, publica y puede anular; nunca elige ganadores. No existen endpoints de declaración manual. Al cerrar, `settleElection` (`apps/api/src/voting/voting.service.ts`) aplica `apps/api/src/voting/results-engine.ts` (funciones puras, probadas en `test/results-engine.spec.ts`):
+La mesa abre, cierra, publica y puede anular; nunca elige ganadores. No existen endpoints de declaración manual. Al cerrar, `settleElection` (`apps/api/src/voting/voting.service.ts`) aplica `apps/api/src/voting/results-engine.ts` (funciones puras, probadas en `apps/api/test/unit/results-engine.spec.ts`):
 
 - Base: participantes habilitados al abrir la votación, congelada en `rounds.eligible_count`; inhabilitados y quienes no votaron cuentan. Mayoría = más de la mitad (38 → 20; la mitad exacta no alcanza).
 - Elecciones (`electionOutcome`): cargo = 1 puesto, comisión = `electionSeats` puestos. Electo = dentro de los N primeros y con mayoría. Un empate en el corte va a desempate solo entre los empatados. Si los puestos quedan abiertos, el servidor crea el desempate como borrador (`committee_root_round_id` = primera votación, `electionSeats` = puestos abiertos) con los N primeros sin mayoría y los empatados en el corte; si eso no supera los puestos abiertos, se agrega el siguiente (y sus empatados). La mesa lo abre; se repite hasta llenar los puestos. Los electos se acumulan en `official_results` de la primera votación (`declaredBy: results_engine`).
@@ -90,7 +90,7 @@ Migraciones: `20261102004200_decision_rounds` (categoría `decision`, `decision_
 
 E2E simulado: `npm run test:e2e` levanta su propio Vite en 5173 y falla si el puerto está ocupado, por ejemplo por `npm run dev`. Usa `PLAYWRIGHT_WEB_PORT=…` para otro puerto, o `PLAYWRIGHT_BASE_URL=…` para probar contra un servidor que ya levantaste.
 
-E2E real: `npm run test:e2e:integration`; si 3300 o 4174 están ocupados, `E2E_API_PORT=… E2E_WEB_PORT=… npm run test:e2e:integration` ([e2e-real-postgres.md](e2e-real-postgres.md)).
+E2E real: `npm run test:e2e:real-stack`; si 3300 o 4174 están ocupados, `E2E_API_PORT=… E2E_WEB_PORT=… npm run test:e2e:real-stack` ([e2e-real-postgres.md](e2e-real-postgres.md)).
 
 ## Documentos de fundamento
 
