@@ -4,19 +4,21 @@ import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { DEFAULT_BOARD_POSITIONS, DEFAULT_DEPARTMENT_POSITIONS, VotingService } from '../src/voting/voting.service.js'
+import { OfficialRosterService } from '../src/voting/official-roster.service.js'
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
 
 /** A real Asamblea created by the mesa (so its puestos are seeded), with `count` delegates. */
-async function withAssembly(count: number, body: (ctx: { service: VotingService; prisma: PrismaService; assemblyId: string; joinCode: string; people: string[] }) => Promise<void>) {
+async function withAssembly(count: number, body: (ctx: { service: VotingService; roster: OfficialRosterService; prisma: PrismaService; assemblyId: string; joinCode: string; people: string[] }) => Promise<void>) {
   process.env.DATABASE_URL = testDatabaseUrl
   process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
   const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
   const service = new VotingService(prisma, realtime)
+  const roster = new OfficialRosterService(prisma, realtime)
   let assemblyId: string | undefined
   try {
     const created = await service.createAssembly('IV Asamblea Reorganizativa 2026', ' 2027–2029 ')
@@ -27,7 +29,7 @@ async function withAssembly(count: number, body: (ctx: { service: VotingService;
       const joined = await service.joinAssembly(created.joinCode, `Delegado ${index + 1}`, 'Prueba')
       people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
     }
-    await body({ service, prisma, assemblyId, joinCode: created.joinCode, people })
+    await body({ service, roster, prisma, assemblyId, joinCode: created.joinCode, people })
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
@@ -77,7 +79,7 @@ test('the mesa adds a departamento: audited and last; duplicate or empty is 422,
 })
 
 test('a cargo with a puesto takes its name; only a cargo has a puesto and an elected puesto cannot be voted again', { skip }, async () => {
-  await withAssembly(3, async ({ service, prisma, assemblyId, people }) => {
+  await withAssembly(3, async ({ service, roster, prisma, assemblyId, people }) => {
     await service.changeLobby(assemblyId, 'lobby_closed')
     const treasurer = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Tesorero' } })).id
     await assert.rejects(service.createRound(assemblyId, { title: 'Comisión', category: 'committee', memberCount: 1, format: 'multiple_choice', positionId: treasurer, options: [{ label: 'A' }] }), UnprocessableEntityException)
@@ -90,6 +92,8 @@ test('a cargo with a puesto takes its name; only a cargo has a puesto and an ele
     await service.openRound(round.id)
     for (const person of people) await service.castVote(person, round.id, round.options[0]!.id)
     await service.closeRound(round.id)
+    assert.equal((await service.moderatorAssembly(assemblyId)).positions.find((item) => item.id === treasurer)?.elected, null, 'not on the roster yet')
+    await roster.register(round.id)
     const state = await service.moderatorAssembly(assemblyId)
     assert.deepEqual(state.positions.find((item) => item.id === treasurer)?.elected, { label: 'Ana Ruiz', roundId: round.id })
     assert.equal(state.rounds.find((item) => item.id === round.id)?.positionId, treasurer)
@@ -97,8 +101,8 @@ test('a cargo with a puesto takes its name; only a cargo has a puesto and an ele
   })
 })
 
-test('a runoff elects into its root\'s puesto; phones, projector and mesa see it on close', { skip }, async () => {
-  await withAssembly(4, async ({ service, prisma, assemblyId, joinCode, people }) => {
+test('a runoff elects into its root\'s puesto; phones, projector and mesa see it once on the roster', { skip }, async () => {
+  await withAssembly(4, async ({ service, roster, prisma, assemblyId, joinCode, people }) => {
     await service.changeLobby(assemblyId, 'lobby_closed')
     const president = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Presidente' } })).id
     const first = await service.createRound(assemblyId, { category: 'office', format: 'single_choice', positionId: president, options: [{ label: 'Ana Ruiz' }, { label: 'Juan Mora' }, { label: 'Elena Castro' }] })
@@ -118,6 +122,9 @@ test('a runoff elects into its root\'s puesto; phones, projector and mesa see it
     const ana = runoff.options.find((option) => option.label === 'Ana Ruiz')!.id
     for (const person of people) await service.castVote(person, runoff.id, ana)
     await service.closeRound(runoff.id)
+    assert.equal((await service.moderatorAssembly(assemblyId)).positions.find((item) => item.id === president)?.elected, null, 'shown but not on the roster')
+    assert.equal((await service.publicState(joinCode)).positions.find((item) => item.id === president)?.elected, null)
+    await roster.register(first.id)
     state = await service.moderatorAssembly(assemblyId)
     assert.deepEqual(state.positions.find((item) => item.id === president)?.elected, { label: 'Ana Ruiz', roundId: runoff.id })
     const projector = await service.publicState(joinCode)

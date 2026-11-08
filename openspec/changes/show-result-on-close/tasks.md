@@ -20,7 +20,7 @@
 - [x] 3.2 Failing integration tests: the database refuses to change `registered_at`, to change a registered result's options, and to annul a vote of a registered election, while «Borrar datos» still deletes everything
 - [x] 3.3 Add the register endpoint, the service method and the triggers
 - [ ] 3.4 After #79 lands, rebase and log registering with kind «Resultados»
-- [ ] 3.5 Failing test, then change: «Presentar oficiales» shows only registered results
+- [x] 3.5 Failing test, then change: «Presentar oficiales» shows only registered results
 
 ## 4. Gates
 

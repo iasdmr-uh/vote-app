@@ -126,12 +126,7 @@ export class VotingService implements OnModuleInit {
     return { id: position.id, group: position.group, label: position.label, sortOrder: position.sortOrder, custom: position.custom, elected: null }
   }
 
-  /**
-   * The org chart with whoever each puesto elected. The elected live on the official result of the
-   * election's first vote, the round that carries the puesto, even when a runoff elected them. The mesa
-   * sees a closed vote's elected; phones and projector only what was published.
-   */
-  private async positionsOf(assemblyId: string, electedStatuses: readonly RoundStatus[]) {
+  private async positionsOf(assemblyId: string) {
     const positions = await this.prisma.position.findMany({
       where: { assemblyId },
       orderBy: [{ group: 'asc' }, { sortOrder: 'asc' }],
@@ -139,14 +134,13 @@ export class VotingService implements OnModuleInit {
         rounds: {
           where: { category: 'office', committeeRootRoundId: null },
           orderBy: { createdAt: 'asc' },
-          select: { officialResult: { select: { options: { select: { option: { select: { label: true, roundId: true, round: { select: { status: true } } } } } } } } },
+          select: { officialResult: { select: { registeredAt: true, options: { select: { option: { select: { label: true, roundId: true } } } } } } },
         },
       },
     })
     return positions.map((position) => {
       const elected = position.rounds
-        .flatMap((round) => round.officialResult?.options ?? [])
-        .filter(({ option }) => electedStatuses.includes(option.round.status))
+        .flatMap((round) => (round.officialResult?.registeredAt ? round.officialResult.options : []))
         .at(-1)
       return {
         id: position.id, group: position.group, label: position.label, sortOrder: position.sortOrder, custom: position.custom,
@@ -440,7 +434,7 @@ export class VotingService implements OnModuleInit {
       ? await Promise.all([this.chainPosition(round), this.prisma.ballotOption.findMany({ where: { roundId: round.id }, orderBy: { order: 'asc' }, select: { id: true } })])
       : [null, []]
     const outcome = result && round ? outcomeOf({ ...round, options: ballot }, result, eligibleCounts.get(round.id) ?? participantCount) : undefined
-    const positions = await this.positionsOf(assembly.id, ['published'])
+    const positions = await this.positionsOf(assembly.id)
     return {
       assembly: { id: assembly.id, name: assembly.name, status: assembly.status, completedAt: assembly.completedAt?.toISOString() ?? null },
       assemblyName: assembly.name,
@@ -528,7 +522,7 @@ export class VotingService implements OnModuleInit {
       id: assembly.id,
       name: assembly.name,
       period: assembly.period,
-      positions: await this.positionsOf(assemblyId, ['published']),
+      positions: await this.positionsOf(assemblyId),
       status: assembly.status,
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants.map((person) => ({ ...person, ...(attendanceRound ? { voted: voted.has(person.id) } : {}) })),
