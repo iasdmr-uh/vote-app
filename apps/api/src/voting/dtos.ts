@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer'
+import { LOG_PURPOSES, type LogPurpose } from './operator-log.js'
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
@@ -57,8 +58,8 @@ export class ResumeSessionDto {
 }
 
 export class LogDownloadDto {
-  @IsIn(['review', 'delete'])
-  purpose!: 'review' | 'delete'
+  @IsIn(LOG_PURPOSES)
+  purpose!: LogPurpose
 }
 
 export class CompleteAssemblyDto {

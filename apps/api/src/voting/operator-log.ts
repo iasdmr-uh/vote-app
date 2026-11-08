@@ -15,6 +15,9 @@ export interface LogEntry {
 }
 
 export const LOG_TIME_ZONE = 'America/Tegucigalpa'
+export const LOG_DOWNLOADED = 'log.downloaded'
+export const LOG_PURPOSES = ['review', 'delete'] as const
+export type LogPurpose = (typeof LOG_PURPOSES)[number]
 
 type Meta = Record<string, unknown>
 type Describe = (meta: Meta, round: string) => string
@@ -55,7 +58,7 @@ const CATALOGUE: Record<string, { kind: LogKind; describe: Describe }> = {
   },
   'assembly.created_and_lobby_opened': { kind: 'Datos', describe: () => 'Asamblea creada y sala abierta' },
   'assembly.completed': { kind: 'Datos', describe: () => 'Asamblea finalizada' },
-  'log.downloaded': { kind: 'Datos', describe: (meta) => (meta.purpose === 'delete' ? 'Registro descargado para «Borrar datos»' : 'Registro descargado') },
+  [LOG_DOWNLOADED]: { kind: 'Datos', describe: (meta) => (meta.purpose === 'delete' ? 'Registro descargado para «Borrar datos»' : 'Registro descargado') },
 }
 
 export const LOGGED_ACTIONS: ReadonlySet<string> = new Set(Object.keys(CATALOGUE))
@@ -73,7 +76,7 @@ export interface NewestLogEntry {
 }
 
 export function canEraseWithLog(newest: NewestLogEntry | null, recordedCount: number) {
-  if (newest?.action !== 'log.downloaded') return false
+  if (newest?.action !== LOG_DOWNLOADED) return false
   const meta = newest.metadata && typeof newest.metadata === 'object' ? (newest.metadata as Meta) : {}
   return meta.purpose === 'delete' && meta.entryCount === recordedCount
 }

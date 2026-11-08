@@ -2,11 +2,8 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { LOGGED_ACTIONS, canEraseWithLog, operatorLogCsv } from './operator-log.js'
+import { LOGGED_ACTIONS, LOG_DOWNLOADED, canEraseWithLog, operatorLogCsv, type LogPurpose } from './operator-log.js'
 
-export type LogDownloadPurpose = 'review' | 'delete'
-
-const LOG_DOWNLOADED = 'log.downloaded'
 const loggedWhere = (assemblyId: string) => ({ assemblyId, action: { in: [...LOGGED_ACTIONS] } })
 
 function fileSlug(name: string) {
@@ -37,7 +34,7 @@ export async function keepRoundTitlesInLog(tx: Prisma.TransactionClient, roundId
 export class OperatorLogService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async download(assemblyId: string, purpose: LogDownloadPurpose) {
+  async download(assemblyId: string, purpose: LogPurpose) {
     return this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ name: string }>>`SELECT name FROM assemblies WHERE id = ${assemblyId}::uuid FOR UPDATE`
       if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
