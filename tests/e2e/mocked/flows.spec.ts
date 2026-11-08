@@ -342,6 +342,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
         participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', votingDisabled: anaDisabled }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }, { id: 'p4', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
         regionalSecretary: { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' },
+        leftParticipants: [{ id: 'p5', firstName: 'Jonás', lastName: 'Amitai' }],
         participantCount: 4, attendanceRound: { roundId: 'r1', status, votedCount: 2, eligibleCount: 4 },
         rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
       } })
@@ -380,6 +381,9 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(luisMenu.getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Nuevo código' })).toHaveCount(0)
+  const jonasOut = page.locator('.out-of-room li', { hasText: 'Jonás Amitai' })
+  await expect(jonasOut).toBeVisible()
+  await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
@@ -390,6 +394,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(secretaryRow.getByRole('button', { name: 'Retirar de la sala' })).toBeVisible()
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Nuevo código' })).toBeVisible()
+  await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toBeVisible()
   await page.getByLabel('Acciones para Luis Mejía').click()
   await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
   await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toBeVisible()
