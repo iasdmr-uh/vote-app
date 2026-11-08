@@ -18,7 +18,7 @@ const {
 } = useAssembly()
 const {
   moderatorCredential, assemblyName, assemblyPeriod, showNextBallotForm, preparedRunoff,
-  secrecyCleanupPendingRounds, moderatorWorkflow, currentRoundRecord, moderatorWorkflowStep, otherPendingActas,
+  secrecyCleanupPendingRounds, voteOpen, moderatorWorkflow, currentRoundRecord, moderatorWorkflowStep, otherPendingActas,
   repeatAllOptions, openCompletedAssembly, openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa,
   downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData, createAssembly, signInModerator,
 } = useMesa()
@@ -54,7 +54,7 @@ const {
       <p v-if="otherPendingActas.length" class="status-line pending-actas">{{ es.moderator.pendingActas(otherPendingActas.length) }} <button class="link-button" @click="showPendingActas">{{ es.moderator.viewPendingActas }}</button></p>
       <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
         <strong>{{ es.moderator.secrecyPending }}</strong> ({{ secrecyCleanupPendingRounds.map((item) => item.title).join(', ') }}).
-        <button class="secondary" :disabled="loading" @click="retrySecrecyCleanup">{{ es.moderator.retryCleanup }}</button>
+        <button v-if="!voteOpen" class="secondary" :disabled="loading" @click="retrySecrecyCleanup">{{ es.moderator.retryCleanup }}</button>
       </section>
       <section v-if="assemblyStatus === 'completed'" class="status-panel assembly-completed" role="status"><span class="status-dot"></span><div><strong>{{ es.common.assemblyEnded }}</strong><p v-if="completionTime">{{ completionTime }}</p></div></section>
       <section v-if="assemblyStatus === 'completed'" class="card after-assembly"><p class="eyebrow">{{ es.moderator.afterAssemblyEyebrow }}</p><h2>{{ es.moderator.actaAndDeletion }}</h2>

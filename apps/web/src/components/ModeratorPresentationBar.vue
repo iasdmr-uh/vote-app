@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { es } from '../locale/es'
 import { useAssembly } from '../useAssembly'
+import { useMesa } from '../useMesa'
 import { usePresentacion } from '../usePresentacion'
 
 const { loading } = useAssembly()
+const { voteOpen } = useMesa()
 const { presentation, slideName, startPresentation, stopPresentation, previousSlide, nextSlide } = usePresentacion()
 </script>
 
 <template>
-      <section class="presentation-bar" :class="{ presenting: presentation.active }" :aria-label="es.moderator.presentOfficers">
+      <section v-if="!voteOpen" class="presentation-bar" :class="{ presenting: presentation.active }" :aria-label="es.moderator.presentOfficers">
         <button v-if="!presentation.active" class="secondary" :disabled="loading" @click="startPresentation">{{ es.moderator.presentOfficers }}</button>
         <template v-else>
           <span class="badge badge-info">{{ es.moderator.presenting }}</span>
