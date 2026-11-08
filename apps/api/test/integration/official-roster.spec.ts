@@ -2,27 +2,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { ConflictException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import { OfficialRosterService } from '../src/voting/official-roster.service.js'
-import { OperatorLogService } from '../src/voting/operator-log.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
-import { delegateName } from './fixtures/session-tools.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import type { PrismaService } from '../../src/prisma/prisma.service.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { OfficialRosterService } from '../../src/voting/official-roster.service.js'
+import { OperatorLogService } from '../../src/voting/operator-log.service.js'
+import { delegateName } from '../scenarios/session-tools.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub, type GatewayEvent } from '../support/gateway.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
-
-type Emitted = { name: string; args: unknown[] }
-type Context = { prisma: PrismaService; service: VotingService; roster: OfficialRosterService; emitted: Emitted[]; assemblyId: string; voters: string[] }
+type Context = { prisma: PrismaService; service: VotingService; roster: OfficialRosterService; emitted: GatewayEvent[]; assemblyId: string; voters: string[] }
 
 async function withAssembly(delegates: number, body: (context: Context) => Promise<void>) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const emitted: Emitted[] = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => { emitted.push({ name, args }) } }) as RealtimeGateway
+  const prisma = await connectDatabase()
+  const { gateway: realtime, events: emitted } = gatewayStub()
   const service = new VotingService(prisma, realtime)
   const roster = new OfficialRosterService(prisma, realtime)
   const organizationId = randomUUID()
@@ -69,7 +62,7 @@ async function settleRunoff({ service, voters }: Context, runoff: { id: string; 
   await service.closeRound(runoff.id)
 }
 
-test('the operator adds a committee to the roster in one action, with everyone elected across its votes', { skip }, async () => {
+test('the operator adds a committee to the roster in one action, with everyone elected across its votes', async () => {
   await withAssembly(4, async (context) => {
     const { prisma, service, roster, emitted, assemblyId } = context
     const { first, runoff } = await committeeAfterFirstVote(context)
@@ -96,7 +89,7 @@ test('the operator adds a committee to the roster in one action, with everyone e
   })
 })
 
-test('the operator adds a decision to the roster as not approved', { skip }, async () => {
+test('the operator adds a decision to the roster as not approved', async () => {
   await withAssembly(3, async ({ prisma, service, roster, assemblyId, voters }) => {
     const statute = await service.createRound(assemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })
     await service.openRound(statute.id)
@@ -111,7 +104,7 @@ test('the operator adds a decision to the roster as not approved', { skip }, asy
   })
 })
 
-test('the roster refuses a result still being prepared and an annulled one', { skip }, async () => {
+test('the roster refuses a result still being prepared and an annulled one', async () => {
   await withAssembly(2, async ({ prisma, service, roster, assemblyId, voters }) => {
     const president = await service.createRound(assemblyId, { title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' } })
     await service.openRound(president.id)
@@ -129,7 +122,7 @@ test('the roster refuses a result still being prepared and an annulled one', { s
   })
 })
 
-test('the database refuses to change a roster entry, and «Borrar datos» still deletes everything', { skip }, async () => {
+test('the database refuses to change a roster entry, and «Borrar datos» still deletes everything', async () => {
   await withAssembly(4, async (context) => {
     const { prisma, service, roster, assemblyId } = context
     const { first, runoff } = await committeeAfterFirstVote(context)
@@ -161,7 +154,7 @@ async function singleVote({ service, assemblyId }: Context, title: string) {
   return service.createRound(assemblyId, { title, format: 'single_choice', category: 'office', options: [{ label: 'Isaías' }, { label: 'Jeremías' }, { label: 'Ezequiel' }] })
 }
 
-test('another election waits while an election has a runoff pending or a final result off the roster', { skip }, async () => {
+test('another election waits while an election has a runoff pending or a final result off the roster', async () => {
   await withAssembly(4, async (context) => {
     const { service, roster, voters } = context
     const { first, runoff } = await committeeAfterFirstVote(context)
@@ -178,7 +171,7 @@ test('another election waits while an election has a runoff pending or a final r
   })
 })
 
-test('the runoff of the same election opens, and an annulled vote frees the next election', { skip }, async () => {
+test('the runoff of the same election opens, and an annulled vote frees the next election', async () => {
   await withAssembly(4, async (context) => {
     const { service, voters } = context
     const president = await singleVote(context, 'Presidente')
@@ -199,7 +192,7 @@ test('the runoff of the same election opens, and an annulled vote frees the next
   })
 })
 
-test('annulment is refused once the election is on the roster', { skip }, async () => {
+test('annulment is refused once the election is on the roster', async () => {
   await withAssembly(3, async (context) => {
     const { prisma, service, roster, voters } = context
     const president = await singleVote(context, 'Presidente')

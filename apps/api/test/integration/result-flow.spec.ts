@@ -2,31 +2,24 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { ConflictException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
-import { delegateName } from './fixtures/session-tools.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import type { PrismaService } from '../../src/prisma/prisma.service.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { delegateName } from '../scenarios/session-tools.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub, type GatewayEvent } from '../support/gateway.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
-
-type Emitted = { name: string; args: unknown[] }
 
 async function withAssembly(delegates: number, body: (context: {
   prisma: PrismaService
   service: VotingService
-  emitted: Emitted[]
+  emitted: GatewayEvent[]
   assemblyId: string
   joinCode: string
   voters: string[]
 }) => Promise<void>) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const emitted: Emitted[] = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => { emitted.push({ name, args }) } }) as RealtimeGateway
+  const prisma = await connectDatabase()
+  const { gateway: realtime, events: emitted } = gatewayStub()
   const service = new VotingService(prisma, realtime)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
@@ -56,7 +49,7 @@ async function withAssembly(delegates: number, body: (context: {
 
 const countsOf = (options: Array<{ label: string; count: number }> | undefined) => options?.map((option) => [option.label, option.count])
 
-test('closing a vote shows its result on every screen at once', { skip }, async () => {
+test('closing a vote shows its result on every screen at once', async () => {
   await withAssembly(3, async ({ prisma, service, emitted, assemblyId, joinCode, voters }) => {
     const round = await service.createRound(assemblyId, { title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' } })
     await service.openRound(round.id)
@@ -76,11 +69,11 @@ test('closing a vote shows its result on every screen at once', { skip }, async 
     assert.equal('privateResults' in mesa, false)
     const notices = emitted.filter((item) => item.name === 'resultsPublished')
     assert.equal(notices.length, 1, 'one notice reaches every room')
-    assert.deepEqual(countsOf((notices[0]!.args[1] as { options: Array<{ label: string; count: number }> }).options), expected)
+    assert.deepEqual(countsOf((notices[0]!.payload as { options: Array<{ label: string; count: number }> }).options), expected)
   })
 })
 
-test('no screen shows a result until the votes are separated, and a retry shows it everywhere', { skip }, async () => {
+test('no screen shows a result until the votes are separated, and a retry shows it everywhere', async () => {
   await withAssembly(2, async ({ prisma, service, emitted, assemblyId, joinCode, voters }) => {
     const round = await service.createRound(assemblyId, { title: 'Presidente', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }], countingRule: { kind: 'count_only' } })
     await service.openRound(round.id)
@@ -112,7 +105,7 @@ test('no screen shows a result until the votes are separated, and a retry shows 
   })
 })
 
-test('the next vote of an election stays hidden from the mesa and cannot open until the result is shown', { skip }, async () => {
+test('the next vote of an election stays hidden from the mesa and cannot open until the result is shown', async () => {
   await withAssembly(2, async ({ prisma, service, assemblyId, voters }) => {
     const round = await service.createRound(assemblyId, { title: 'Presidente', category: 'office', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }] })
     await service.openRound(round.id)
@@ -136,13 +129,13 @@ test('the next vote of an election stays hidden from the mesa and cannot open un
   })
 })
 
-test('the service offers no action to publish a result', { skip }, async () => {
+test('the service offers no action to publish a result', async () => {
   await withAssembly(1, async ({ service }) => {
     assert.equal('publishRound' in service, false)
   })
 })
 
-test('the vote that settles an election is recorded, and a vote that leaves seats open is not', { skip }, async () => {
+test('the vote that settles an election is recorded, and a vote that leaves seats open is not', async () => {
   await withAssembly(4, async ({ prisma, service, assemblyId, voters }) => {
     const first = await service.createRound(assemblyId, { title: 'Comisión de Finanzas', category: 'committee', memberCount: 3, format: 'multiple_choice', options: ['Isaías', 'Jeremías', 'Ezequiel', 'Daniel', 'Oseas'].map((label) => ({ label })) })
     const id = (round: { options: Array<{ id: string; label: string }> }, label: string) => round.options.find((option) => option.label === label)!.id
@@ -168,7 +161,7 @@ test('the vote that settles an election is recorded, and a vote that leaves seat
   })
 })
 
-test('a yes or no decision records whether it was approved', { skip }, async () => {
+test('a yes or no decision records whether it was approved', async () => {
   await withAssembly(3, async ({ prisma, service, assemblyId, voters }) => {
     const statute = await service.createRound(assemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })
     const [, contra] = statute.options
@@ -183,7 +176,7 @@ test('a yes or no decision records whether it was approved', { skip }, async () 
   })
 })
 
-test('every screen says who goes on after a vote that does not settle, and says final with everyone elected after the one that does', { skip }, async () => {
+test('every screen says who goes on after a vote that does not settle, and says final with everyone elected after the one that does', async () => {
   await withAssembly(4, async ({ service, assemblyId, joinCode, voters }) => {
     const first = await service.createRound(assemblyId, { title: 'Comisión de Finanzas', category: 'committee', memberCount: 3, format: 'multiple_choice', options: ['Isaías', 'Jeremías', 'Ezequiel', 'Daniel', 'Oseas'].map((label) => ({ label })) })
     const id = (options: Array<{ id: string; label: string }>, label: string) => options.find((option) => option.label === label)!.id
@@ -224,7 +217,7 @@ test('every screen says who goes on after a vote that does not settle, and says 
   })
 })
 
-test('every screen says a decision is approved or not approved', { skip }, async () => {
+test('every screen says a decision is approved or not approved', async () => {
   await withAssembly(3, async ({ service, assemblyId, joinCode, voters }) => {
     const statute = await service.createRound(assemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })
     const [favor, contra] = statute.options
