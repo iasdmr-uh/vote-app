@@ -17,6 +17,6 @@
 
 ## 4. Docs and verification
 
-- [ ] 4.1 Update the 2/3 row and the decision rules in `docs/rules.md`, `docs/scope.md`, and the API and data model docs, leaving the 3/4 wording as it is
+- [x] 4.1 Update the 2/3 row and the decision rules in `docs/rules.md`, `docs/scope.md`, and the API and data model docs, leaving the 3/4 wording as it is
 - [x] 4.2 Add a real-stack E2E test for a 2/3 decision
 - [ ] 4.3 Run `npm run typecheck`, API tests with `TEST_DATABASE_URL`, `npm run test:e2e` and `npm run test:e2e:integration`, and verify all pass
