@@ -126,6 +126,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnG
   roundOpened(assemblyId: string, payload: Parameters<RealtimePublisher['roundOpened']>[1]): void { this.publisher().roundOpened(assemblyId, payload) }
   roundClosed(assemblyId: string, roundId: string): void { this.publisher().roundClosed(assemblyId, roundId) }
   participationCount(assemblyId: string, payload: Parameters<RealtimePublisher['participationCount']>[1]): void { this.publisher().participationCount(assemblyId, payload) }
+  connectionCount(assemblyId: string, payload: Parameters<RealtimePublisher['connectionCount']>[1]): void { this.publisher().connectionCount(assemblyId, payload) }
   resultsPublished(assemblyId: string, payload: Parameters<RealtimePublisher['resultsPublished']>[1]): void { this.publisher().resultsPublished(assemblyId, payload) }
   presentationState(assemblyId: string, payload: Parameters<RealtimePublisher['presentationState']>[1]): void { this.publisher().presentationState(assemblyId, payload) }
 }
@@ -268,6 +269,14 @@ export class RealtimePublisher {
       roundId: payload.roundId,
       recorded: payload.recorded,
       eligible: payload.eligible,
+    })
+  }
+
+  connectionCount(assemblyId: string, payload: RealtimeServerToClientEvents['connection.count'] extends (arg: infer P) => void ? P : never): void {
+    this.server.to([publicRoom(assemblyId), moderatorRoom(assemblyId)]).emit('connection.count', {
+      roundId: payload.roundId,
+      connected: payload.connected,
+      base: payload.base,
     })
   }
 

@@ -84,3 +84,18 @@ test('a socket that closed while it was being authenticated is not counted', asy
   await gateway.handleConnection(client as never)
   assert.deepEqual(presence.online('assembly-7'), [])
 })
+
+test('the connected count reaches only the public screen and the mesa, with aggregates only', () => {
+  const emissions: Array<{ rooms: unknown; event: string; payload: unknown }> = []
+  const server = { to(rooms: unknown) { return { emit(event: string, payload: unknown) { emissions.push({ rooms, event, payload }) } } } }
+  const { gateway } = setup(new Error('unused'))
+  Object.assign(gateway, { server })
+
+  gateway.connectionCount('assembly-7', { roundId: 'r-1', connected: 4, base: 5, participantIds: ['p-1'], sessionId: 'p-1' } as never)
+
+  assert.deepEqual(emissions, [{
+    rooms: ['assembly:assembly-7:public', 'assembly:assembly-7:moderators'],
+    event: 'connection.count',
+    payload: { roundId: 'r-1', connected: 4, base: 5 },
+  }])
+})
