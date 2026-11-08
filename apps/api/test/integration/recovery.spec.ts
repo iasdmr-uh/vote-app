@@ -50,6 +50,7 @@ test('moderator and delegates can recover from lost devices without enabling a s
     assert.deepEqual(targetsOf('participantSessionReplaced'), [anaId])
     await assert.rejects(auth.participantForToken(ana.participantSessionToken), UnauthorizedException)
     assert.equal(await auth.participantForToken(resumed.participantSessionToken), anaId)
+    await assert.rejects(service.castVote(anaId, round.id, round.options[1]!.id), ConflictException)
     await assert.rejects(service.redeemResumeCode(resumeCode), NotFoundException, 'codes are single-use')
 
     const expired = new URL((await service.issueResumeCode(anaId)).resumeUrl).searchParams.get('resume')!
