@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
+import { OperatorLogService } from '../src/voting/operator-log.service.js'
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
@@ -56,6 +57,7 @@ test('after the acta, the mesa erases every record of a completed assembly', {
     assert.equal(await prisma.participantSession.count({ where: { assemblyId } }), 3, 'nothing is erased before the assembly is completed')
 
     await service.completeAssembly(assemblyId, true)
+    await new OperatorLogService(prisma).download(assemblyId, 'delete')
     assert.deepEqual(await service.deleteAssemblyData(assemblyId, true), { assemblyId, deleted: true, vacuumed: true })
     assert.deepEqual(deletedAssemblies, [assemblyId], 'live sockets of the assembly are closed')
 

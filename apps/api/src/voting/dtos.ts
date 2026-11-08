@@ -56,6 +56,11 @@ export class ResumeSessionDto {
   resumeCode!: string
 }
 
+export class LogDownloadDto {
+  @IsIn(['review', 'delete'])
+  purpose!: 'review' | 'delete'
+}
+
 export class CompleteAssemblyDto {
   @Equals(true)
   confirmation!: true

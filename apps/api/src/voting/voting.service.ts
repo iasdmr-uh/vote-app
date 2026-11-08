@@ -11,6 +11,7 @@ import {
 import pg from 'pg'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
+import { requireLogDownloadedForDeletion } from './operator-log.service.js'
 import { hashCredential, newOpaqueCredential } from '../auth/credentials.js'
 import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
@@ -172,7 +173,7 @@ export class VotingService implements OnModuleInit {
       if (!current || current.status !== 'active') throw new NotFoundException('Participante no encontrado')
       if (current.assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
       await tx.participantSession.update({ where: { id: participantId }, data: { resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt } })
-      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: 'participant.resume_code_issued', metadata: { participantId } } })
+      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: 'participant.resume_code_issued', metadata: { participantId, personName: `${current.firstName} ${current.lastName}` } } })
       return current
     })
     return {
@@ -293,7 +294,7 @@ export class VotingService implements OnModuleInit {
       })
       if (current.isRegionalSecretary) await tx.round.updateMany({ where: { assemblyId: current.assemblyId, status: 'draft' }, data: { regionalSecretaryVotes: false } })
       await tx.auditEvent.create({
-        data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: target === 'left' ? 'participant.taken_out' : 'participant.returned', metadata: { participantId } },
+        data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: target === 'left' ? 'participant.taken_out' : 'participant.returned', metadata: { participantId, personName: `${current.firstName} ${current.lastName}` } },
       })
       return { ...current, changed: true }
     })
@@ -631,6 +632,7 @@ export class VotingService implements OnModuleInit {
       `
       if (!rows[0]) throw new NotFoundException('Asamblea no encontrada')
       if (rows[0].status !== 'completed') throw new ConflictException('Finaliza la Asamblea antes de borrar sus datos')
+      await requireLogDownloadedForDeletion(tx, assemblyId)
       if (confirmation !== true) throw new UnprocessableEntityException('Confirma explícitamente el borrado de los datos')
       // Rounds first: their participation receipts reference the participant sessions.
       await tx.round.deleteMany({ where: { assemblyId } })
@@ -698,7 +700,7 @@ export class VotingService implements OnModuleInit {
       if (assembly.status === 'in_progress' || hasVoted) {
         throw new ConflictException('La lista ya no admite cambios después de iniciar la votación')
       }
-      const current = await tx.participantSession.findUnique({ where: { id: participantId }, select: { id: true } })
+      const current = await tx.participantSession.findUnique({ where: { id: participantId }, select: { id: true, firstName: true, lastName: true } })
       if (!current) throw new NotFoundException('Participante no encontrado')
       const value = await tx.participantSession.update({
         where: { id: participantId },
@@ -709,7 +711,7 @@ export class VotingService implements OnModuleInit {
         },
         select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true },
       })
-      await tx.auditEvent.create({ data: { assemblyId: identity.assemblyId, actorRef: MODERATOR_ACTOR, action: input.status === 'removed' ? 'participant.removed' : 'participant.corrected', metadata: { participantId } } })
+      await tx.auditEvent.create({ data: { assemblyId: identity.assemblyId, actorRef: MODERATOR_ACTOR, action: input.status === 'removed' ? 'participant.removed' : 'participant.corrected', metadata: { participantId, personName: `${current.firstName} ${current.lastName}`, ...(input.status === 'removed' ? {} : { newName: `${value.firstName} ${value.lastName}` }) } } })
       return value
     })
     if (updated.status === 'removed') {
@@ -738,7 +740,7 @@ export class VotingService implements OnModuleInit {
         data: {
           assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR,
           action: disabled ? 'participant.voting_disabled' : 'participant.voting_enabled',
-          metadata: { participantId },
+          metadata: { participantId, personName: `${current.firstName} ${current.lastName}` },
         },
       })
       return { ...current, changed: true }
