@@ -3,6 +3,7 @@ import { describe, test } from 'node:test'
 import type { Outcome, Position, RoundRecord } from '../../src/types'
 import {
   actaKind,
+  chainVoteNumber,
   actaMetaText,
   actaRows,
   actaSheetRows,
@@ -72,6 +73,24 @@ function decision(overrides: Partial<RoundRecord> = {}): RoundRecord {
 function official(labels: string[]) {
   return { elected: labels.map((label) => ({ optionId: label, label })), note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-11-03T15:00:00.000Z', publishedAt: null }
 }
+
+describe('chainVoteNumber', () => {
+  const chain = [
+    { id: 'p1', status: 'published' },
+    { id: 'p2', status: 'annulled', committeeRootRoundId: 'p1' },
+    { id: 'p3', status: 'published', committeeRootRoundId: 'p1' },
+    { id: 'o1', status: 'published' },
+    { id: 'p4', status: 'draft', committeeRootRoundId: 'p1' },
+  ]
+
+  test('counts the earlier votes of the same election and skips annulled ones', () => {
+    assert.deepEqual(['p1', 'p2', 'p3', 'p4', 'o1'].map((id) => chainVoteNumber(chain.find((item) => item.id === id)!, chain)), [1, 2, 2, 3, 1])
+  })
+
+  test('uses the number the server sent when there is one', () => {
+    assert.equal(chainVoteNumber({ id: 'p4', committeeRootRoundId: 'p1', voteNumber: 5 }, chain), 5)
+  })
+})
 
 describe('rankOf', () => {
   test('rankOf: tied candidates still get consecutive places', () => {

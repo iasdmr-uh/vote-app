@@ -1,5 +1,8 @@
 import type { Explanation, OptionReason, Outcome, Position, RoundRecord } from './types'
+import { es } from './locale/es'
 import type { Cell } from './xlsx'
+
+const IN_FAVOR_LABEL = 'A favor'
 
 type Counted = { count: number }
 type Turnout = { recordedCount?: number; participationCount?: number; eligibleCount?: number }
@@ -23,16 +26,15 @@ export function turnoutOf(source?: Turnout | null) {
 }
 
 export function connectedText(connected: number, base: number) {
-  return `${connected} de ${base} conectados`
+  return es.results.connected(connected, base)
 }
 
 export function marksPerPersonText(seats: number) {
-  return `Cada persona marca exactamente ${seats}`
+  return es.results.marksPerPerson(seats)
 }
 
 export function votedText(recorded: number, eligible?: number | null) {
-  const verb = recorded === 1 ? 'votó' : 'votaron'
-  return eligible ? `${recorded} de ${eligible} ${verb}` : `${recorded} ${verb}`
+  return es.results.voted(recorded, eligible)
 }
 
 /** Base frozen at close minus votes cast: inhabilitados who did not vote count here too. */
@@ -41,8 +43,7 @@ export function notVotedOf(recorded: number, eligible?: number | null) {
 }
 
 export function notVotedText(recorded: number, eligible?: number | null) {
-  const missing = notVotedOf(recorded, eligible)
-  return `${missing} ${missing === 1 ? 'no votó' : 'no votaron'}`
+  return es.results.notVoted(notVotedOf(recorded, eligible))
 }
 
 export type ResultRow = { key: string; label: string; count: number; percent: number }
@@ -58,11 +59,11 @@ export function resultRows(results: Array<{ optionId?: string; label: string; co
 
 export function notVotedRow(recorded: number, base: number): ResultRow {
   const count = notVotedOf(recorded, base)
-  return { key: 'not-voted', label: 'No votaron', count, percent: percentOf(count, base) }
+  return { key: 'not-voted', label: es.results.notVotedLabel, count, percent: percentOf(count, base) }
 }
 
 export function baseSumText(recorded: number, base: number) {
-  return `${recorded} ${recorded === 1 ? 'votó' : 'votaron'} + ${notVotedText(recorded, base)} = ${base}`
+  return es.results.baseSum(recorded, notVotedText(recorded, base), base)
 }
 
 export function marksPerBallot(target: { category?: string | null; electionSeats?: number | null; memberCount?: number | null }) {
@@ -70,7 +71,7 @@ export function marksPerBallot(target: { category?: string | null; electionSeats
 }
 
 export function marksCheckText(marks: number, recorded: number) {
-  return marks > 1 ? `Cada papeleta marca ${marks} nombres · ${marks} × ${recorded} = ${marks * recorded} votos` : ''
+  return marks > 1 ? es.results.marksCheck(marks, recorded) : ''
 }
 
 export function rankedResults<T extends Counted>(results: T[], eligible?: number | null) {
@@ -86,23 +87,11 @@ export function decisionTie(target: RoundRecord) {
   const tied = ranked.filter((result) => result.count === edge)
   const openSeats = seats - ranked.filter((result) => result.count > edge).length
   const names = formatNames(tied.map((result) => result.label))
-  const where = seats === 1 ? 'en el primer lugar' : openSeats === 1 ? 'por el último cupo' : `por los últimos ${openSeats} cupos`
-  return { tied, count: edge, openSeats, text: `Empate ${where}: ${names}, ${edge} votos cada uno.` }
+  const where = seats === 1 ? es.results.tieFirstPlace : openSeats === 1 ? es.results.tieLastSeat : es.results.tieLastSeats(openSeats)
+  return { tied, count: edge, openSeats, text: es.results.tie(where, names, edge) }
 }
 
 /** Badge of a candidate in a computed result: elected, or passing to the runoff. */
-export const RESULT_WORDING = {
-  preparing: 'Preparando el resultado',
-  continuing: 'Pasan a la siguiente votación',
-  final: 'Resultado final',
-  elected: 'Electos',
-  electedSoFar: 'Electos hasta ahora',
-  approved: 'Aprobada',
-  notApproved: 'No aprobada',
-  register: 'Agregar a oficiales',
-  registered: 'Registrado como oficial',
-} as const
-
 export function outcomeTag(outcome: Outcome | undefined, optionId?: string) {
   if (!outcome || !optionId) return null
   if (outcome.elected.includes(optionId)) return 'elected' as const
@@ -111,16 +100,14 @@ export function outcomeTag(outcome: Outcome | undefined, optionId?: string) {
 
 /** Ballots only hold typed names, so the badge never guesses the gender. */
 export function electedText(_name?: string) {
-  return 'Electo/a'
+  return es.results.electedTag
 }
-
-export const REGIONAL_SECRETARY_NOTE = 'Con la secretaría regional'
 
 export function voteResultText(target: RoundRecord, optionId?: string) {
   const outcome = target.outcome
   if (!outcome || !optionId || (isDecision(target) && target.decisionFormat === 'boolean')) return ''
   if (outcome.elected.includes(optionId)) return winnerText(target, '')
-  return outcome.runoff.includes(optionId) ? 'Pasa' : 'No continúa'
+  return outcome.runoff.includes(optionId) ? es.results.runoffPass : es.results.runoffOut
 }
 
 export function electedInVote(target: RoundRecord) {
@@ -132,7 +119,7 @@ export function electedInVote(target: RoundRecord) {
 export function electedSoFar(target: { category?: string; memberCount?: number | null } | null | undefined, elected: Array<{ label: string }> | undefined, final: unknown) {
   const seats = Math.max(1, target?.memberCount ?? 1)
   if (final || target?.category !== 'committee' || !elected?.length || elected.length >= seats) return null
-  return { title: `${RESULT_WORDING.electedSoFar} · ${elected.length} de ${seats}`, names: elected.map((person) => person.label).join(' · ') }
+  return { title: es.results.electedSoFarTitle(elected.length, seats), names: elected.map((person) => person.label).join(' · ') }
 }
 
 export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {
@@ -142,28 +129,36 @@ export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {
   return target.outcome?.elected.includes(members.at(-1)!.optionId) ? members.map((person) => person.label) : []
 }
 
+type ChainVote = { id: string; committeeRootRoundId?: string | null; voteNumber?: number }
+
+export function chainVoteNumber(target: ChainVote, rounds: Array<ChainVote & { status: string }>) {
+  if (target.voteNumber) return target.voteNumber
+  const rootId = target.committeeRootRoundId || target.id
+  const chain = rounds.filter((item) => (item.committeeRootRoundId || item.id) === rootId)
+  const before = chain.slice(0, Math.max(0, chain.findIndex((item) => item.id === target.id)))
+  return before.filter((item) => item.status !== 'annulled').length + 1
+}
+
 /** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, nothing for the first vote. Annulled votes are not counted in the number. */
 export function voteLabel(target?: { voteNumber?: number; runoff?: boolean } | null) {
   const number = target?.voteNumber ?? 1
   if (number <= 1) return ''
-  return `${target?.runoff ? 'DESEMPATE · ' : ''}${number}.ª VOTACIÓN`
+  return es.results.voteNumber(number, target?.runoff)
 }
 
 /** "Mayoría: 20", or "3 integrantes · Mayoría: 20" for a committee ("2 puestos" in its runoffs). */
 export function majorityText(target: DecisionTarget & { runoff?: boolean }, outcome?: Outcome) {
   if (!outcome) return ''
   if (isDecision(target)) return approvalText(target, outcome)
-  const majority = `Mayoría: ${outcome.threshold}`
+  const majority = es.results.majority(outcome.threshold)
   if (target.category !== 'committee') return majority
-  const seats = target.runoff
-    ? `${outcome.seats} ${outcome.seats === 1 ? 'puesto' : 'puestos'}`
-    : `${outcome.seats} ${outcome.seats === 1 ? 'integrante' : 'integrantes'}`
+  const seats = target.runoff ? es.results.seats(outcome.seats) : es.results.members(outcome.seats)
   return `${seats} · ${majority}`
 }
 
 type DecisionTarget = { category?: string; decisionFormat?: string | null; approvalRule?: string | null }
 
-const RULE_LABELS: Record<string, string> = { three_quarters: '3/4', two_thirds: '2/3' }
+const RULE_LABELS: Record<string, string> = { three_quarters: es.results.rules.three_quarters, two_thirds: es.results.rules.two_thirds }
 
 export function isDecision(target?: DecisionTarget | null) {
   return target?.category === 'decision'
@@ -172,8 +167,8 @@ export function isDecision(target?: DecisionTarget | null) {
 /** "Se aprueba con 3/4 · 29 votos" or "Se aprueba con mayoría simple · 20 votos" for a decision. */
 export function approvalText(target: DecisionTarget, outcome?: Outcome) {
   if (!outcome) return ''
-  const rule = RULE_LABELS[outcome.rule ?? target.approvalRule ?? ''] ?? 'mayoría simple'
-  return `Se aprueba con ${rule} · ${outcome.threshold} ${outcome.threshold === 1 ? 'voto' : 'votos'}`
+  const rule = RULE_LABELS[outcome.rule ?? target.approvalRule ?? ''] ?? es.results.simpleMajorityLower
+  return es.results.approval(rule, outcome.threshold)
 }
 
 /**
@@ -182,47 +177,47 @@ export function approvalText(target: DecisionTarget, outcome?: Outcome) {
  */
 export function decisionVerdict(target: DecisionTarget, outcome?: Outcome, results: Array<{ optionId?: string; label: string }> = []) {
   if (!isDecision(target) || !outcome) return ''
-  if (target.decisionFormat === 'boolean') return outcome.approved ? 'Aprobada' : 'No aprobada'
+  if (target.decisionFormat === 'boolean') return outcome.approved ? es.results.approved : es.results.notApproved
   const winner = outcome.elected[0]
   return winner ? results.find((result) => result.optionId === winner)?.label ?? '' : ''
 }
 
 /** Badge of the option that won: "Aprobada" in a decision, Electo/a in an election. */
 export function winnerText(target: DecisionTarget, label: string) {
-  return isDecision(target) ? 'Aprobada' : electedText(label)
+  return isDecision(target) ? es.results.approved : electedText(label)
 }
 
 /** A boolean decision keeps its ballot order (A favor first); everything else ranks by votes. */
 export function displayOrder<T extends { label: string; count: number }>(target: DecisionTarget | null | undefined, results: T[]) {
-  if (target?.category === 'decision' && target.decisionFormat === 'boolean') return [...results].sort((a, b) => Number(b.label === 'A favor') - Number(a.label === 'A favor'))
+  if (target?.category === 'decision' && target.decisionFormat === 'boolean') return [...results].sort((a, b) => Number(b.label === IN_FAVOR_LABEL) - Number(a.label === IN_FAVOR_LABEL))
   return [...results].sort((a, b) => b.count - a.count)
 }
 
-const EXPLANATION_RULES: Record<string, string> = { simple: 'Mayoría simple', ...RULE_LABELS }
+const EXPLANATION_RULES: Record<string, string> = es.results.rules
 
-const REASON_GROUPS: Array<[OptionReason, string]> = [['elected', 'Electo/a'], ['no_majority', 'Sin mayoría'], ['tied_at_cut', 'Desempate en el último puesto'], ['added_for_choice', 'Se agrega para que haya opción']]
+const REASON_GROUPS: Array<[OptionReason, string]> = [['elected', es.results.reasons.elected], ['no_majority', es.results.reasons.no_majority], ['tied_at_cut', es.results.reasons.tied_at_cut], ['added_for_choice', es.results.reasons.added_for_choice]]
 
 export function explanationText(target: DecisionTarget, outcome?: Outcome, explanation?: Explanation, results: Array<{ optionId?: string; label: string; count: number }> = []) {
   if (!outcome || !explanation) return ''
-  const base = explanation.baseIncludesSecretary ? `${outcome.base} habilitados (${explanation.baseDelegates} + secretaría regional)` : `${outcome.base} habilitados`
-  const sentences = [`${EXPLANATION_RULES[explanation.rule] ?? EXPLANATION_RULES.simple} de ${base} = ${outcome.threshold} ${outcome.threshold === 1 ? 'voto' : 'votos'}.`]
+  const base = explanation.baseIncludesSecretary ? es.results.explanationBaseWithSecretary(outcome.base, explanation.baseDelegates) : es.results.explanationBase(outcome.base)
+  const sentences = [es.results.explanationRule(EXPLANATION_RULES[explanation.rule] ?? EXPLANATION_RULES.simple, base, outcome.threshold)]
   if (isDecision(target) && target.decisionFormat === 'boolean') {
-    const favor = results.find((result) => result.label === 'A favor')?.count ?? 0
-    return [...sentences, `A favor: ${favor}. ${outcome.approved ? 'Aprobada' : 'No aprobada'}.`].join(' ')
+    const favor = results.find((result) => result.label === IN_FAVOR_LABEL)?.count ?? 0
+    return [...sentences, es.results.explanationFavor(favor, outcome.approved ? es.results.approved : es.results.notApproved)].join(' ')
   }
   const ordered = results.map((result, order) => ({ ...result, order })).sort((a, b) => b.count - a.count || a.order - b.order)
   for (const [reason, title] of REASON_GROUPS) {
     const members = ordered.filter((result) => result.optionId && explanation.reasons[result.optionId] === reason)
     if (!members.length) continue
-    const heading = reason === 'elected' && isDecision(target) ? 'Aprobada' : title
-    sentences.push(`${heading}: ${formatNames(members.map((result) => `${result.label} (${result.count})`))}.`)
+    const heading = reason === 'elected' && isDecision(target) ? es.results.approved : title
+    sentences.push(es.results.explanationReason(heading, formatNames(members.map((result) => es.results.nameWithCount(result.label, result.count)))))
   }
-  if (outcome.runoff.length) sentences.push('Pasan a la siguiente votación.')
+  if (outcome.runoff.length) sentences.push(es.results.continuingSentence)
   return sentences.join(' ')
 }
 
 export function formatNames(names: string[]) {
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0] || ''
+  return es.common.list(names)
 }
 
 export function countsOf(target: RoundRecord) {
@@ -238,7 +233,7 @@ export function voteCountOf(target: RoundRecord, option: { id: string; label: st
   return (counts.find((result) => result.optionId === option.id) || counts.find((result) => result.label === option.label))?.count ?? 0
 }
 
-export const ACTA_SHEET_HEADER: Cell[] = ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Resultado']
+export const ACTA_SHEET_HEADER: Cell[] = [...es.acta.sheetHeader]
 
 export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string, string> = {}) {
   const rows: Cell[][] = [ACTA_SHEET_HEADER]
@@ -247,35 +242,35 @@ export function actaSheetRows(rounds: RoundRecord[], statusLabels: Record<string
     const ballot = [item.title, voteLabel(item)].filter(Boolean).join(' · ')
     const { recorded, eligible } = turnoutOf(item)
     const counted = item.recordedCount !== undefined || item.participationCount !== undefined
-    const participation = counted ? [votedText(recorded, eligible), eligible ? notVotedText(recorded, eligible) : '', item.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · ') : ''
+    const participation = counted ? [votedText(recorded, eligible), eligible ? notVotedText(recorded, eligible) : '', item.regionalSecretaryVotes ? es.results.regionalSecretaryNote : ''].filter(Boolean).join(' · ') : ''
     const verdict = decisionVerdict(item, item.outcome, item.results)
     const members = completedCommittee(item, rounds)
-    const state = [status, verdict, members.length ? `Comisión completa: ${members.join(', ')}` : ''].filter(Boolean).join(' · ')
+    const state = [status, verdict, members.length ? es.acta.completeCommitteeRow(members.join(', ')) : ''].filter(Boolean).join(' · ')
     if (item.results?.length) {
       for (const result of rankedResults(item.results, eligible)) {
-        rows.push([ballot, state, participation, result.rank, result.label, result.count, eligible ? result.percent : '', result.tied ? 'sí' : '', voteResultText(item, result.optionId)])
+        rows.push([ballot, state, participation, result.rank, result.label, result.count, eligible ? result.percent : '', result.tied ? es.acta.yes : '', voteResultText(item, result.optionId)])
       }
     } else {
-      rows.push([ballot, item.status === 'annulled' ? `${status}: ${item.annulReason || ''}` : `${status} (conteo no publicado)`, participation, '', '', '', '', '', ''])
+      rows.push([ballot, item.status === 'annulled' ? es.acta.annulledRow(status, item.annulReason || '') : es.acta.notPublishedRow(status), participation, '', '', '', '', '', ''])
     }
   }
   return rows
 }
 
 export function votesText(count: number) {
-  return `${count} ${count === 1 ? 'voto' : 'votos'}`
+  return es.common.votes(count)
 }
 
 export type ActaTone = 'vote' | 'annulled' | 'approved' | 'rejected'
 
 /** Header tag of a vote in the printed acta: "1.ª VOTACIÓN", "DESEMPATE · 2.ª VOTACIÓN", "ANULADA" or "DECISIÓN · APROBADA". */
 export function actaKind(target: RoundRecord, voteNumber = target.voteNumber ?? 1): { text: string; tone: ActaTone } {
-  if (target.status === 'annulled') return { text: 'ANULADA', tone: 'annulled' }
+  if (target.status === 'annulled') return { text: es.acta.annulled, tone: 'annulled' }
   if (isDecision(target)) {
-    if (!target.outcome) return { text: 'DECISIÓN', tone: 'vote' }
-    return target.outcome.approved ? { text: 'DECISIÓN · APROBADA', tone: 'approved' } : { text: 'DECISIÓN · NO APROBADA', tone: 'rejected' }
+    if (!target.outcome) return { text: es.acta.decision, tone: 'vote' }
+    return target.outcome.approved ? { text: es.acta.decisionApproved, tone: 'approved' } : { text: es.acta.decisionNotApproved, tone: 'rejected' }
   }
-  return { text: voteLabel({ voteNumber, runoff: target.runoff }) || '1.ª VOTACIÓN', tone: 'vote' }
+  return { text: voteLabel({ voteNumber, runoff: target.runoff }) || es.results.firstVote, tone: 'vote' }
 }
 
 /**
@@ -288,19 +283,19 @@ export function actaMetaText(target: RoundRecord) {
   if (isDecision(target)) parts.push(approvalText(target, target.outcome))
   else if (target.category === 'committee') {
     const seats = target.outcome?.seats ?? (target.runoff ? target.electionSeats : target.memberCount) ?? 1
-    parts.push(target.runoff ? `${seats} ${seats === 1 ? 'puesto' : 'puestos'}` : `${seats} ${seats === 1 ? 'integrante' : 'integrantes'}`)
+    parts.push(target.runoff ? es.results.seats(seats) : es.results.members(seats))
   }
   if (target.participationCount !== undefined || target.recordedCount !== undefined) {
     const { recorded, eligible } = turnoutOf(target)
     parts.push(votedText(recorded, eligible))
     if (eligible) parts.push(notVotedText(recorded, eligible))
   }
-  if (target.regionalSecretaryVotes) parts.push(REGIONAL_SECRETARY_NOTE)
-  if (target.outcome && !isDecision(target)) parts.push(`Mayoría: ${target.outcome.threshold}`)
+  if (target.regionalSecretaryVotes) parts.push(es.results.regionalSecretaryNote)
+  if (target.outcome && !isDecision(target)) parts.push(es.results.majority(target.outcome.threshold))
   return parts.filter(Boolean).join(' · ')
 }
 
-export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: 'Electo/a' | 'Aprobada' | 'Desempate' | null; winner: boolean }
+export type ActaRow = { key: string; rank: number; label: string; count: number; percent: number | null; tag: typeof es.results.electedTag | typeof es.results.approved | typeof es.results.runoffTag | null; winner: boolean }
 
 /** Counted options of a vote, in acta order, with votes, % of the habilitados and their tag. */
 export function actaRows(target: RoundRecord): ActaRow[] {
@@ -311,9 +306,9 @@ export function actaRows(target: RoundRecord): ActaRow[] {
   const booleanApproved = isDecision(target) && target.decisionFormat === 'boolean' && target.outcome?.approved
   return ranked.map((result, index) => {
     const outcome = outcomeTag(target.outcome, result.optionId)
-    const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === 'A favor')
+    const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === IN_FAVOR_LABEL)
     const tied = !target.outcome && isTied(byVotes, byVotes.indexOf(result))
-    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' || tied ? 'Desempate' : null
+    const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' || tied ? es.results.runoffTag : null
     return { key: result.optionId || result.label, rank: index + 1, label: result.label, count: result.count, percent: eligible ? percentOf(result.count, eligible) : null, tag, winner }
   })
 }
@@ -322,9 +317,9 @@ export function actaRows(target: RoundRecord): ActaRow[] {
 export function actaSummary(rounds: RoundRecord[], habilitados: number) {
   const annulled = rounds.filter((item) => item.status === 'annulled').length
   return [
-    `${habilitados} ${habilitados === 1 ? 'habilitado' : 'habilitados'}`,
-    `${rounds.length} ${rounds.length === 1 ? 'votación' : 'votaciones'}`,
-    annulled ? `${annulled} ${annulled === 1 ? 'anulada' : 'anuladas'}` : '',
+    es.acta.summaryEligible(habilitados),
+    es.acta.summaryVotes(rounds.length),
+    annulled ? es.acta.summaryAnnulled(annulled) : '',
   ].filter(Boolean).join(' · ')
 }
 

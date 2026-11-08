@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { useAssembly } from '../useAssembly'
 import type { PublicState } from '../types'
 
@@ -30,11 +31,11 @@ function toggleBallotOption(optionId: string, input: HTMLInputElement) {
 </script>
 
 <template>
-  <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p>
-  <div v-if="seatsToFill" class="phone-ballot-heading"><h1>{{ round.title }}</h1><span class="count-pill">{{ selectedOptions.length }} de {{ seatsToFill }}</span></div>
+  <p class="phone-status phone-status-open"><span class="status-dot" aria-hidden="true"></span>{{ es.common.voteOpen }}</p>
+  <div v-if="seatsToFill" class="phone-ballot-heading"><h1>{{ round.title }}</h1><span class="count-pill">{{ es.phone.selectedOfSeats(selectedOptions.length, seatsToFill) }}</span></div>
   <h1 v-else>{{ round.title }}</h1>
-  <fieldset class="options" :aria-label="seatsToFill ? `${selectedOptions.length} de ${seatsToFill}` : undefined">
+  <fieldset class="options" :aria-label="seatsToFill ? es.phone.selectedOfSeats(selectedOptions.length, seatsToFill) : undefined">
     <label v-for="option in round.options" :key="option.id" class="option"><input :type="round.format === 'multiple_choice' ? 'checkbox' : 'radio'" name="option" :value="option.id" :checked="selectedOptions.includes(option.id)" @change="toggleBallotOption(option.id, $event.target as HTMLInputElement)" /><span>{{ option.label }}</span></label>
   </fieldset>
-  <button class="primary phone-action phone-ballot-submit" :disabled="loading || voteSubmitting || !selectionComplete" @click="emit('review')">Revisar mi voto</button>
+  <button class="primary phone-action phone-ballot-submit" :disabled="loading || voteSubmitting || !selectionComplete" @click="emit('review')">{{ es.phone.reviewVote }}</button>
 </template>

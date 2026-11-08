@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { computed, ref, watch } from 'vue'
-import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, electedSoFar, voteLabel } from '../resultados'
+import { connectedText, electedSoFar, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
@@ -35,19 +36,19 @@ const view = computed(() => {
   return 'idle'
 })
 
-const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? REGIONAL_SECRETARY_NOTE : ''].filter(Boolean).join(' · '))
+const roundLabel = computed(() => [voteLabel(round.value), round.value?.regionalSecretaryVotes ? es.results.regionalSecretaryNote : ''].filter(Boolean).join(' · '))
 const statusLabel = computed(() => ({
-  voting: round.value?.status === 'closed' ? RESULT_WORDING.preparing : ['Votación abierta', roundLabel.value].filter(Boolean).join(' · '),
-  results: [assemblyStatus.value === 'completed' ? 'Asamblea finalizada' : 'Conteo publicado', roundLabel.value].filter(Boolean).join(' · '),
-  annulled: 'Votación anulada',
-  completed: 'Asamblea finalizada',
+  voting: round.value?.status === 'closed' ? es.results.preparing : [es.projector.voteOpenStatus, roundLabel.value].filter(Boolean).join(' · '),
+  results: [assemblyStatus.value === 'completed' ? es.common.assemblyEnded : es.projector.countPublished, roundLabel.value].filter(Boolean).join(' · '),
+  annulled: es.common.voteAnnulled,
+  completed: es.common.assemblyEnded,
   lobby: '',
   idle: '',
   slide: '',
   presentation: '',
 }[view.value]))
 
-const assemblyName = computed(() => state.value?.assembly?.name || 'Asamblea')
+const assemblyName = computed(() => state.value?.assembly?.name || es.projector.defaultAssemblyName)
 
 async function toggleProjectorFullscreen() {
   try {
@@ -55,23 +56,23 @@ async function toggleProjectorFullscreen() {
     else await document.querySelector('.projector-page')?.requestFullscreen()
     projectorFullscreen.value = Boolean(document.fullscreenElement)
   } catch {
-    error.value = 'No se pudo activar pantalla completa. Usa la opción de pantalla completa del navegador.'
+    error.value = es.projector.fullscreenFailed
   }
 }
 </script>
 
 <template>
-  <button v-if="code" class="pj-fullscreen secondary" @click="toggleProjectorFullscreen">{{ projectorFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa' }}</button>
-  <button v-if="code && publishedSlide && (view === 'slide' || view === 'results')" class="pj-count-toggle secondary" @click="showCount = !showCount">{{ showCount ? 'Ver resultado' : 'Ver conteo' }}</button>
-  <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
+  <button v-if="code" class="pj-fullscreen secondary" @click="toggleProjectorFullscreen">{{ projectorFullscreen ? es.projector.exitFullscreen : es.projector.fullscreen }}</button>
+  <button v-if="code && publishedSlide && (view === 'slide' || view === 'results')" class="pj-count-toggle secondary" @click="showCount = !showCount">{{ showCount ? es.projector.showResult : es.projector.showCount }}</button>
+  <section v-if="!code" class="card join-card"><h1>{{ es.projector.title }}</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>{{ es.common.roomCode }}<input v-model="code" required /></label><button class="primary">{{ es.projector.showRoom }}</button></form></section>
   <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
-    <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
+    <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">{{ es.projector.reconnecting }}</p>
     <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
     <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
     <Diapositiva v-else :presentation="presentationSlide ?? 0" />
   </section>
   <section v-else class="pj">
-    <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
+    <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">{{ es.projector.reconnecting }}</p>
 
     <ProjectorLobby v-if="view === 'lobby'" :assembly-name="assemblyName" />
 
@@ -79,8 +80,8 @@ async function toggleProjectorFullscreen() {
       <p class="pj-status" :class="{ 'pj-status-live': round?.status === 'open' }">{{ statusLabel }}</p>
       <h1 class="pj-title pj-title-xl">{{ round?.title }}</h1>
       <div class="pj-progress" aria-live="polite">
-        <p><strong>{{ recorded }}</strong><span>de {{ eligible }} ya votaron</span></p>
-        <div class="pj-track" role="progressbar" :aria-valuenow="recorded" :aria-valuemin="0" :aria-valuemax="eligible" aria-label="Personas que ya votaron"><span :style="{ width: `${progressPercent}%` }"></span></div>
+        <p><strong>{{ recorded }}</strong><span>{{ es.projector.alreadyVoted(eligible) }}</span></p>
+        <div class="pj-track" role="progressbar" :aria-valuenow="recorded" :aria-valuemin="0" :aria-valuemax="eligible" :aria-label="es.projector.alreadyVotedLabel"><span :style="{ width: `${progressPercent}%` }"></span></div>
         <p v-if="connectionCount" class="pj-connected">{{ connectedText(connectionCount.connected, connectionCount.base) }}</p>
       </div>
     </template>
@@ -103,7 +104,7 @@ async function toggleProjectorFullscreen() {
 
     <template v-else>
       <h1 class="pj-title pj-title-xl">{{ assemblyName }}</h1>
-      <div class="pj-progress"><p><strong>{{ state?.participantCount ?? 0 }}</strong><span>en la sala</span></p></div>
+      <div class="pj-progress"><p><strong>{{ state?.participantCount ?? 0 }}</strong><span>{{ es.projector.inRoom }}</span></p></div>
     </template>
   </section>
 </template>
