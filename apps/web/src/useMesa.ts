@@ -1,6 +1,7 @@
 import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
+import { showTransientNotice } from './transient-notice'
 import { RESULT_WORDING, actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
@@ -282,7 +283,7 @@ async function confirmModeratorAction() {
   let succeeded = false
   try {
     const result = await request(action.path, { method: action.method, ...(action.body === undefined ? {} : { body: JSON.stringify(action.body) }) }, moderatorToken.value)
-    notice.value = 'Acción registrada.'
+    showTransientNotice(notice, 'Acción registrada.', (run, ms) => { setTimeout(run, ms) })
     succeeded = true
     await action.onSuccess?.(result)
   } catch (e) { error.value = (e as Error).message }

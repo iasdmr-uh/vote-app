@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { countsOf, voteLabel } from '../resultados'
+import { countsOf, marksPerPersonText, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
@@ -46,7 +46,7 @@ const {
               <div class="eyebrow-row"><p class="eyebrow">PAPELETA PREPARADA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div>
               <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2>
               <ul class="ballot-options"><li v-for="option in round.options || []" :key="option.id">{{ option.label }}</li></ul>
-              <p v-if="round.category === 'committee' && ballotMaxChoices" class="status-line">Hasta {{ ballotMaxChoices }} por persona</p>
+              <p v-if="round.category === 'committee' && ballotMaxChoices" class="status-line">{{ marksPerPersonText(ballotMaxChoices) }}</p>
               <div class="action-row"><button class="link-button remove-link" :disabled="loading" @click="annulRound(round)">{{ currentRoundRecord && voteNumber(currentRoundRecord) > 1 ? 'Cancelar esta votación' : 'Anular papeleta' }}</button><button class="primary push-right" :disabled="loading" @click="moderatorAction(`/moderator/rounds/${encodeURIComponent(round.id)}/open`)">Abrir votación</button></div>
               <template v-if="currentRoundRecord && voteNumber(currentRoundRecord) > 1">
                 <h3 class="list-heading eyebrow">HISTORIAL DE ESTA ELECCIÓN</h3>
