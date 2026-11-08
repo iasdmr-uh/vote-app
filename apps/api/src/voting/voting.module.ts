@@ -11,7 +11,18 @@ import { OfficialRosterService } from './official-roster.service.js'
 
 @Module({
   imports: [PrismaModule, AuthModule, RealtimeModule],
-  controllers: [PublicAssemblyController, ParticipantController, ParticipantLeaveController, ModeratorController],
-  providers: [VotingService, PresentationService, ConnectionCountService, OperatorLogService, OfficialRosterService],
+  controllers: [
+    ModeratorController,
+    ParticipantController,
+    ParticipantLeaveController,
+    PublicAssemblyController,
+  ],
+  providers: [
+    ConnectionCountService,
+    OfficialRosterService,
+    OperatorLogService,
+    PresentationService,
+    VotingService,
+  ],
 })
 export class VotingModule {}
