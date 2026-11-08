@@ -84,12 +84,15 @@ test('the operator adds a committee to the roster in one action, with everyone e
     assert.ok(row.registeredAt)
     assert.equal((await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.id === first.id)!.officialResult?.registeredAt, row.registeredAt.toISOString())
     assert.deepEqual(emitted.map((item) => item.name), ['resultsRegistered'])
+    const { csv } = await new OperatorLogService(prisma).download(assemblyId, 'review')
+    assert.match(csv, /"Resultados","Agregado a oficiales: Comisión de Finanzas"/)
 
     emitted.length = 0
     const again = await roster.register(first.id)
     assert.equal(again.registeredAt, row.registeredAt.toISOString(), 'adding twice leaves the roster unchanged')
     assert.equal((await prisma.officialResult.findUniqueOrThrow({ where: { roundId: first.id } })).registeredAt?.getTime(), row.registeredAt.getTime())
     assert.deepEqual(emitted, [])
+    assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'results.registered' } }), 1, 'adding twice logs once')
   })
 })
 

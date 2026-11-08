@@ -19,7 +19,7 @@
 - [x] 3.1 Failing tests: registering adds every elected of the election together, refuses unsettled, pending and annulled results, and repeats without change
 - [x] 3.2 Failing integration tests: the database refuses to change `registered_at`, to change a registered result's options, and to annul a vote of a registered election, while «Borrar datos» still deletes everything
 - [x] 3.3 Add the register endpoint, the service method and the triggers
-- [ ] 3.4 After #79 lands, rebase and log registering with kind «Resultados»
+- [x] 3.4 After #79 lands, rebase and log registering with kind «Resultados»
 - [x] 3.5 Failing test, then change: «Presentar oficiales» shows only registered results
 
 ## 4. Gates
@@ -30,10 +30,10 @@
 
 ## 5. Web
 
-- [ ] 5.1 Failing E2E tests: phones, projector and mesa show «Preparando el resultado», then the result together
-- [ ] 5.2 Failing E2E tests: final wording, decision wording, next-vote wording and the annulled state
-- [ ] 5.3 Failing E2E test: the mesa adds a final result to the roster, then sees it marked and loses the action
-- [ ] 5.4 Remove «Publicar resultados», add «Agregar a oficiales» with a confirmation that names the elected, and add the new states to all three views
+- [x] 5.1 Failing E2E tests: phones, projector and mesa show «Preparando el resultado», then the result together
+- [x] 5.2 Failing E2E tests: final wording, decision wording, next-vote wording and the annulled state
+- [x] 5.3 Failing E2E test: the mesa adds a final result to the roster, then sees it marked and loses the action
+- [x] 5.4 Remove «Publicar resultados», add «Agregar a oficiales» with a confirmation that names the elected, and add the new states to all three views
 
 ## 6. Docs and verification
 

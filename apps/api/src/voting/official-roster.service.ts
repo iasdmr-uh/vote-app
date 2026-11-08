@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 
@@ -19,6 +20,7 @@ export class OfficialRosterService {
       if (result.settledRound.status !== 'published') throw new ConflictException('El resultado todavía se está preparando')
       if (result.registeredAt) return { assemblyId: root.assembly_id, changed: false }
       await tx.officialResult.update({ where: { roundId: rootRoundId }, data: { registeredAt: new Date() } })
+      await tx.auditEvent.create({ data: { assemblyId: root.assembly_id, roundId: rootRoundId, actorRef: MODERATOR_ACTOR, action: 'results.registered' } })
       return { assemblyId: root.assembly_id, changed: true }
     })
     if (outcome.changed) this.realtime.resultsRegistered(outcome.assemblyId, { roundId: rootRoundId })

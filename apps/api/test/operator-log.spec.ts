@@ -27,6 +27,7 @@ test('each logged action has exactly one of the four kinds', () => {
   assert.equal(logEntryOf(row('participant.voting_disabled'))?.kind, 'Entrada')
   assert.equal(logEntryOf(row('round.annulled', { reason: 'x' }))?.kind, 'Votación')
   assert.equal(logEntryOf(row('round.results_published'))?.kind, 'Resultados')
+  assert.equal(logEntryOf(row('results.registered'))?.kind, 'Resultados')
   assert.equal(logEntryOf(row('log.downloaded', { purpose: 'review' }))?.kind, 'Datos')
   assert.equal(logEntryOf(row('assembly.created_and_lobby_opened'))?.kind, 'Datos')
 })
@@ -88,4 +89,8 @@ test('«Borrar datos» needs the newest entry to be a download for it with every
 test('an entry whose vote was later deleted keeps the title stored with it', () => {
   const entry = logEntryOf(row('round.regional_secretary_added', { personName: 'Marta Regional', roundTitle: 'Presidencia' }, { roundTitle: null }))
   assert.equal(entry?.text, 'Marta Regional agregado como secretario regional: Presidencia')
+})
+
+test('adding a result to the roster names its election', () => {
+  assert.equal(logEntryOf(row('results.registered', null, { roundTitle: 'Comisión de Finanzas' }))?.text, 'Agregado a oficiales: Comisión de Finanzas')
 })
