@@ -67,6 +67,8 @@ test('electionOutcome: a tie at the last seat sends only the tied candidates to 
 - Each test removes its own records when it ends, so the next test finds no live assembly. Goldberg 2.8 allows this after-each strategy.
 - Integration files run one at a time, because the API allows one live assembly and `VACUUM FULL` locks the whole votes table.
 - Integration tests fail when `TEST_DATABASE_URL` is missing.
+- Locally, `test:integration:local` and `test:scenarios:local` start the `postgres-test` service from `docker-compose.yml`, apply migrations and set `TEST_DATABASE_URL`. The service keeps its data in memory, and `test:db:down` removes it.
+- CI starts its own PostgreSQL service and sets `TEST_DATABASE_URL`.
 
 ## Outcomes to check
 
@@ -100,9 +102,12 @@ Goldberg 2.12 names five outcomes a command can have. This app has no message qu
 |---|---|---|
 | `npm test` | Unit tests | Nothing |
 | `npm run test:integration` | Integration and HTTP tests | `TEST_DATABASE_URL` |
+| `npm run test:integration:local` | Integration and HTTP tests on a throwaway database | Docker |
 | `npm run test:e2e` | Mocked end-to-end | Playwright browsers |
 | `npm run test:e2e:real-stack` | Real-stack end-to-end | Docker or local PostgreSQL |
 | `npm run test:scenarios` | Scenarios at the unit and integration levels | `TEST_DATABASE_URL` |
+| `npm run test:scenarios:local` | Scenarios on a throwaway database | Docker |
+| `npm run test:db:down` | Removes the throwaway database | Docker |
 | `npm run test:scenarios:browser` | Scenarios in the real-stack browser, add `:headed` to watch | Docker or local PostgreSQL |
 | `npm run test:load` | Load test | k6 and a running stack |
 
