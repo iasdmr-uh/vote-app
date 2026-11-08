@@ -210,23 +210,30 @@ test('the quorum is two thirds of the accredited, rounded up', async () => {
 })
 
 test('while a vote is open the mesa cannot disable, re-enable or take out anyone, and can again once it closes', async () => {
-  const { prisma, service, room, events, joinCode, assemblyId, people, cleanup } = await setup('open-vote-guards', ['Abdías', 'Jonás', 'Sofonías'])
+  const { prisma, service, room, events, joinCode, assemblyId, people, cleanup } = await setup('open-vote-guards', ['Abdías', 'Jonás', 'Nahúm', 'Sofonías'])
   try {
     const secretary = await addSecretary(prisma, assemblyId)
     await room.setVotingDisabled(people.Sofonías!.id, true)
+    await room.takeOutOfRoom(people.Nahúm!.id)
     const round = await service.createRound(assemblyId, { title: 'Presidencia', ...twoOptions })
     await service.openRound(round.id)
+    const audits = await prisma.auditEvent.count({ where: { assemblyId } })
 
     events.length = 0
     await assert.rejects(room.setVotingDisabled(people.Abdías!.id, true), ConflictException)
     await assert.rejects(room.setVotingDisabled(people.Sofonías!.id, false), ConflictException)
+    await assert.rejects(room.setVotingDisabled(people.Sofonías!.id, true), ConflictException)
+    await assert.rejects(room.setVotingDisabled(people.Abdías!.id, false), ConflictException)
     await assert.rejects(room.takeOutOfRoom(people.Jonás!.id), ConflictException)
+    await assert.rejects(room.takeOutOfRoom(people.Nahúm!.id), ConflictException)
     await assert.rejects(room.takeOutOfRoom(secretary.id), ConflictException)
+    await assert.rejects(room.patchParticipant(people.Jonás!.id, { status: 'removed' }), ConflictException)
     assert.equal(events.length, 0)
+    assert.equal(await prisma.auditEvent.count({ where: { assemblyId } }), audits)
 
     const rows = await prisma.participantSession.findMany({ where: { assemblyId }, orderBy: { firstName: 'asc' }, select: { firstName: true, status: true, votingDisabled: true } })
     assert.deepEqual(rows.map((row) => [row.firstName, row.status, row.votingDisabled]), [
-      ['Abdías', 'active', false], ['Débora', 'active', false], ['Jonás', 'active', false], ['Sofonías', 'active', true],
+      ['Abdías', 'active', false], ['Débora', 'active', false], ['Jonás', 'active', false], ['Nahúm', 'left', false], ['Sofonías', 'active', true],
     ])
     assert.deepEqual((await service.participantState(people.Sofonías!.id)).openRound?.options, [], 'a disabled delegate stays out of the open vote')
     await assert.rejects(service.castVote(people.Sofonías!.id, round.id, round.options[0]!.id), ForbiddenException)
@@ -239,7 +246,7 @@ test('while a vote is open the mesa cannot disable, re-enable or take out anyone
     await room.takeOutOfRoom(secretary.id)
     const after = await prisma.participantSession.findMany({ where: { assemblyId }, orderBy: { firstName: 'asc' }, select: { firstName: true, status: true, votingDisabled: true } })
     assert.deepEqual(after.map((row) => [row.firstName, row.status, row.votingDisabled]), [
-      ['Abdías', 'active', true], ['Débora', 'left', false], ['Jonás', 'left', false], ['Sofonías', 'active', false],
+      ['Abdías', 'active', true], ['Débora', 'left', false], ['Jonás', 'left', false], ['Nahúm', 'left', false], ['Sofonías', 'active', false],
     ])
   } finally { await cleanup() }
 })
