@@ -50,7 +50,7 @@ async function fourthVote(service: VotingService, assemblyId: string, people: st
 }
 
 test('the mesa and the projector get the rule, the reasons and the base of a result, and the phone does not', async () => {
-  await withAssembly('explanation-office', 5, async ({ service, assemblyId, joinCode, people }) => {
+  await withAssembly('explanation-office', 5, async ({ prisma, service, assemblyId, joinCode, people }) => {
     const vote = await election(service, assemblyId)
     await voteAndClose(service, vote, people, ['Isaías', 'Isaías', 'Jeremías', 'Isaías', 'Jeremías'])
     const expected = {
@@ -61,6 +61,7 @@ test('the mesa and the projector get the rule, the reasons and the base of a res
     }
     assert.deepEqual((await mesaRound(service, assemblyId, vote.id)).explanation, expected)
     assert.deepEqual((await service.publicState(joinCode)).explanation, expected)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: vote.id } })).status, 'published')
     assert.equal('explanation' in (await service.participantState(people[0]!)), false)
   })
 })
