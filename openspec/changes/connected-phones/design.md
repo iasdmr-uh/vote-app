@@ -23,9 +23,9 @@
 
 ## Decisions
 
-### Heartbeat of 3 s interval and 3 s timeout
+### Heartbeat derived from the loss limit and the grace
 
-The server detects a silent drop within 6 s, and so does the phone. With the 3 s grace this stays under 10 s. About 70 phones sending a small ping every 3 s is negligible on a LAN.
+`connection-timing.ts` holds the two UNCONFIRMED values, `CONNECTION_LOSS_LIMIT_MS` (10 s) and `CONNECTION_GRACE_MS` (3 s). The heartbeat interval and timeout are each half of what remains, 3.5 s. The server and the phone detect a silent drop within 7 s, and with the 3 s grace the total stays within 10 s. Changing either value touches one line. About 70 phones sending a small ping every few seconds is negligible on a LAN.
 
 Alternative considered: an application-level heartbeat event. It duplicates what Socket.IO already does and would need a client-to-server event, which the realtime contract forbids.
 
@@ -43,11 +43,11 @@ The realtime module stays free of domain imports. A `ConnectionCountService` in 
 
 ### HTTP state carries the count
 
-The public-state and moderator state responses gain `connection: { connected, base }` while a vote is open, and omit it otherwise. The controllers add it from `ConnectionCountService`, which keeps the change out of `VotingService` state builders. Clients already refresh on `round.state`, so opening, closing and annulling a vote need no extra event.
+The public-state and moderator state responses gain `connection: { roundId, connected, base }` while a vote is open, and omit it otherwise. The controllers add it from `ConnectionCountService`, which keeps the change out of `VotingService` state builders. Clients already refresh on `round.state`, so opening, closing and annulling a vote need no extra event.
 
 ### Phone signal with a 3 s grace
 
-`useAssembly` derives one phone signal from `realtimeConnected`. It turns connected at once and turns down only after 3 s of continuous disconnection. During an open vote the phone shows «Conectado» when the signal is connected and the existing notice when it is down. The grace also applies to the phone notice outside a vote, because the flicker problem is the same there. The projector and mesa notices keep their current behavior.
+`useAssembly` derives one phone signal from the socket. It turns connected at once and turns down only after the grace of continuous disconnection. The phone reads the grace as `connectionGraceMs` from `GET /participant/me`, because the web image cannot import API code. The phone starts down until its first connection, as the notice does today. During an open vote the phone shows «Conectado» when the signal is connected and the existing notice when it is down. The grace also applies to the phone notice outside a vote, because the flicker problem is the same there. The projector and mesa notices keep their current behavior.
 
 ### Display
 
@@ -56,7 +56,7 @@ The projector and the mesa show "X de Y conectados" next to "X de Y han votado" 
 ## Risks / Trade-offs
 
 - [Phones on a locked screen drop their socket and count as offline] → The spec states this as an accepted limit. The count says connected, not present.
-- [Shorter heartbeats raise radio use on phones] → 3 s on a local Wi-Fi network is small for a session of a few hours.
+- [Shorter heartbeats raise radio use on phones] → 3.5 s on a local Wi-Fi network is small for a session of a few hours.
 - [A presence change and a base change race] → Each recount reads the base fresh and emits only on change. Clients also recover over HTTP.
 - [API restart loses presence] → Phones reconnect automatically and are counted again within seconds.
 - [Logs could leak who dropped] → The tracker and gateway log nothing per participant. A test checks that no participant id reaches the logger.
