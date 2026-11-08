@@ -11,13 +11,13 @@ import { buildProviders } from '../support/providers.js'
 async function setup(label: string, names: string[]) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const { voting: service, room } = buildProviders(prisma, gateway)
+  const { voting: service, room, roster } = buildProviders(prisma, gateway)
   const seeded = await seedAssembly(prisma, room, { label, delegates: names })
   const cleanup = async () => {
     await seeded.cleanup()
     await prisma.$disconnect()
   }
-  return { prisma, service, room, auth: new AuthService(prisma), events, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
+  return { prisma, service, room, roster, auth: new AuthService(prisma), events, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
 }
 
 const twoOptions = { format: 'single_choice' as const, countingRule: { kind: 'count_only' as const }, options: [{ label: 'Opción A' }, { label: 'Opción B' }] }
@@ -121,5 +121,30 @@ test('the mesa cannot change the assembly code while a vote is open, and can onc
 
     await service.closeRound(round.id)
     assert.ok((await room.rotateJoinCode(assemblyId)).joinCode)
+  } finally { await cleanup() }
+})
+
+test('a device reconnected after a vote keeps that vote and still votes only once in the next one', async () => {
+  const { prisma, service, roster, auth, assemblyId, people, cleanup } = await setup('reconnect-one-vote', ['Habacuc', 'Malaquías'])
+  try {
+    const office = (title: string) => ({ title, category: 'office' as const, format: 'single_choice' as const, options: [{ label: 'Elías' }, { label: 'Eliseo' }] })
+    const first = await service.createRound(assemblyId, office('Presidencia'))
+    await service.openRound(first.id)
+    await service.castVote(people.Habacuc!.id, first.id, first.options[0]!.id)
+    await service.castVote(people.Malaquías!.id, first.id, first.options[0]!.id)
+    await service.closeRound(first.id)
+    await roster.register(first.id)
+
+    const moved = await service.redeemResumeCode(codeOf((await service.issueResumeCode(people.Habacuc!.id)).resumeUrl))
+    assert.equal(moved.participationStatus, 'recorded')
+    assert.equal(await auth.participantForToken(moved.participantSessionToken), people.Habacuc!.id)
+    assert.equal(await prisma.participation.count({ where: { roundId: first.id, participantSessionId: people.Habacuc!.id } }), 1)
+
+    const second = await service.createRound(assemblyId, office('Secretaría'))
+    await service.openRound(second.id)
+    await service.castVote(people.Habacuc!.id, second.id, second.options[1]!.id)
+    await assert.rejects(service.castVote(people.Habacuc!.id, second.id, second.options[0]!.id), ConflictException)
+    assert.equal(await prisma.participation.count({ where: { roundId: second.id, participantSessionId: people.Habacuc!.id } }), 1)
+    assert.equal(await prisma.anonymousVote.count({ where: { roundId: second.id } }), 1)
   } finally { await cleanup() }
 })

@@ -37,6 +37,7 @@ test('D · inhabilitar antes de una votación: el teléfono no recibe la papelet
   expect((await moderatorState(request, assemblyId)).rounds[0].participationCount).toBe(1)
 
   await expect(person(mesa, 'Carlos Gómez').getByRole('button', { name: 'Habilitar' })).toHaveCount(0)
+  await expect(person(mesa, 'Juan Mora')).toBeVisible()
   await expect(person(mesa, 'Juan Mora').getByLabel('Acciones para Juan Mora')).toHaveCount(0)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('6')
 
