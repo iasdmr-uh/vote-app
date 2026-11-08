@@ -25,7 +25,7 @@
 
 ### Heartbeat derived from the loss limit and the grace
 
-`connection-timing.ts` holds the two UNCONFIRMED values, `CONNECTION_LOSS_LIMIT_MS` (10 s) and `CONNECTION_GRACE_MS` (3 s). The heartbeat interval and timeout are each half of what remains, 3.5 s. The server and the phone detect a silent drop within 7 s, and with the 3 s grace the total stays within 10 s. Changing either value touches one line. About 70 phones sending a small ping every few seconds is negligible on a LAN.
+`connection-timing.ts` holds the two UNCONFIRMED values, `CONNECTION_LOSS_LIMIT_MS` (10 s) and `CONNECTION_GRACE_MS` (3 s). The heartbeat interval and timeout are each a third of what remains, about 2.3 s. The server and the phone detect a silent drop within about 4.7 s, and with the 3 s grace the total is under 8 s. That leaves one heartbeat of room for network and timer delay inside the 10 s bound. Changing either value touches one line. About 70 phones sending a small ping every few seconds is negligible on a LAN.
 
 Alternative considered: an application-level heartbeat event. It duplicates what Socket.IO already does and would need a client-to-server event, which the realtime contract forbids.
 
@@ -56,7 +56,7 @@ The projector and the mesa show "X de Y conectados" next to "X de Y han votado" 
 ## Risks / Trade-offs
 
 - [Phones on a locked screen drop their socket and count as offline] → The spec states this as an accepted limit. The count says connected, not present.
-- [Shorter heartbeats raise radio use on phones] → 3.5 s on a local Wi-Fi network is small for a session of a few hours.
+- [Shorter heartbeats raise radio use on phones] → A ping every few seconds on a local Wi-Fi network is small for a session of a few hours.
 - [A presence change and a base change race] → Each recount reads the base fresh and emits only on change. Clients also recover over HTTP.
 - [API restart loses presence] → Phones reconnect automatically and are counted again within seconds.
 - [Logs could leak who dropped] → The tracker and gateway log nothing per participant. A test checks that no participant id reaches the logger.

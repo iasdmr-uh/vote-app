@@ -108,3 +108,7 @@ test('a silent drop is detected and reported within the loss limit', () => {
   assert.ok(HEARTBEAT_MS > 0)
   assert.ok(2 * HEARTBEAT_MS + CONNECTION_GRACE_MS <= CONNECTION_LOSS_LIMIT_MS)
 })
+
+test('detection leaves one heartbeat of room for network and timer delay', () => {
+  assert.ok(3 * HEARTBEAT_MS + CONNECTION_GRACE_MS <= CONNECTION_LOSS_LIMIT_MS)
+})
