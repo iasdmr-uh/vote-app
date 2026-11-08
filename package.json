@@ -12,6 +12,9 @@
     "test:e2e": "playwright test",
     "test:e2e:integration": "node scripts/run-e2e-integration.mjs",
     "test:e2e:ui": "playwright test --ui",
+    "test:fixtures": "npm run test:fixtures --workspace @asdmr/api",
+    "test:fixtures:browser": "node scripts/run-tie-fixtures-browser.mjs",
+    "test:fixtures:browser:headed": "node scripts/run-tie-fixtures-browser.mjs --headed",
     "test:load": "k6 run tests/load/voting.js"
   },
   "devDependencies": {
