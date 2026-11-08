@@ -27,5 +27,5 @@
 ## 5. Verification
 
 - [ ] 5.1 Real-stack E2E (in the final validation pass): a 2-seat committee chain with the regional secretary shows the paragraph on the projector and in the mesa
-- [ ] 5.2 Update `docs/rules.md` and `docs/foundation/data-model.md` for the reasons and the new column
-- [ ] 5.3 `openspec validate result-explanation --strict` passes
+- [x] 5.2 Update `docs/rules.md` and `docs/foundation/data-model.md` for the reasons and the new column
+- [x] 5.3 `openspec validate result-explanation --strict` passes
