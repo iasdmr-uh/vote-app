@@ -20,6 +20,7 @@ const {
 const {
   moderatorCredential, assemblyName, assemblyPeriod, showNextBallotForm, preparedRunoff,
   secrecyCleanupPendingRounds, voteOpen, moderatorWorkflow, currentRoundRecord, moderatorWorkflowStep, otherPendingActas,
+  electionsAwaitingRegistration, rootRoundOf, registerOfficial, showActa,
   repeatAllOptions, openCompletedAssembly, openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa,
   downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData, createAssembly, signInModerator,
 } = useMesa()
@@ -53,6 +54,13 @@ const {
         </li>
       </ol>
       <p v-if="otherPendingActas.length" class="status-line pending-actas">{{ es.moderator.pendingActas(otherPendingActas.length) }} <button class="link-button" @click="showPendingActas">{{ es.moderator.viewPendingActas }}</button></p>
+      <section v-if="electionsAwaitingRegistration.length && assemblyStatus !== 'completed'" class="notice awaiting-registration" role="status" :aria-label="es.moderator.awaitingRegistration">
+        <strong>{{ es.moderator.awaitingRegistration }}</strong>
+        <div v-for="election in electionsAwaitingRegistration" :key="election.id" class="action-row">
+          <span>{{ rootRoundOf(election)?.title }} · {{ rootRoundOf(election)?.officialResult?.elected.map((person) => person.label).join(' · ') }}</span>
+          <button class="primary push-right" :disabled="loading || voteOpen" @click="registerOfficial(election)">{{ es.results.register }}</button>
+        </div>
+      </section>
       <section v-if="secrecyCleanupPendingRounds.length" class="notice error" role="alert">
         <strong>{{ es.moderator.secrecyPending }}</strong> ({{ secrecyCleanupPendingRounds.map((item) => item.title).join(', ') }}).
         <button v-if="!voteOpen" class="secondary" :disabled="loading" @click="retrySecrecyCleanup">{{ es.moderator.retryCleanup }}</button>
@@ -77,7 +85,7 @@ const {
         <ModeratorParticipants />
       </div>
       <ModeratorVoteProgress />
-      <ModeratorResultsRecord />
+      <ModeratorResultsRecord v-if="showActa" />
     </template>
   </template>
   <ActaImpresa v-if="printingActa && moderatorAuthState === 'authenticated' && state?.rounds" :state="state" />

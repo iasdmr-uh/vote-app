@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 const api = '**/api/v1/**'
 const assembly = '/moderator/assemblies/synthetic-assembly'
@@ -166,6 +167,7 @@ test('the record marks each vote with who that vote elected and lists the whole 
     outcome: { seats: 2, base: 10, threshold: 6, elected: ['c2', 'b2'], runoff: [], openSeats: 0 }, officialResult: null,
   }
   await mesaWith(page, [root, runoff])
+  await openActa(page)
   const votes = page.locator('.official-round')
   await expect(votes.nth(0).locator('.declared-result')).toContainText('Ana Ruiz')
   await expect(votes.nth(0).locator('.declared-result')).not.toContainText('Carla Mora')

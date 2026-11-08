@@ -34,6 +34,9 @@ test.describe('diapositivas del proyector', () => {
       officialResult: { elected: [{ optionId: 'm', label: 'María López' }], note: null, declaredAt: '2026-11-03T10:00:00.000Z' },
     })
     await page.goto('/projector?code=DEMO-ROOM')
+    // The result opens on its count (8 de noviembre de 2026); «Ver resultado» shows the slide.
+    await expect(page.locator('.pj-results li')).toHaveCount(3)
+    await page.getByRole('button', { name: 'Ver resultado' }).click()
     const slide = page.locator('.slide-office')
     await expect(slide.getByRole('heading', { level: 1 })).toHaveText('Presidente')
     await expect(slide.locator('.office-name')).toHaveText('María López')
@@ -46,7 +49,7 @@ test.describe('diapositivas del proyector', () => {
     expect(await slide.evaluate((element) => [element.clientWidth, element.clientHeight])).toEqual([1920, 1080])
     await expect(page.locator('.pj-results')).toHaveCount(0)
 
-    // The detailed count is still there, one click away, and back.
+    // The detailed count is one click away, and back.
     await page.getByRole('button', { name: 'Ver conteo' }).click()
     await expect(page.locator('.pj-results li')).toHaveCount(3)
     await page.getByRole('button', { name: 'Ver resultado' }).click()
@@ -63,6 +66,7 @@ test.describe('diapositivas del proyector', () => {
       officialResult: { elected: [{ optionId: 'p', label: 'Pedro Antonio Vargas Hernández' }], note: null, declaredAt: '2026-11-03T10:00:00.000Z' },
     })
     await page.goto('/projector?code=DEMO-ROOM')
+    await page.getByRole('button', { name: 'Ver resultado' }).click()
     const slide = page.locator('.slide-office')
     await expect(slide.locator('.office-name')).toHaveText('Pedro Antonio Vargas Hernández')
     await expect(slide.locator('.office-label')).toHaveCount(0)
@@ -82,6 +86,7 @@ test.describe('diapositivas del proyector', () => {
         outcome: { seats: 1, base: 38, threshold: 29, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved },
       })
       await page.goto('/projector?code=DEMO-ROOM')
+      await page.getByRole('button', { name: 'Ver resultado' }).click()
       const slide = page.locator('.slide-decision')
       await expect(slide.locator('.decision-kicker')).toHaveText('DECISIÓN')
       await expect(slide.getByRole('heading', { level: 1 })).toHaveText('Presupuesto 2027')
@@ -103,6 +108,7 @@ test.describe('diapositivas del proyector', () => {
       officialResult: { elected: [{ optionId: 'a', label: 'Ana Ruiz' }, { optionId: 'j', label: 'Jorge Banegas' }, { optionId: 'e', label: 'Elena Castro' }], note: null, declaredAt: '2026-11-03T10:00:00.000Z' },
     })
     await page.goto('/projector?code=DEMO-ROOM')
+    await page.getByRole('button', { name: 'Ver resultado' }).click()
     const slide = page.locator('.slide-committee')
     await expect(slide.getByRole('heading', { level: 1 })).toHaveText('Comisión de Finanzas')
     await expect(slide.locator('.committee-rows li')).toHaveText([/^1\s*Ana Ruiz\s*30 votos$/, /^2\s*Jorge Banegas\s*26 votos$/, /^3\s*Elena Castro\s*24 votos$/])
@@ -121,6 +127,7 @@ test.describe('diapositivas del proyector', () => {
       officialResult: { elected: names.map((label, index) => ({ optionId: index === 6 ? 'r' : index === 7 ? 'm' : `e${index}`, label })), note: null, declaredAt: '2026-11-03T10:00:00.000Z' },
     })
     await page.goto('/projector?code=DEMO-ROOM')
+    await page.getByRole('button', { name: 'Ver resultado' }).click()
     const rows = page.locator('.slide-committee .committee-rows li')
     await expect(rows).toHaveCount(8)
     await expect(rows.nth(6)).toHaveText(/^7\s*Rosa Díaz\s*22 votos$/)

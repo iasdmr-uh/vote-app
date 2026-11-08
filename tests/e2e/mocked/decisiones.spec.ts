@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 // Decisions (#42): A favor / En contra or options, approved with mayoría simple or 3/4 of the habilitados.
 
@@ -96,6 +97,7 @@ test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No apro
   await expect(ballot.locator('.decision-verdict')).toHaveText('Aprobada')
   await expect(ballot.locator('.ranked-rows > li').nth(0)).toHaveText(/A favor\s*30 votos\s*79 %/)
   await expect(ballot.locator('.ranked-rows .badge')).toHaveCount(0)
+  await openActa(page)
   const acta = page.locator('#acta-de-resultados')
   await expect(acta.locator('.official-round').nth(0)).toContainText('Decisión · Se aprueba con mayoría simple · 20 votos')
   await expect(acta.locator('.official-round').nth(0).locator('.declared-result')).toHaveText('No aprobada')
@@ -240,9 +242,7 @@ for (const approved of [true, false]) {
     })
 
     await page.goto('/projector?code=DEMO-ROOM')
-    // The settled decision opens on its slide (P3, #48); the detailed count is behind «Ver conteo».
-    await expect(page.locator('.decision-pill')).toHaveText(approved ? '✓ Aprobada' : 'No aprobada')
-    await page.getByRole('button', { name: 'Ver conteo' }).click()
+    // The settled decision opens on its count (8 de noviembre de 2026); the slide (P3, #48) is behind «Ver resultado».
     await expect(page.getByRole('heading', { name: 'Presupuesto 2027' })).toBeVisible()
     await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con 3/4 · 29 votos')
     await expect(page.locator('.pj-elected h2')).toHaveText(approved ? '✓ Aprobada' : 'No aprobada')
@@ -251,6 +251,8 @@ for (const approved of [true, false]) {
     await expect(rows.nth(1)).toHaveText(new RegExp(`^En contra\\s*${counts[1]} votos\\s*${Math.round((counts[1]! / 38) * 100)} %$`))
     await expect(page.locator('.pj-rank')).toHaveCount(0)
     await expect(page.locator('.pj-results em')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Ver resultado' }).click()
+    await expect(page.locator('.decision-pill')).toHaveText(approved ? '✓ Aprobada' : 'No aprobada')
   })
 }
 
@@ -272,10 +274,10 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
-  await expect(page.locator('.decision-pill')).toHaveText('✓ San Pedro Sula')
-  await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con mayoría simple · 20 votos')
   await expect(page.locator('.result-summary')).toContainText('San Pedro Sula')
   await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Aprobada')
+  await page.getByRole('button', { name: 'Ver resultado' }).click()
+  await expect(page.locator('.decision-pill')).toHaveText('✓ San Pedro Sula')
 })

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mockCompletedAssembly } from './acta-fixture'
+import { actaRounds, mockCompletedAssembly, openActa } from './acta-fixture'
 
 // Printed acta in the Agenda UH 2026 style (#47, Figma A1–A3).
 
@@ -11,6 +11,21 @@ async function openPrintedActa(page: Page) {
   await expect(acta).toBeVisible()
   return acta
 }
+
+test('el panel de la mesa muestra el acta solo después de «Acta» y la oculta con «Cerrar acta»', async ({ page }) => {
+  await mockCompletedAssembly(page, { status: 'in_progress', completedAt: null, period: '2027–2029', positions: [] })
+  await page.goto('/moderator')
+  const acta = page.locator('#acta-de-resultados')
+  await expect(page.locator('.ballot-card')).toBeVisible()
+  await expect(acta).toHaveCount(0)
+
+  await openActa(page)
+  await expect(acta.locator('.official-round')).toHaveCount(actaRounds.length)
+
+  await acta.getByRole('button', { name: 'Cerrar acta', exact: true }).click()
+  await expect(acta).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Acta', exact: true })).toBeVisible()
+})
 
 test('el acta impresa lista cada votación en orden con su número, participación, mayoría y etiquetas (A1–A2)', async ({ page }) => {
   await mockCompletedAssembly(page)

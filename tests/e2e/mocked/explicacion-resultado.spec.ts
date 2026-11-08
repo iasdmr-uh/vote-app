@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 const api = '**/api/v1/**'
 const assembly = { id: 'a1', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' }
@@ -65,6 +66,7 @@ test('the mesa opens and closes the explanation of a final result', async ({ pag
 
 test('the results record explains each result', async ({ page }) => {
   await mesaWith(page, { ...committee, status: 'published', options, results, outcome, explanation })
+  await openActa(page)
   await expectToggle(page, '.official-history', paragraph)
 })
 
@@ -89,8 +91,9 @@ test('the projector explains a final result in its count view', async ({ page })
   await page.setViewportSize({ width: 1920, height: 1080 })
   const { final: _final, ...rest } = finalResult
   await projectorWith(page, { round: finalRound, ...rest, final: { elected: finalResult.officialResult.elected, approved: null } })
-  await page.getByRole('button', { name: 'Ver conteo' }).click()
+  // The count view, with its explanation, is what a published result opens on.
   await expect(page.locator('.pj-explanation')).toHaveText(finalParagraph)
+  await expect(page.getByRole('button', { name: 'Ver resultado' })).toBeVisible()
 })
 
 async function phoneWith(page: Page, state: Record<string, unknown>) {

@@ -34,6 +34,8 @@ const committeeMemberCount = ref<number | null>(null)
 const decisionFormat = ref<DecisionFormat>('boolean')
 const approvalRule = ref<ApprovalRule>('simple')
 const showNextBallotForm = ref(false)
+// The acta de resultados opens from the mesa menu instead of filling the bottom of the panel.
+const showActa = ref(false)
 const resumeQr = ref<{ heading?: string; name: string; image: string; url: string; expiresAt: string } | null>(null)
 const regionalSecretaryFirstName = ref('')
 const regionalSecretaryLastName = ref('')
@@ -135,6 +137,23 @@ function voteNumber(target: { id: string; committeeRootRoundId?: string | null; 
 function rootRoundOf(target: { id: string; committeeRootRoundId?: string | null }) {
   return state.value?.rounds?.find((item) => item.id === (target.committeeRootRoundId || target.id))
 }
+
+/**
+ * Elections whose final result is shown but not yet added to the officials list. The server refuses to open
+ * another election until each one is added or annulled, so the mesa lists them whatever card is current.
+ * The current election is left out only while its result card, with its own button, is on screen.
+ */
+const electionsAwaitingRegistration = computed(() => {
+  const latestByElection = new Map<string, RoundRecord>()
+  for (const vote of state.value?.rounds ?? []) if (vote.status !== 'draft') latestByElection.set(vote.committeeRootRoundId || vote.id, vote)
+  const resultCardShown = round.value?.status === 'published' && !showNextBallotForm.value
+  const currentElection = resultCardShown && currentRoundRecord.value ? currentRoundRecord.value.committeeRootRoundId || currentRoundRecord.value.id : undefined
+  return [...latestByElection.values()].filter((latest) => {
+    const root = rootRoundOf(latest)
+    if (!root || root.id === currentElection) return false
+    return latest.status === 'published' && latest.final && Boolean(root.officialResult) && !root.officialResult?.registeredAt
+  })
+})
 
 /** An annulled vote is the only one the mesa repeats by hand, with the same options. */
 function repeatAllOptions(target: RoundRecord | undefined) {
@@ -579,10 +598,10 @@ export function useMesa() {
   return {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
-    showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
+    showNextBallotForm, showActa, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, voteOpen, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
-    roundChain, voteNumber, rootRoundOf, eligibleOf, electionComplete, runoffOf,
+    roundChain, voteNumber, rootRoundOf, eligibleOf, electionComplete, runoffOf, electionsAwaitingRegistration,
     annulRound, registerOfficial, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData,

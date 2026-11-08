@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { expect, test, type Page } from '@playwright/test'
+import { openActa } from './acta-fixture'
 
 /** Reads the downloaded acta sheet back as typed values: inline strings stay strings, <v> cells are numbers. */
 function sheetRows(xml: string) {
@@ -226,6 +227,7 @@ test('moderador anula una papeleta con motivo y la repite con las mismas opcione
   })
 
   await page.goto('/moderator')
+  await openActa(page)
   const ranking = page.locator('.official-round').first().locator('.ranked-rows > li')
   await expect(ranking).toHaveCount(4)
   await expect(ranking.nth(0)).toHaveText(/^Beta\s*Desempate\s*4 votos\s*40 %/)
@@ -704,6 +706,7 @@ test('la mesa ve el resultado calculado de una comisión y abre el desempate por
   await expect(rows.nth(4)).toHaveText(/^Sofía Méndez\s*14 votos/)
   await expect(page.getByRole('button', { name: /Declarar|Repetir votación|Retirar declaración/ })).toHaveCount(0)
   await expect(page.getByRole('group', { name: '¿Quién queda electo?' })).toHaveCount(0)
+  await openActa(page)
   const acta = page.locator('#acta-de-resultados')
   await expect(acta.locator('.declared-result')).toContainText('Ana Ruiz')
   await expect(acta).toContainText('DESEMPATE · 2.ª VOTACIÓN')
@@ -739,6 +742,7 @@ test('cargo sin mayoría: chip de mayoría, desempate entre los dos primeros y b
   await expect(ballot.locator('.ranked-rows > li .badge-warning')).toHaveCount(2)
   await expect(ballot.locator('.ranked-rows > li').nth(2)).not.toContainText('Desempate')
   await expect(ballot.locator('.voters-total')).toHaveText(/36 de 38\s*votaron · 2 no votaron/)
+  await openActa(page)
   await expect(page.locator('#acta-de-resultados')).toContainText('36 de 38 votaron · 2 no votaron')
   await expect(ballot.getByRole('button', { name: 'Abrir desempate', exact: true })).toBeVisible()
   await expect(page.locator('.workflow-steps li.current')).toContainText('Resultado')
@@ -1360,6 +1364,92 @@ test('durante una votación abierta la mesa no ofrece preparar la siguiente vota
   await expect(page.getByRole('button', { name: 'Agregar a Secretaría Regional', exact: true })).toHaveCount(0)
 })
 
+test('la mesa agrega a oficiales una elección pendiente aunque ya preparó la siguiente papeleta', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  let registered = false
+  const musica = {
+    id: 'musica', title: 'Música', status: 'published', category: 'office', final: true, participationCount: 3,
+    options: [{ id: 'axel', label: 'Axel Avelar' }, { id: 'adriana', label: 'Adriana Blanco' }],
+    results: [{ optionId: 'axel', label: 'Axel Avelar', count: 2 }, { optionId: 'adriana', label: 'Adriana Blanco', count: 1 }],
+  }
+  const draft = { id: 'finanzas', title: 'Comisión de Finanzas', status: 'draft', category: 'committee', memberCount: 3, electionSeats: 3, options: [{ id: 'j', label: 'Jary' }, { id: 'd', label: 'Daniel' }, { id: 'i', label: 'Isaí' }] }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      const officialResult = { roundId: 'musica', elected: [{ optionId: 'axel', label: 'Axel Avelar' }], note: null, declaredBy: 'results_engine', declaredAt: '2026-11-08T19:20:19.000Z', publishedAt: '2026-11-08T19:20:19.000Z', settledRoundId: 'musica', approved: null, registeredAt: registered ? '2026-11-08T19:30:00.000Z' : null }
+      await route.fulfill({ json: {
+        assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participants: [], participantCount: 3, eligibleCount: 3,
+        currentRound: draft,
+        rounds: [{ ...musica, officialResult }, draft],
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/elections/musica/register')) {
+      registered = true
+      await route.fulfill({ status: 201, json: { roundId: 'musica', registered: true } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { level: 2, name: 'Comisión de Finanzas' })).toBeVisible()
+  const pending = page.getByRole('status', { name: 'Agrega a oficiales antes de abrir otra elección' })
+  await expect(pending).toContainText('Música · Axel Avelar')
+  await pending.getByRole('button', { name: 'Agregar a oficiales' }).click()
+  await expect(page.getByRole('dialog')).toContainText('Axel Avelar')
+  await page.getByRole('dialog').getByRole('button', { name: 'Agregar a oficiales' }).click()
+  await expect.poll(() => registered).toBe(true)
+  await expect(pending).toHaveCount(0)
+})
+
+test('la mesa ve «Agregar a oficiales» del resultado actual mientras prepara otra papeleta', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  const officialResult = { roundId: 'musica', elected: [{ optionId: 'axel', label: 'Axel Avelar' }], note: null, declaredBy: 'results_engine', declaredAt: '2026-11-08T19:20:19.000Z', publishedAt: '2026-11-08T19:20:19.000Z', settledRoundId: 'musica', approved: null, registeredAt: null }
+  const musica = {
+    id: 'musica', title: 'Música', status: 'published', category: 'office', final: true, participationCount: 3,
+    options: [{ id: 'axel', label: 'Axel Avelar' }, { id: 'adriana', label: 'Adriana Blanco' }],
+    results: [{ optionId: 'axel', label: 'Axel Avelar', count: 2 }, { optionId: 'adriana', label: 'Adriana Blanco', count: 1 }],
+    outcome: { seats: 1, base: 3, threshold: 2, elected: ['axel'], runoff: [], openSeats: 0 },
+    officialResult,
+  }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' },
+        participants: [], participantCount: 3, eligibleCount: 3,
+        currentRound: musica, results: musica.results, outcome: musica.outcome, officialResult, final: { elected: officialResult.elected, approved: null },
+        rounds: [musica],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const pending = page.getByRole('status', { name: 'Agrega a oficiales antes de abrir otra elección' })
+  const register = page.getByRole('button', { name: 'Agregar a oficiales' })
+  // The result card carries its own button, so the box stays hidden.
+  await expect(register).toHaveCount(1)
+  await expect(pending).toHaveCount(0)
+  await page.getByRole('button', { name: 'Preparar otra papeleta' }).click()
+  await expect(pending).toContainText('Música · Axel Avelar')
+  await expect(pending.getByRole('button', { name: 'Agregar a oficiales' })).toBeEnabled()
+  await expect(register).toHaveCount(1)
+  await page.getByRole('button', { name: 'Volver al conteo' }).click()
+  await expect(pending).toHaveCount(0)
+  await expect(register).toHaveCount(1)
+})
+
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
   let cleanupDone = false
   let cleanupRequests = 0
@@ -1713,14 +1803,14 @@ test('el proyector rotula el desempate de un cargo y suma el electo al publicarl
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
-  // The settled office opens on its slide (P2, #48); the detailed count is behind «Ver conteo».
-  await expect(page.locator('.slide-office .office-name')).toHaveText('María López')
-  await page.getByRole('button', { name: 'Ver conteo' }).click()
+  // The settled office opens on its count (8 de noviembre de 2026); the slide (P2, #48) is behind «Ver resultado».
   await expect(page.locator('.pj-status')).toHaveText(/Conteo publicado · DESEMPATE · 2\.ª VOTACIÓN/i)
   await expect(page.locator('.pj-subtitle')).toHaveText('Mayoría: 20')
   await expect(page.locator('.result-summary')).toContainText('María López')
   await expect(page.locator('.pj-elected')).toHaveCount(0)
   await expect(page.locator('.pj-results li').nth(0).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
+  await page.getByRole('button', { name: 'Ver resultado' }).click()
+  await expect(page.locator('.slide-office .office-name')).toHaveText('María López')
 })
 
 test('la mesa inhabilita y habilita entre votaciones: badge gris y «N inhabilitados», sin «faltan» tras cerrar', async ({ page }) => {

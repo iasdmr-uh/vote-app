@@ -22,7 +22,7 @@ test('los puestos electos llegan a «Presentar oficiales» y al organigrama del 
   await expect(room.phones[0].page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await voteAll(room.phones, [['María López'], ['María López'], ['Carlos Gómez']])
   await expectClosedByItself(mesa)
-  await expect(projector.locator('.slide-office .office-name')).toHaveText('María López')
+  await expect(projector.locator('.pj-results li').filter({ hasText: 'María López' }).locator('.pj-elected-tag')).toHaveText('✓ Electo/a')
 
   await addToOfficials(mesa)
   // Tesorero, a custom departamento and a committee.

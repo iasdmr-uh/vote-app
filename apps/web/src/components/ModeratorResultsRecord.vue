@@ -8,7 +8,7 @@ import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
 
 const { state } = useAssembly()
-const { rootRoundOf, roundStatusLabels, eligibleOf, printActa } = useMesa()
+const { rootRoundOf, roundStatusLabels, eligibleOf, printActa, showActa } = useMesa()
 
 function categoryText(target: RoundRecord) {
   if (isDecision(target)) return [es.moderator.categoryDecision, approvalText(target, target.outcome)].filter(Boolean).join(' · ')
@@ -18,7 +18,7 @@ function categoryText(target: RoundRecord) {
 
 <template>
   <section v-if="state?.rounds?.length" id="acta-de-resultados" class="card official-history">
-    <div class="section-heading"><div><p class="eyebrow">{{ es.moderator.resultsEyebrow }}</p><h2>{{ es.moderator.resultsHeading }}</h2></div><button class="secondary" @click="printActa">{{ es.moderator.printActa }}</button></div>
+    <div class="section-heading"><div><p class="eyebrow">{{ es.moderator.resultsEyebrow }}</p><h2>{{ es.moderator.resultsHeading }}</h2></div><div class="action-row"><button class="secondary" @click="printActa">{{ es.moderator.printActa }}</button><button class="link-button" @click="showActa = false">{{ es.common.closeActa }}</button></div></div>
     <article v-for="historyRound in state.rounds" :key="historyRound.id" class="official-round">
       <div class="section-heading"><div><h3>{{ rootRoundOf(historyRound)?.title || historyRound.title }}<span v-if="voteLabel(historyRound)" class="badge badge-info">{{ voteLabel(historyRound) }}</span></h3><p class="status-line">{{ categoryText(historyRound) }} · {{ es.moderator.ballotStatus(roundStatusLabels[historyRound.status] || historyRound.status) }}<template v-if="historyRound.results?.length"> · {{ es.common.votersTotal(historyRound.participationCount ?? 0, eligibleOf(historyRound)) }} {{ es.common.votedLabel }} · {{ notVotedText(historyRound.participationCount ?? 0, eligibleOf(historyRound)) }}</template><template v-if="historyRound.regionalSecretaryVotes"> · {{ es.results.regionalSecretaryNote }}</template><template v-if="historyRound.outcome && !isDecision(historyRound)"> · {{ es.moderator.majorityThreshold(historyRound.outcome.threshold) }}</template></p></div></div>
       <p v-if="historyRound.status === 'annulled'" class="status-line">{{ historyRound.annulReason ? es.moderator.annulledWithReason(historyRound.annulReason) : es.moderator.annulled }}</p>

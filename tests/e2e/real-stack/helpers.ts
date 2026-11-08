@@ -207,6 +207,12 @@ export async function addToOfficials(mesa: Page) {
   await expect(mesa.locator('.ballot-card')).toContainText('Registrado como oficial')
 }
 
+/** The acta de resultados stays hidden in the mesa panel until «Acta» in the mesa menu opens it. */
+export async function openActa(mesa: Page) {
+  await mesa.getByRole('link', { name: 'Acta', exact: true }).click()
+  await expect(mesa.locator('#acta-de-resultados')).toBeVisible()
+}
+
 /** A result row of the vote the mesa is looking at (not the acta below it). */
 export function mesaRow(mesa: Page, label: string): Locator {
   return mesa.locator('.ballot-card .ranked-rows li').filter({ hasText: label })

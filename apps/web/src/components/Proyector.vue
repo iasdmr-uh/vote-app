@@ -22,8 +22,9 @@ const presentationSlide = computed(() => state.value?.presentation?.active ? sta
 // A settled published result is shown as its slide (P2, P3, P6); the detailed count stays one click away.
 const publishedSlide = computed(() => resultSlide(state.value))
 const soFar = computed(() => electedSoFar(round.value, state.value?.officialResult?.elected, state.value?.final))
-const showCount = ref(false)
-watch(() => round.value?.id, () => { showCount.value = false })
+// Each result opens on its count and the math; «Ver resultado» switches to the winner slide.
+const showCount = ref(true)
+watch(() => round.value?.id, () => { showCount.value = true })
 
 const view = computed(() => {
   if (presentationSlide.value !== null) return 'presentation'
@@ -87,8 +88,8 @@ async function toggleProjectorFullscreen() {
     </template>
 
     <template v-else-if="view === 'results'">
-      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
       <ProjectorResults :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
+      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" show-option />
     </template>
 
     <template v-else-if="view === 'annulled'">

@@ -55,9 +55,9 @@ test('el proyector nombra 2/3 y los votos necesarios', async ({ page }) => {
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
-  await expect(page.locator('.decision-pill')).toHaveText('No aprobada')
-  await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con 2/3 · 19 votos')
+  await page.getByRole('button', { name: 'Ver resultado' }).click()
+  await expect(page.locator('.decision-pill')).toHaveText('No aprobada')
 })
 
 test('el acta nombra 2/3 y los votos necesarios', async ({ page }) => {
