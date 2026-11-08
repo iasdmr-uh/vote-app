@@ -107,7 +107,7 @@ Each screen SHALL turn the reported result into one short paragraph in plain Spa
    - elected in an election: «Electo/a: …»
    - elected in an Opciones decision: «Aprobada: …»
    - no majority: «Sin mayoría: …»
-   - tied at the cut: «Empate en el último puesto: …»
+   - tied at the cut: «Desempate en el último puesto: …»
    - added for choice: «Se agrega para que haya opción: …»
 4. When options continue: «Pasan a la siguiente votación.»
 
@@ -130,7 +130,7 @@ Source: #58, maintainer decision of 8 Nov 2026, and its example «3/4 de 38 eleg
 #### Scenario: Committee with every reason
 
 - **WHEN** a 3-seat committee vote has a base of 38 and Isaías gets 22, Jeremías 12, Ezequiel 8, Daniel 8 and Oseas 0
-- **THEN** the paragraph reads «Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22). Sin mayoría: Jeremías (12). Empate en el último puesto: Ezequiel (8) y Daniel (8). Pasan a la siguiente votación.»
+- **THEN** the paragraph reads «Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22). Sin mayoría: Jeremías (12). Desempate en el último puesto: Ezequiel (8) y Daniel (8). Pasan a la siguiente votación.»
 
 #### Scenario: Secretary in the base
 
