@@ -1,12 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { MODERATOR_ACTOR } from '../auth/auth.service.js'
+import { MODERATOR_ACTOR } from '../auth/actors.js'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
+import { ORGANIZATION_ID } from './constants.js'
 
 export type PresentationSlide = 0 | 1 | 2
 export type PresentationState = { active: boolean; slide: PresentationSlide }
-
-const ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001'
 
 /** The presentation as the projector and the mesa read it. */
 export function presentationOf(assembly: { presentationActive: boolean; presentationSlide: number }): PresentationState {
