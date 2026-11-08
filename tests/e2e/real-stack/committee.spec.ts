@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  castVoteByApi, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, participantState, phoneRow, prepareBallot, projectorRow, voteAll,
+  castVoteByApi, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, voteAll,
 } from './helpers'
 
 /**
@@ -74,10 +74,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(projectorRow(projector, name), 'Desempate')
   await expect(projector.locator('.pj-subtitle')).toHaveText('3 integrantes · Mayoría: 4')
   await expect(projector.locator('.pj-turnout')).toContainText('votaron · 2 no votaron')
-  await expect(phones[0].page.locator('.result-so-far strong')).toHaveText('Ana Ruiz')
-  await expect(phones[0].page.locator('.official-card')).toHaveCount(0)
-  await expectBadge(phoneRow(phones[0], 'Ana Ruiz'), 'Electo/a')
-  for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(phoneRow(phones[0], name), 'Desempate')
+  await expectPhoneShowsNoResult(phones[0])
 
   // 2nd vote: the runoff for 2 seats among Bruno, Carla and Diego (T02).
   await confirm(mesa, 'Abrir desempate · 2 puestos', 'Abrir votación')
@@ -113,9 +110,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await expectBadge(mesaRow(mesa, 'Diego Paz'), 'Desempate')
   await expect(projector.locator('.result-so-far')).toContainText('Electos hasta ahora · 2 de 3')
   await expect(projector.locator('.pj-elected')).toHaveCount(0)
-  await expect(phones[3].page.locator('.result-so-far strong')).toHaveText('Ana Ruiz · Bruno Díaz')
-  await expect(phones[3].page.locator('.official-card')).toHaveCount(0)
-  await expectBadge(phoneRow(phones[3], 'Bruno Díaz'), 'Electo/a')
+  await expectPhoneShowsNoResult(phones[3])
 
   // 3rd vote, 1 seat: it may take a new candidate (#40), but this one opens as it is.
   await mesa.getByRole('button', { name: 'Abrir desempate · 1 puesto', exact: true }).click()
@@ -135,7 +130,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
   await expectBadge(projectorRow(projector, 'Carla Mora'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz · Bruno Díaz · Carla Mora')
-  await expect(phones[5].page.locator('.official-card strong')).toHaveText('Ana Ruiz · Bruno Díaz · Carla Mora')
+  await expectPhoneShowsNoResult(phones[5])
 
   // Every seat is filled: no draft is left and the official result holds the three.
   const final = await moderatorState(request, assemblyId)

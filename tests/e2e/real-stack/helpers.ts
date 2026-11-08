@@ -206,8 +206,10 @@ export function mesaRow(mesa: Page, label: string): Locator {
   return mesa.locator('.ballot-card .ranked-rows li').filter({ hasText: label })
 }
 
-export function phoneRow(phone: Phone, label: string): Locator {
-  return phone.page.locator('.phone-results .ranked-rows li').filter({ hasText: label })
+export async function expectPhoneShowsNoResult(phone: Phone) {
+  await expect(phone.page.locator('.phone-screen')).toBeVisible()
+  await expect(phone.page.locator('.official-card, .result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
+  await expect(phone.page.locator('.phone-screen')).not.toContainText(/electo|desempate|aprobada|resultado|pasan a/i)
 }
 
 export function projectorRow(projector: Page, label: string): Locator {

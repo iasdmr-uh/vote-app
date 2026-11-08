@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, expectBadge, mesaRow, openRoom, phoneRow, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * A. An office without majority (#37, #38, #41). Five habilitados, so the majority is 3. Nobody reaches
@@ -31,9 +31,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
   await expectBadge(projectorRow(projector, 'Luis Pérez'), null)
   await expect(projector.locator('.pj-elected')).toHaveCount(0)
   // The phones mark the same runoff, not a bare "Empate" between the 2nd and the 3rd.
-  for (const name of ['Ana Ruiz', 'Carlos Gómez', 'Rosa Díaz']) await expectBadge(phoneRow(phones[4], name), 'Desempate')
-  await expectBadge(phoneRow(phones[4], 'Luis Pérez'), null)
-  await expect(phones[4].page.locator('.official-card')).toHaveCount(0)
+  await expectPhoneShowsNoResult(phones[4])
 
   // The mesa never picks: it opens the runoff the server prepared.
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
@@ -62,11 +60,5 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
   await expectBadge(projectorRow(projector, 'Ana Ruiz'), '✓ Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
 
-  // The phones show the official result of the election once it is published.
-  for (const phone of phones) {
-    await expect(phone.page.locator('.official-card')).toContainText('RESULTADO OFICIAL')
-    await expect(phone.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
-    await expectBadge(phoneRow(phone, 'Ana Ruiz'), 'Electo/a')
-    await expectBadge(phoneRow(phone, 'Carlos Gómez'), null)
-  }
+  for (const phone of phones) await expectPhoneShowsNoResult(phone)
 })

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
 
 /**
  * Simulates a whole Asamblea against the real API and PostgreSQL: nine delegate phones, the projector
@@ -59,7 +59,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await closeAndShow(room)
   await expectBadge(mesaRow(mesa, 'María López'), 'Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ María López')
-  await expect(phones[3].page.locator('.official-card strong')).toHaveText('María López')
+  await expectPhoneShowsNoResult(phones[3])
   await snap(projector, 'proyector-presidencia-electa')
   await snap(phones[3].page, 'telefono-presidencia-electa')
   note(`Presidente (1.ª votación + desempate): ${Math.round((Date.now() - started) / 1000)} s`)
