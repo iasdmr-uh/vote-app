@@ -166,3 +166,45 @@ test('la mesa no ve conteos antes que la sala y agrega el resultado final a ofic
   await expect(page.getByRole('button', { name: 'Agregar a oficiales' })).toHaveCount(0)
   expect(registerCalls).toBe(1)
 })
+
+const sede = { id: 'sede', title: 'Sede de la Asamblea 2027', category: 'decision', decisionFormat: 'options', approvalRule: 'simple', voteNumber: 2, runoff: true }
+const finals = [
+  {
+    kind: 'an office',
+    round: { id: 'p1', title: 'Presidente', status: 'published', category: 'office', format: 'single_choice', options: [{ id: 'i', label: 'Isaías' }, { id: 'j', label: 'Jeremías' }] },
+    results: [{ optionId: 'i', label: 'Isaías', count: 3 }, { optionId: 'j', label: 'Jeremías', count: 1 }],
+    outcome: { seats: 1, base: 4, threshold: 3, elected: ['i'], runoff: [], openSeats: 0 },
+    final: { elected: [{ optionId: 'i', label: 'Isaías' }], approved: null },
+    shown: 'Isaías',
+  },
+  {
+    kind: 'a decision with options',
+    round: { ...sede, status: 'published', format: 'single_choice', options: [{ id: 's', label: 'San Pedro Sula' }, { id: 't', label: 'Tegucigalpa' }] },
+    results: [{ optionId: 's', label: 'San Pedro Sula', count: 3 }, { optionId: 't', label: 'Tegucigalpa', count: 1 }],
+    outcome: { seats: 1, base: 4, threshold: 3, elected: ['s'], runoff: [], openSeats: 0, rule: 'simple', approved: true },
+    final: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], approved: true },
+    shown: 'San Pedro Sula',
+  },
+  {
+    kind: 'a yes or no decision',
+    round: { ...decision, status: 'published', format: 'single_choice', options: [{ id: 'f', label: 'A favor' }, { id: 'c', label: 'En contra' }] },
+    results: [{ optionId: 'f', label: 'A favor', count: 3 }, { optionId: 'c', label: 'En contra', count: 1 }],
+    outcome: { seats: 1, base: 4, threshold: 3, elected: [], runoff: [], openSeats: 0, rule: 'simple', approved: true },
+    final: { elected: [], approved: true },
+    shown: 'Aprobada',
+  },
+]
+
+for (const item of finals) {
+  const officialResult = { elected: item.final.elected, note: null, declaredAt: '2026-11-08T10:00:00.000Z' }
+
+  test(`el proyector muestra una vez el resultado final de ${item.kind}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await projectorWith(page, () => ({ round: item.round, results: item.results, outcome: item.outcome, officialResult, final: item.final }))
+    await page.getByRole('button', { name: 'Ver conteo' }).click()
+    await expect(page.locator('.pj-results li')).toHaveCount(2)
+    await expect(page.locator('.result-summary')).toHaveCount(1)
+    await expect(page.locator('.result-summary')).toContainText(item.shown)
+    await expect(page.locator('.pj-elected')).toHaveCount(0)
+  })
+}
