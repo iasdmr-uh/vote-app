@@ -31,13 +31,13 @@ function closePersonMenu(event: Event) {
               <button type="button" @click="closePersonMenu($event); editParticipant(person)">Corregir</button>
               <button type="button" class="remove-link" @click="closePersonMenu($event); moderatorAction(`/moderator/participants/${encodeURIComponent(person.id)}`, 'PATCH', { status: 'removed' })">Retirar</button>
             </template>
-            <button type="button" @click="closePersonMenu($event); issueResumeCode(person)">Reconectar dispositivo</button>
+            <button v-if="!voteOpen" type="button" @click="closePersonMenu($event); issueResumeCode(person)">Reconectar dispositivo</button>
             <button v-if="!person.votingDisabled && !voteOpen" type="button" class="remove-link" :disabled="loading" @click="closePersonMenu($event); setVotingDisabled(person.id, true)">Inhabilitar</button>
             <button v-if="!voteOpen && (assemblyStatus === 'in_progress' || assemblyStatus === 'lobby_closed')" type="button" class="remove-link" :disabled="loading" @click="closePersonMenu($event); removeFromRoom(person)">Retirar de la sala</button>
           </div>
         </details>
       </li>
-      <li v-if="state?.regionalSecretary && !secretaryOut" class="regional-secretary-row"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretario regional</span></span><button type="button" class="link-button" :disabled="loading" @click="issueResumeCode(state!.regionalSecretary!)">Reconectar dispositivo</button><button v-if="!voteOpen && (assemblyStatus === 'in_progress' || assemblyStatus === 'lobby_closed')" type="button" class="link-button remove-link" :disabled="loading" @click="removeFromRoom(state!.regionalSecretary!)">Retirar de la sala</button></li>
+      <li v-if="state?.regionalSecretary && !secretaryOut" class="regional-secretary-row"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretario regional</span></span><button v-if="!voteOpen && (assemblyStatus === 'in_progress' || assemblyStatus === 'lobby_closed')" type="button" class="link-button remove-link" :disabled="loading" @click="removeFromRoom(state!.regionalSecretary!)">Retirar de la sala</button></li>
       <li v-if="!state?.participants?.length && !state?.regionalSecretary" class="empty">Sin participantes</li>
     </ul>
     <div v-if="state?.leftParticipants?.length || secretaryOut" class="out-of-room">
