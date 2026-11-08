@@ -83,8 +83,8 @@ export class RoomService {
       const from = target === 'left' ? 'active' : 'left'
       if (!current || (current.status !== from && !(target === 'left' && current.status === 'left'))) throw new NotFoundException('Participante no encontrado')
       if (current.status === target) return { ...current, changed: false }
-      if (target === 'active' && await tx.round.count({ where: { assemblyId: current.assemblyId, status: 'open' } }) > 0) {
-        throw new ConflictException('Regresa a la sala cuando cierre la votación abierta')
+      if (await tx.round.count({ where: { assemblyId: current.assemblyId, status: 'open' } }) > 0) {
+        throw new ConflictException(target === 'active' ? 'Regresa a la sala cuando cierre la votación abierta' : 'Retira de la sala cuando cierre la votación abierta')
       }
       await tx.participantSession.update({
         where: { id: participantId },
@@ -207,6 +207,9 @@ export class RoomService {
       })
       if (current.status !== 'active') throw new NotFoundException('Participante no encontrado')
       if (current.votingDisabled === disabled) return { ...current, changed: false }
+      if (await tx.round.count({ where: { assemblyId: current.assemblyId, status: 'open' } }) > 0) {
+        throw new ConflictException(disabled ? 'Inhabilita cuando cierre la votación abierta' : 'Habilita cuando cierre la votación abierta')
+      }
       await tx.participantSession.update({ where: { id: participantId }, data: { votingDisabled: disabled } })
       await recordAudit(tx, {
         assemblyId: current.assemblyId,

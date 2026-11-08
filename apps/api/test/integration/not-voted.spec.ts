@@ -17,14 +17,11 @@ test('the published count gives "no votaron" as the majority base minus votes ca
       title: 'Presidencia', format: 'single_choice', countingRule: { kind: 'count_only' },
       options: [{ label: 'Opción A' }, { label: 'Opción B' }],
     })
+    await room.setVotingDisabled(people.Luis!, true)
     await service.openRound(round.id)
     await service.castVote(people.Ana!, round.id, round.options[0]!.id)
     await service.castVote(people.Marta!, round.id, round.options[0]!.id)
-    // Luis is inhabilitado without voting and Pedro just does not vote: both count as "no votaron".
-    await room.setVotingDisabled(people.Luis!, true)
-    // Rosa votes and is inhabilitada afterwards: her vote is kept, so she is not among them.
     await service.castVote(people.Rosa!, round.id, round.options[1]!.id)
-    await room.setVotingDisabled(people.Rosa!, true)
     await service.closeRound(round.id)
     await service.publishRound(round.id)
 

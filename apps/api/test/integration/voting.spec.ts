@@ -253,7 +253,7 @@ async function committeeElection(t: TestContext) {
 }
 
 const electedOn = async (service: VotingService, joinCode: string) => (await service.publicState(joinCode)).officialResult?.elected.map((person) => person.label)
-const dotsOn = async (service: VotingService, assemblyId: string) => (await service.moderatorAssembly(assemblyId)).participants.map((person) => person.voted)
+const markedOn = async (service: VotingService, assemblyId: string) => (await service.moderatorAssembly(assemblyId)).participants.map((person) => 'voted' in person)
 
 describe('a committee election for 3 seats with 6 enabled delegates', () => {
   test('createRound: typed candidates keep ballot order', async (t) => {
@@ -298,16 +298,18 @@ describe('a committee election for 3 seats with 6 enabled delegates', () => {
     assert.equal('participantSessionId' in ((await prisma.anonymousVote.findFirst({ where: { roundId: round.id } })) ?? {}), false)
   })
 
-  test('moderatorAssembly: while the ballot is open the mesa sees who voted, never for whom', async (t) => {
+  test('moderatorAssembly: while the ballot is open the mesa sees how many voted, never who or for whom', async (t) => {
     const { service, assemblyId, round, idOf, castAll } = await committeeElection(t)
     await service.openRound(round.id)
     await castAll(round, firstVote)
 
     const mesa = await service.moderatorAssembly(assemblyId)
 
-    assert.deepEqual(mesa.participants.map((person) => person.voted), [true, true, true, true, true, false])
+    assert.deepEqual(mesa.participants.map((person) => 'voted' in person), [false, false, false, false, false, false], 'the mesa never sees who voted (#55)')
     assert.deepEqual(mesa.attendanceRound, { roundId: round.id, status: 'open', votedCount: 5, eligibleCount: 6 })
     assert.equal(JSON.stringify(mesa.participants).includes(idOf(round, 'Elías')), false)
+    const open = mesa.rounds.find((item) => item.id === round.id)!
+    assert.deepEqual(['results', 'privateResults', 'outcome'].filter((key) => key in open), [], 'no counts per candidate while the vote is open (#55)')
   })
 
   test('closeRound: a majority of 4 elects Elías, and Eliseo, Isaías and Jeremías tied at the cut go to a runoff', async (t) => {
@@ -327,14 +329,14 @@ describe('a committee election for 3 seats with 6 enabled delegates', () => {
     assert.deepEqual(first.officialResult?.elected.map((person) => person.label), ['Elías'])
   })
 
-  test('closeRound: the mesa keeps the dots of who voted', async (t) => {
+  test('closeRound: the mesa still does not see who voted', async (t) => {
     const { service, assemblyId, round, castAll } = await committeeElection(t)
     await service.openRound(round.id)
     await castAll(round, firstVote)
 
     await service.closeRound(round.id)
 
-    assert.deepEqual(await dotsOn(service, assemblyId), [true, true, true, true, true, false])
+    assert.deepEqual(await markedOn(service, assemblyId), [false, false, false, false, false, false], 'nor after closing (#55)')
   })
 
   test('closeRound: the runoff is prepared as a draft for 2 seats with only the tied candidates', async (t) => {
@@ -390,15 +392,6 @@ describe('a committee election for 3 seats with 6 enabled delegates', () => {
     assert.deepEqual(projector.outcome?.elected, [idOf(round, 'Elías')])
     assert.deepEqual(projector.outcome?.runoff, ['Eliseo', 'Isaías', 'Jeremías'].map((label) => idOf(round, label)))
     assert.deepEqual(projector.officialResult?.elected.map((person) => person.label), ['Elías'])
-  })
-
-  test('openRound: opening the second vote resets the dots', async (t) => {
-    const { service, assemblyId, round, runBallot } = await committeeElection(t)
-    const second = await runBallot(round, firstVote)
-
-    await service.openRound(second.id)
-
-    assert.deepEqual(await dotsOn(service, assemblyId), [false, false, false, false, false, false])
   })
 
   test('participantState: the phone shows the second vote as a runoff for 2 seats', async (t) => {

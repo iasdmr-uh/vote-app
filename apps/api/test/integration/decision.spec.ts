@@ -36,6 +36,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.equal(budget.format, 'single_choice', 'a decision is single choice whatever the client sends')
     assert.equal(budget.approvalRule, 'three_quarters')
     assert.equal(budget.memberCount, null)
+    await room.setVotingDisabled(delegates[7]!.id, true)
     await service.openRound(budget.id)
     const phone = await service.participantState(delegates[0]!.id)
     assert.equal(phone.openRound?.category, 'decision')
@@ -43,7 +44,6 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.equal(phone.openRound?.electionSeats, null, 'no exact-N count on a decision ballot')
     const [favor, contra] = budget.options
     await assert.rejects(service.castVote(delegates[0]!.id, budget.id, [favor!.id, contra!.id]), unprocessable(/una sola opción/), 'no marking both')
-    await room.setVotingDisabled(delegates[7]!.id, true)
     await assert.rejects(vote(7, budget.id, favor), ForbiddenException)
     for (const index of [0, 1, 2, 3, 4, 5]) await vote(index, budget.id, favor)
     await vote(6, budget.id, contra)

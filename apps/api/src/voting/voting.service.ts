@@ -355,14 +355,10 @@ export class VotingService implements OnModuleInit {
       },
     })
     if (!assembly) throw new NotFoundException('Asamblea no encontrada')
-    // The mesa sees who already voted in the latest opened ballot, kept after closing until the next one
-    // opens. Only the receipt is read, never the choice: votes carry no participant reference.
     const attendanceRound = await this.prisma.round.findFirst({
       where: { assemblyId, openedAt: { not: null } }, orderBy: { openedAt: 'desc' }, select: { id: true, status: true },
     })
-    const voted = new Set(attendanceRound
-      ? (await this.prisma.participation.findMany({ where: { roundId: attendanceRound.id }, select: { participantSessionId: true } })).map((item) => item.participantSessionId)
-      : [])
+    const votedCount = attendanceRound ? await this.prisma.participation.count({ where: { roundId: attendanceRound.id } }) : 0
     const [eligibleCounts, leftParticipants, regionalSecretary, accredited] = await Promise.all([
       roundBases(this.prisma, assemblyId),
       this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left', isRegionalSecretary: false }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
@@ -419,13 +415,13 @@ export class VotingService implements OnModuleInit {
       positions: await this.positionsOf(assemblyId, ['closed', 'published']),
       status: assembly.status,
       completedAt: assembly.completedAt?.toISOString() ?? null,
-      participants: assembly.participants.map((person) => ({ ...person, ...(attendanceRound ? { voted: voted.has(person.id) } : {}) })),
+      participants: assembly.participants,
       participantCount: assembly.participants.length,
       room: roomNumbers(assembly.participants.length, accredited),
-      regionalSecretary: regionalSecretary ? { ...regionalSecretary, ...(attendanceRound ? { voted: voted.has(regionalSecretary.id) } : {}) } : null,
+      regionalSecretary,
       // Kept for the acta: they were registered, and those who voted still count in that ballot's base.
       leftParticipants,
-      attendanceRound: attendanceRound ? { roundId: attendanceRound.id, status: attendanceRound.status, votedCount: voted.size, eligibleCount: eligibleCounts.get(attendanceRound.id) ?? assembly.participants.length } : null,
+      attendanceRound: attendanceRound ? { roundId: attendanceRound.id, status: attendanceRound.status, votedCount, eligibleCount: eligibleCounts.get(attendanceRound.id) ?? assembly.participants.length } : null,
       // The join code is only stored hashed, so the panel builds the QR from this base and the code it kept.
       publicAppUrl: process.env.PUBLIC_APP_URL,
       rounds,
