@@ -42,3 +42,9 @@
 - [x] 6.3 Update `docs/foundation/state-transitions.md` and `docs/foundation/api-and-events.md` for the removed publish step and the roster
 - [x] 6.4 Run `db:generate`, `typecheck`, API tests on a disposable database, `test:e2e` and `test:e2e:integration`
 - [x] 6.5 Scan the branch diff for added code comments
+
+## 7. Preliminary results
+
+- [ ] 7.1 Failing web unit tests: an election is complete only when every seat is filled, and an incomplete one lists who is elected so far with the seat count
+- [ ] 7.2 Failing real-stack test: a committee of five shows no official or final wording at 3 of 5, and does at 5 of 5
+- [ ] 7.3 Show the elected so far on the phones, the public screen and the operator console, and show the official card and the ✓ banner only once the election is complete

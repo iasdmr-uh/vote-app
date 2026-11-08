@@ -105,6 +105,28 @@ Source: issue #76, cleared for build on 2026-11-08.
 - **WHEN** a vote for an office closes and one candidate is elected
 - **THEN** its result says final and lists that candidate
 
+### Requirement: A result is preliminary until its election is complete
+
+A result SHALL be official only when its election is complete, meaning every seat of the office or committee is filled. Until then no view SHALL call it official or final. While seats are still open, the operator console, the phones and the public screen SHALL list everyone elected so far, each marked «Electo/a», with how many seats are filled out of the total. Someone elected SHALL NOT appear on a later ballot of the same election.
+
+Source: decision of the user on 2026-11-08 for issue #76.
+
+#### Scenario: Committee of five with three elected
+
+- **WHEN** a committee of five elects three in its first vote and sends others to a runoff
+- **THEN** the phones, the public screen and the operator console list the three, each marked «Electo/a», with «Electos hasta ahora · 3 de 5»
+- **AND** no view says official or final
+
+#### Scenario: Committee of five complete
+
+- **WHEN** the runoff fills the last two seats of the committee of five
+- **THEN** the result says final and official and lists all five
+
+#### Scenario: The elected leave the next ballot
+
+- **WHEN** a committee's runoff opens
+- **THEN** its ballot holds no one elected earlier in the same election
+
 ### Requirement: A decision ends as approved or not approved
 
 When a vote settles a decision, its result SHALL say it is final and whether the decision was approved or not approved.
