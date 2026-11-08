@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { castVoteByApi, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, vote, voteAll } from './helpers'
+import { castVoteByApi, closeAndShow, confirm, expectBadge, expectClosedByItself, mesaRow, moderatorState, openRoom, participantState, prepareBallot, projectorRow, vote, voteAll } from './helpers'
 
 test.describe.configure({ timeout: 180_000 })
 
@@ -40,9 +40,11 @@ test('D · inhabilitar antes de una votación: el teléfono no recibe la papelet
   await expect(person(mesa, 'Juan Mora').getByLabel('Acciones para Juan Mora')).toHaveCount(0)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('6')
 
-  await voteAll([juan, elena, pedro], [['Ana Ruiz'], ['Ana Ruiz'], ['Juan Mora']])
-  await expect(summary.locator(':scope > span')).toHaveText(['4 votaron', '0 faltan', '2 inhabilitados'])
+  await voteAll([juan, elena], [['Ana Ruiz'], ['Ana Ruiz']])
+  await expect(summary.locator(':scope > span')).toHaveText(['3 votaron', '1 falta', '2 inhabilitados'])
   await expect(projector.locator('.pj-progress')).toContainText('de 6 ya votaron')
+  await vote(pedro, ['Juan Mora'])
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 4')

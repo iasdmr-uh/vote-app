@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext, type Browser, type Page } from '@
 import { writeChain, type ChainVote } from '../../../apps/api/test/scenarios/chain-diagram.js'
 import { candidatesOf, expandBallots, seatsOf, seededShuffle, sorted } from '../../../apps/api/test/scenarios/session-tools.js'
 import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/scenarios/tie-sessions.js'
-import { api, castVoteByApi, closeAndShow, confirm, expectBadge, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
+import { api, castVoteByApi, closeAndShow, confirm, expectBadge, expectClosedByItself, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
 
 const slowMo = Number(process.env.E2E_SLOWMO ?? 0)
 const seed = Number(process.env.SCENARIOS_SEED ?? 29)
@@ -97,7 +97,8 @@ async function playVote(args: { browser: Browser; request: APIRequestContext; me
     expect(response.ok(), await response.text()).toBeTruthy()
     cast += 1
   }
-  await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
+  if (cast === open.eligibleCount) await expectClosedByItself(mesa)
+  else await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
   return { secretaryToken, roundId: open.id }
 }
 

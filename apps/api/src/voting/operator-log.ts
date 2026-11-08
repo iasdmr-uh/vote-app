@@ -46,6 +46,7 @@ const CATALOGUE: Record<string, { kind: LogKind; describe: Describe }> = {
   'round.prepared': { kind: 'Votación', describe: (_meta, round) => titled('Votación preparada', round) },
   'round.opened': { kind: 'Votación', describe: (_meta, round) => titled('Votación abierta', round) },
   'round.closed': { kind: 'Votación', describe: (_meta, round) => titled('Votación cerrada', round) },
+  'round.closed_automatically': { kind: 'Votación', describe: (_meta, round) => `${titled('Votación cerrada por el sistema', round)}. Motivo: todos votaron` },
   'round.repeated': { kind: 'Votación', describe: (_meta, round) => titled('Votación repetida', round) },
   'round.runoff_discarded': { kind: 'Votación', describe: (_meta, round) => titled('Desempate descartado', round) },
   'round.annulled': { kind: 'Votación', describe: (meta, round) => `${titled('Votación anulada', round)}. Motivo: ${text(meta.reason)}` },

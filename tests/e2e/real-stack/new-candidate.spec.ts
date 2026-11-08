@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { api, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * C. A new candidate (#40). The mesa may add one from the 3rd vote on, never in the first runoff. Five
@@ -67,7 +67,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
     await expect(phone.page.getByLabel('Elena Castro', { exact: true })).toBeVisible()
   }
   await voteAll(phones, [['Elena Castro'], ['Elena Castro'], ['Elena Castro'], ['Ana Ruiz'], ['Carlos Gómez']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
 
   await expectBadge(mesaRow(mesa, 'Elena Castro'), 'Electo/a')

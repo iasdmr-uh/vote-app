@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, voteAll } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, voteAll } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -21,7 +21,7 @@ test('comisión de 5: a 3 de 5 el resultado es preliminar y a 5 de 5 es oficial'
     [...firstThree, 'Joel', 'Amós'],
     [...firstThree, 'Joel', 'Amós'],
   ])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('6')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
 
   const soFar = 'Electos hasta ahora · 3 de 5'
@@ -38,7 +38,7 @@ test('comisión de 5: a 3 de 5 el resultado es preliminar y a 5 de 5 es oficial'
   await confirm(mesa, 'Abrir desempate · 2 puestos', 'Abrir votación')
   for (const name of firstThree) await expect(phones[0].page.getByLabel(name, { exact: true })).toHaveCount(0)
   await voteAll(phones, [['Daniel', 'Oseas'], ['Daniel', 'Oseas'], ['Daniel', 'Oseas'], ['Daniel', 'Oseas'], ['Joel', 'Amós'], ['Joel', 'Amós']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('6')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
 
   const everyone = 'Isaías · Jeremías · Ezequiel · Daniel · Oseas'

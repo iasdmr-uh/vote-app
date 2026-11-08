@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * A. An office without majority (#37, #38, #41). Five habilitados, so the majority is 3. Nobody reaches
@@ -46,7 +46,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
 
   // Everyone votes in the runoff: Ana 3 reaches the majority of 5.
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Rosa Díaz']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
 
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('Mayoría: 3')
