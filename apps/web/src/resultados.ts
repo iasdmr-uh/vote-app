@@ -129,6 +129,16 @@ export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {
   return target.outcome?.elected.includes(members.at(-1)!.optionId) ? members.map((person) => person.label) : []
 }
 
+type ChainVote = { id: string; committeeRootRoundId?: string | null; voteNumber?: number }
+
+export function chainVoteNumber(target: ChainVote, rounds: Array<ChainVote & { status: string }>) {
+  if (target.voteNumber) return target.voteNumber
+  const rootId = target.committeeRootRoundId || target.id
+  const chain = rounds.filter((item) => (item.committeeRootRoundId || item.id) === rootId)
+  const before = chain.slice(0, Math.max(0, chain.findIndex((item) => item.id === target.id)))
+  return before.filter((item) => item.status !== 'annulled').length + 1
+}
+
 /** "DESEMPATE · 2.ª VOTACIÓN" for a runoff, nothing for the first vote. Annulled votes are not counted in the number. */
 export function voteLabel(target?: { voteNumber?: number; runoff?: boolean } | null) {
   const number = target?.voteNumber ?? 1

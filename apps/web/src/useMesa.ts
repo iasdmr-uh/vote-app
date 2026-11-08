@@ -3,7 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { showTransientNotice } from './transient-notice'
-import { actaSheetRows, decisionTie } from './resultados'
+import { actaSheetRows, chainVoteNumber, decisionTie } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -130,12 +130,7 @@ function annulRound(target: { id: string; title: string }) {
 }
 
 function voteNumber(target: { id: string; committeeRootRoundId?: string | null; voteNumber?: number }) {
-  if (target.voteNumber) return target.voteNumber
-  const rootId = target.committeeRootRoundId || target.id
-  const chain = (state.value?.rounds || []).filter((item) => item.id === rootId || item.committeeRootRoundId === rootId)
-  // Annulled votes do not count: the vote that repeats one keeps its number.
-  const before = chain.slice(0, Math.max(0, chain.findIndex((item) => item.id === target.id)))
-  return before.filter((item) => item.status !== 'annulled').length + 1
+  return chainVoteNumber(target, state.value?.rounds || [])
 }
 function rootRoundOf(target: { id: string; committeeRootRoundId?: string | null }) {
   return state.value?.rounds?.find((item) => item.id === (target.committeeRootRoundId || target.id))
