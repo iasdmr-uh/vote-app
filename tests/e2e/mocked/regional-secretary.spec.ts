@@ -176,7 +176,7 @@ test('the record marks each vote with who that vote elected and lists the whole 
 
 test('the mesa sees the regional secretary in the list and takes them out without a way back', async ({ page }) => {
   const takeOuts: string[] = []
-  let secretary: Record<string, unknown> = { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active', voted: false }
+  let secretary: Record<string, unknown> = { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' }
   await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path) => {
     if (method !== 'POST' || !path.endsWith('/moderator/participants/rs/take-out')) return null
     takeOuts.push(path)
