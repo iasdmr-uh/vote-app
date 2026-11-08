@@ -352,6 +352,8 @@ export const es = {
   },
   acta: {
     sheetName: 'Acta',
+    title: 'ACTA DE VOTACIONES',
+    countNotPublished: 'Conteo no publicado',
     sheetHeader: ['Papeleta', 'Estado', 'Participación', 'Lugar', 'Opción', 'Votos', '%', 'Empate', 'Resultado'],
     yes: 'sí',
     completeCommitteeRow: (members: string) => `Comisión completa: ${members}`,

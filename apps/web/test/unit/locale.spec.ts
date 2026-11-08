@@ -21,6 +21,15 @@ function keyPaths(node: unknown, prefix: string[] = []): string[] {
   return Object.entries(node).flatMap(([key, value]) => keyPaths(value, [...prefix, key]))
 }
 
+function withoutComments(text: string) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .split('\n')
+    .map((line) => line.replace(/(^|\s)\/\/.*$/, '$1'))
+    .join('\n')
+}
+
 const files = sourceFiles(srcDir).map((path) => ({ path: relative(srcDir, path).split(sep).join('/'), text: readFileSync(path, 'utf8') }))
 const allText = files.map((file) => file.text).join('\n')
 
@@ -49,5 +58,16 @@ describe('es locale', () => {
     const unused = paths.filter((path) => !isReferenced(path))
 
     assert.deepEqual(unused, [])
+  })
+
+  test('web source: no Spanish accented text outside the locale', () => {
+    const accented = /[áéíóúñÁÉÍÓÚÑ¿¡«»]/
+
+    const offenders = files.flatMap((file) => withoutComments(file.text).split('\n')
+      .map((line, index) => ({ line, number: index + 1 }))
+      .filter(({ line }) => accented.test(line))
+      .map(({ line, number }) => `${file.path}:${number}: ${line.trim().slice(0, 100)}`))
+
+    assert.deepEqual(offenders, [])
   })
 })
