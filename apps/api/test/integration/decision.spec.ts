@@ -3,14 +3,13 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('decisions: A favor / En contra with 3/4 or mayoría simple, and options that repeat between the top 2 until one reaches the rule', async () => {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const organizationId = randomUUID()
   const joinCode = newOpaqueCredential()
 

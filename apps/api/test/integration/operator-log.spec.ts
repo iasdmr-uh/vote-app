@@ -3,10 +3,7 @@ import test from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import { PrismaService } from '../../src/prisma/prisma.service.js'
-import { VotingService } from '../../src/voting/voting.service.js'
-import { OperatorLogService } from '../../src/voting/operator-log.service.js'
-import { PresentationService } from '../../src/voting/presentation.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { buildProviders } from '../support/providers.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
@@ -16,10 +13,7 @@ async function setup() {
   process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const voting = new VotingService(prisma, realtime)
-  const log = new OperatorLogService(prisma)
-  const presentation = new PresentationService(prisma, realtime)
+  const { voting, operatorLog: log, presentation } = buildProviders(prisma)
   const organization = await prisma.organization.create({ data: { id: randomUUID(), name: `log-test-${randomUUID()}`, type: 'union' } })
   const joinCode = newOpaqueCredential()
   const assemblyId = (await prisma.assembly.create({

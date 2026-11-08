@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('the published count gives "no votaron" as the majority base minus votes cast, inhabilitados included', async () => {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const delegates = ['Ana', 'Luis', 'Marta', 'Pedro', 'Rosa']
   const seeded = await seedAssembly(prisma, service, { label: 'not-voted-test', delegates })
   const { assemblyId, joinCode } = seeded

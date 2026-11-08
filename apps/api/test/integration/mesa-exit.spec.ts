@@ -4,18 +4,18 @@ import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedE
 import { MODERATOR_ACTOR } from '../../src/auth/actors.js'
 import { AuthService } from '../../src/auth/auth.service.js'
 import { ParticipantLeaveController } from '../../src/voting/voting.controller.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { randomUUID } from 'node:crypto'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 async function setup(label: string, names: string[]) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service } = buildProviders(prisma, gateway)
   const seeded = await seedAssembly(prisma, service, { label, delegates: names })
   const cleanup = async () => {
     await seeded.cleanup()

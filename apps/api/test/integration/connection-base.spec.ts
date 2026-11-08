@@ -4,7 +4,7 @@ import test from 'node:test'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { buildProviders } from '../support/providers.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
@@ -16,8 +16,7 @@ async function withAssembly(name: string, count: number, body: (context: Context
   process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
+  const { voting: service } = buildProviders(prisma)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
   try {

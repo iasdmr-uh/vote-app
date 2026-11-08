@@ -3,15 +3,15 @@ import test from 'node:test'
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { AuthService } from '../../src/auth/auth.service.js'
 import { hashCredential } from '../../src/auth/credentials.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
+import { buildProviders } from '../support/providers.js'
 
 test('moderator and delegates can recover from lost devices without enabling a second vote', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
   const targetsOf = (name: string) => events.filter((event) => event.name === name).map((event) => String(event.target))
-  const service = new VotingService(prisma, gateway)
+  const { voting: service } = buildProviders(prisma, gateway)
   const auth = new AuthService(prisma)
   let assemblyId: string | undefined
 

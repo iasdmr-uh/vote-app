@@ -7,11 +7,12 @@ import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 async function openBallot(t: TestContext) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
   t.after(async () => {
     await removeOrganization(prisma, organizationId)
@@ -211,7 +212,7 @@ type Ballot = { id: string; options: Array<{ id: string; label: string }> }
 
 async function committeeElection(t: TestContext) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const organizationId = randomUUID()
   t.after(async () => {
     await removeOrganization(prisma, organizationId)

@@ -5,12 +5,12 @@ import { hashCredential } from '../../src/auth/credentials.js'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import { DEFAULT_BOARD_POSITIONS, DEFAULT_DEPARTMENT_POSITIONS, VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
+import { buildProviders } from '../support/providers.js'
 
 /** A real Asamblea created by the mesa (so its puestos are seeded), with `count` delegates. */
 async function withAssembly(count: number, body: (ctx: { service: VotingService; prisma: PrismaService; assemblyId: string; joinCode: string; people: string[] }) => Promise<void>) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   let assemblyId: string | undefined
   try {
     const created = await service.createAssembly('IV Asamblea Reorganizativa 2026', ' 2027–2029 ')

@@ -7,6 +7,7 @@ import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub, type GatewayEvent } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[]; auth: RealtimeAuthService; events: GatewayEvent[]; log: OperatorLogService }
 type Ballot = Array<{ id: string; label: string }>
@@ -17,12 +18,12 @@ const REGIONAL_SECRETARY = { firstName: 'Marta', lastName: 'Regional' }
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service, operatorLog } = buildProviders(prisma, gateway)
   const auth = new RealtimeAuthService(prisma)
   const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
   const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
   try {
-    await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id), auth, events, log: new OperatorLogService(prisma) })
+    await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id), auth, events, log: operatorLog })
   } finally {
     await cleanup()
     await prisma.$disconnect()

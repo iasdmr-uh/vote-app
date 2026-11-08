@@ -2,15 +2,15 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('inhabilitar during an open vote rejects the vote, keeps the base and a vote already cast, and habilitar restores it', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service } = buildProviders(prisma, gateway)
   const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'disable-test', delegates: ['Ana', 'Luis', 'Marta', 'Pedro'] })
 
   try {

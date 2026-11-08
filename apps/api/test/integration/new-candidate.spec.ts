@@ -2,14 +2,13 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('the mesa cannot add a candidate to the first runoff, can add and remove one from the 3rd vote on, and the new candidate can be elected', async () => {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const delegates = ['Ana', 'Luis', 'Marta', 'Pedro', 'Sofía']
   const seeded = await seedAssembly(prisma, service, { label: 'new-candidate-test', delegates })
   const { assemblyId } = seeded
@@ -101,7 +100,7 @@ test('the mesa cannot add a candidate to the first runoff, can add and remove on
 
 test('in a committee runoff from the 3rd vote on, a new candidate can fill one of the open seats', async () => {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const delegates = ['Ana', 'Luis', 'Marta']
   const seeded = await seedAssembly(prisma, service, { label: 'new-candidate-committee', delegates })
   const { assemblyId } = seeded
@@ -148,7 +147,7 @@ test('in a committee runoff from the 3rd vote on, a new candidate can fill one o
 
 test('an annulled vote does not count: the repeated first runoff is still the 2nd vote and takes no new candidate; a decision never takes one', async () => {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const delegates = ['Ana', 'Luis', 'Marta', 'Pedro', 'Sofía']
   const seeded = await seedAssembly(prisma, service, { label: 'new-candidate-annulled', delegates })
   const { assemblyId } = seeded
