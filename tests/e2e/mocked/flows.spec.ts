@@ -1345,14 +1345,19 @@ test('durante una votación abierta la mesa no ofrece preparar la siguiente vota
   })
 
   await page.goto('/moderator')
-  await expect(page.locator('.ballot-card').getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
-  // Preparing covers a new ballot, its candidates and departments, repeating an annulled vote and the regional secretary.
-  await expect(page.getByRole('button', { name: 'Preparar otra papeleta' })).toHaveCount(0)
+  const ballot = page.locator('.ballot-card')
+  await expect(ballot.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
+  await expect(ballot.getByRole('button', { name: 'Cerrar votación', exact: true })).toBeVisible()
+  await expect(ballot.getByRole('button', { name: 'Anular votación', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Preparar otra papeleta', exact: true })).toHaveCount(0)
   await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Repetir con las mismas opciones' })).toHaveCount(0)
-  await expect(page.getByLabel('Nombre del departamento')).toHaveCount(0)
-  await expect(page.getByLabel(/Agregar (candidato|opción)|Nombre del candidato/)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /secretaría regional|Agregar a Secretaría/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Repetir con las mismas opciones', exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del departamento', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Agregar candidato', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Agregar opción', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre del candidato', { exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Nombre de la secretaría regional', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Agregar a Secretaría Regional', exact: true })).toHaveCount(0)
 })
 
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
