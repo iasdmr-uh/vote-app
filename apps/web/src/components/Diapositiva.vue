@@ -56,9 +56,9 @@ const u = (value: number) => `calc(var(--u) * ${value})`
   <div class="slide" :class="`slide-${kind}`" :data-slide="kind">
     <template v-if="kind === 'cover'">
       <img class="slide-map" src="/brand/mapa-blanco.png" alt="" />
-      <img class="slide-uh" src="/brand/uh-blanco.png" alt="Unión Hondureña" />
-      <img class="cover-logo" src="/brand/conpoder-blanco.png" alt="Con poder y gloria" />
-      <h1 class="cover-title">OFICIALES DE UNIÓN HONDUREÑA</h1>
+      <img class="slide-uh" src="/brand/uh-blanco.png" :alt="es.common.unionName" />
+      <img class="cover-logo" src="/brand/conpoder-blanco.png" :alt="es.projector.slogan" />
+      <h1 class="cover-title">{{ es.projector.coverTitle }}</h1>
       <p v-if="period" class="cover-period">{{ period }}</p>
       <span class="cover-rule" aria-hidden="true"></span>
       <p v-if="assemblyName" class="cover-assembly">{{ assemblyName }}</p>
@@ -66,8 +66,8 @@ const u = (value: number) => `calc(var(--u) * ${value})`
 
     <template v-else>
       <img class="slide-map" src="/brand/mapa.png" alt="" />
-      <img class="slide-logo" src="/brand/conpoder.png" alt="Con poder y gloria" />
-      <img class="slide-uh" src="/brand/uh-gris.png" alt="Unión Hondureña" />
+      <img class="slide-logo" src="/brand/conpoder.png" :alt="es.projector.slogan" />
+      <img class="slide-uh" src="/brand/uh-gris.png" :alt="es.common.unionName" />
 
       <section v-if="result?.kind === 'office'" class="slide-center">
         <h1 class="slide-kicker">{{ result.title }}</h1>
@@ -78,7 +78,7 @@ const u = (value: number) => `calc(var(--u) * ${value})`
       </section>
 
       <section v-else-if="result?.kind === 'decision'" class="slide-center">
-        <p class="slide-kicker decision-kicker">DECISIÓN</p>
+        <p class="slide-kicker decision-kicker">{{ es.projector.decisionKicker }}</p>
         <h1 class="decision-title">{{ result.title }}</h1>
         <p class="decision-pill" :class="result.approved ? 'decision-approved' : 'decision-rejected'"><span v-if="result.approved" aria-hidden="true">✓ </span>{{ result.verdict }}</p>
         <p class="decision-details">{{ result.details }}</p>
@@ -94,9 +94,9 @@ const u = (value: number) => `calc(var(--u) * ${value})`
       </section>
 
       <template v-else-if="kind === 'board'">
-        <h1 class="chart-title">JUNTA DIRECTIVA</h1>
+        <h1 class="chart-title">{{ es.common.boardTitle }}</h1>
         <span class="chart-rule" aria-hidden="true"></span>
-        <div class="chart" aria-label="Junta directiva">
+        <div class="chart" :aria-label="es.projector.boardLabel">
           <template v-if="board.top.length === 2">
             <span class="line" :style="{ left: u(555), top: u(526), width: u(3), height: u(64) }"></span>
             <span class="line" :style="{ left: u(1365), top: u(526), width: u(3), height: u(64) }"></span>
@@ -117,9 +117,9 @@ const u = (value: number) => `calc(var(--u) * ${value})`
       </template>
 
       <template v-else-if="kind === 'departments'">
-        <h1 class="chart-title">DEPARTAMENTOS</h1>
+        <h1 class="chart-title">{{ es.common.departmentsTitle }}</h1>
         <span class="chart-rule" aria-hidden="true"></span>
-        <div class="chart" aria-label="Departamentos" :style="{ '--k': departments.k }">
+        <div class="chart" :aria-label="es.projector.departmentsLabel" :style="{ '--k': departments.k }">
           <span v-if="departments.items.length > 1" class="line" :style="{ left: u(959), top: u(departments.spine.top), width: u(3), height: u(departments.spine.bottom - departments.spine.top) }"></span>
           <template v-for="item in departments.items" :key="item.position.id">
             <span class="line" :style="{ left: u(item.left ? 855 : 960), top: u(item.y + departments.height * 0.55), width: u(105), height: u(3) }"></span>

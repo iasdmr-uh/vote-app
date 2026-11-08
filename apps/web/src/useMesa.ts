@@ -24,8 +24,8 @@ const positionMenuOpen = ref(false)
 const newDepartment = ref('')
 const positions = computed<Position[]>(() => state.value?.positions || [])
 const positionGroups = computed(() => [
-  { group: 'board' as const, label: es.moderator.boardGroup, items: positions.value.filter((item) => item.group === 'board') },
-  { group: 'department' as const, label: es.moderator.departmentGroup, items: positions.value.filter((item) => item.group === 'department') },
+  { group: 'board' as const, label: es.common.boardTitle, items: positions.value.filter((item) => item.group === 'board') },
+  { group: 'department' as const, label: es.common.departmentsTitle, items: positions.value.filter((item) => item.group === 'department') },
 ])
 const selectedPosition = computed(() => positions.value.find((item) => item.id === roundPositionId.value))
 const roundTitle = ref('')

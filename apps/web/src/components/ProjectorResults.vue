@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { es } from '../locale/es'
 import { decisionVerdict, displayOrder, explanationText, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, winnerText } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
@@ -55,18 +56,18 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
       <p class="pj-status">{{ statusLabel }}</p>
       <h1 class="pj-title">{{ round?.title }}</h1>
       <p v-if="majority" class="pj-subtitle">{{ majority }}</p>
-      <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
+      <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">{{ es.projector.seatsToElect((round?.electionSeats ?? round?.memberCount)!) }}</p>
       <p v-if="explanation" class="pj-explanation">{{ explanation }}</p>
     </div>
-    <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
+    <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>{{ es.projector.outOf(eligible) }}</span><small>{{ es.common.votedLabel }}<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
   </header>
-  <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
+  <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === es.results.notApproved }"><h2><span v-if="verdict === es.results.approved" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
   <ol ref="resultsList" class="pj-results" :class="{ 'pj-unranked': booleanDecision }" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
     <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
       <span v-if="!booleanDecision" class="pj-rank">{{ index + 1 }}</span>
-      <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, result.label) : '' }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">Empate</em></span>
-      <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
-      <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
+      <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, result.label) : '' }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">{{ es.results.runoffTag }}</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">{{ es.results.tiedTag }}</em></span>
+      <strong class="pj-votes">{{ es.common.votes(result.count) }}</strong>
+      <span class="pj-percent">{{ es.common.percent(percentOf(result.count, eligible)) }}</span>
       <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
     </li>
   </ol>
