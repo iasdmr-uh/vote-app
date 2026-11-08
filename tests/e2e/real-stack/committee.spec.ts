@@ -80,7 +80,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await confirm(mesa, 'Abrir desempate · 2 puestos', 'Abrir votación')
   await expect(mesa.locator('.ballot-card .eyebrow-row .badge-info')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
   const second = phones[0].page
-  await expect(second.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(second.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await expect(second.locator('.options input')).toHaveCount(3)
   await expect(second.getByLabel('Ana Ruiz', { exact: true })).toHaveCount(0)
   await expect(second.locator('.phone-ballot-heading .count-pill')).toHaveText('0 de 2')
@@ -117,7 +117,7 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await expect(mesa.locator('.ballot-card .eyebrow')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
   await confirm(mesa, 'Abrir votación')
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.phone-ballot-heading .count-pill')).toHaveText('0 de 1')
   }
   await voteAll(phones, [['Carla Mora'], ['Carla Mora'], ['Carla Mora'], ['Carla Mora'], ['Diego Paz'], ['Diego Paz']])

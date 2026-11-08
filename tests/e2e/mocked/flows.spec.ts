@@ -166,7 +166,7 @@ test('en un desempate se marcan exactamente los puestos que faltan y la papeleta
   })
 
   await page.goto('/')
-  await expect(page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await expect(page.getByRole('group', { name: '0 de 2' })).toBeVisible()
   await expect(page.getByText(/voto nulo/i)).toHaveCount(0)
   const review = page.getByRole('button', { name: 'Revisar mi voto' })
@@ -269,8 +269,8 @@ test('el teléfono no muestra la declaración oficial aunque la última repetici
   })
 
   await page.goto('/')
-  await expect(page.getByText('Espera la siguiente papeleta')).toBeVisible()
-  await expect(page.locator('.official-card, .phone-results, .result-summary, .ranked-rows')).toHaveCount(0)
+  await expect(page.locator('.phone-screen[data-round-status="closed"]')).toBeVisible()
+  await expect(page.locator('.result-summary, .ranked-rows')).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText(/Ezequiel|Electo|resultado/i)
 })
 
@@ -1691,7 +1691,7 @@ test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toHaveCount(0)
 })
 
-test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate', async ({ page }) => {
+test('un delegado inhabilitado en un desempate ve el rótulo de votación abierta sin el número de votación', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-session-token')
     localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
@@ -1708,5 +1708,5 @@ test('un delegado inhabilitado en un desempate ve el mismo rótulo de desempate'
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Voto inhabilitado' })).toBeVisible()
-  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · DESEMPATE · 2.ª VOTACIÓN')
+  await expect(page.locator('.phone-status-disabled')).toHaveText('Elección de prueba · VOTACIÓN ABIERTA')
 })

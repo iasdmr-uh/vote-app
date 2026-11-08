@@ -39,7 +39,7 @@ test('A · cargo sin mayoría: desempate automático entre los 2 primeros y empa
   await expect(mesa.locator('.ballot-card .eyebrow-row .badge-info')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
   await expect(projector.locator('.pj-status')).toHaveText(/Votación abierta · DESEMPATE · 2\.ª VOTACIÓN/)
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(3)
     await expect(phone.page.getByLabel('Luis Pérez', { exact: true })).toHaveCount(0)
   }

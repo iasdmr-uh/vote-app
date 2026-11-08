@@ -84,7 +84,7 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   // A decision never takes a new candidate, so the repeat opens at once.
   await expect(mesa.getByLabel('Nombre del candidato')).toHaveCount(0)
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options label')).toHaveText(['Tegucigalpa', 'San Pedro Sula'])
   }
   await voteAll(phones, [['Tegucigalpa'], ['Tegucigalpa'], ['Tegucigalpa'], ['Tegucigalpa'], ['San Pedro Sula'], ['San Pedro Sula']])

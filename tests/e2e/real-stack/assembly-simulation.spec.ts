@@ -52,7 +52,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await snap(mesa, 'mesa-presidencia-sin-mayoria-M20')
   await snap(projector, 'proyector-presidencia-sin-mayoria')
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
-  await expect(phones[0].page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(phones[0].page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await snap(phones[0].page, 'telefono-desempate-T02')
   await voteAll(phones, phones.map((_, index) => [index < 6 ? 'María López' : 'Carlos Gómez']))
   await expect(mesa.locator('.vote-progress strong')).toHaveText('9')

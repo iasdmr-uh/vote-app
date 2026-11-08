@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 import PhoneBallot from './PhoneBallot.vue'
 import PhoneJoinForm from './PhoneJoinForm.vue'
@@ -64,14 +63,14 @@ async function submitVote() {
 
 <template>
   <PhoneJoinForm v-if="!sessionToken" />
-  <section v-else class="card participant-card phone-screen">
+  <section v-else class="card participant-card phone-screen" :data-round-status="round?.status">
     <div v-if="pendingJoinCode" class="notice error" role="alert">
       Este QR corresponde a otra Asamblea.
       <button class="secondary" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
     </div>
     <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
-      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · VOTACIÓN ABIERTA</p>
       <h1>Voto inhabilitado</h1>
     </template>
     <PhoneBallot v-else-if="ballotShown && round" :round="round" :seats-to-fill="seatsToFill" :selection-complete="selectionComplete" @review="reviewVote" />

@@ -62,7 +62,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   await confirm(mesa, 'Abrir votación')
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   for (const phone of phones) {
-    await expect(phone.page.locator('.phone-status-open')).toHaveText('DESEMPATE · 3.ª VOTACIÓN')
+    await expect(phone.page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
     await expect(phone.page.locator('.options input')).toHaveCount(3)
     await expect(phone.page.getByLabel('Elena Castro', { exact: true })).toBeVisible()
   }
