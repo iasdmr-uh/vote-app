@@ -2,6 +2,8 @@ import type { Explanation, OptionReason, Outcome, Position, RoundRecord } from '
 import { es } from './locale/es'
 import type { Cell } from './xlsx'
 
+const IN_FAVOR_LABEL = 'A favor'
+
 type Counted = { count: number }
 type Turnout = { recordedCount?: number; participationCount?: number; eligibleCount?: number }
 
@@ -177,7 +179,7 @@ export function winnerText(target: DecisionTarget, label: string) {
 
 /** A boolean decision keeps its ballot order (A favor first); everything else ranks by votes. */
 export function displayOrder<T extends { label: string; count: number }>(target: DecisionTarget | null | undefined, results: T[]) {
-  if (target?.category === 'decision' && target.decisionFormat === 'boolean') return [...results].sort((a, b) => Number(b.label === es.results.inFavor) - Number(a.label === es.results.inFavor))
+  if (target?.category === 'decision' && target.decisionFormat === 'boolean') return [...results].sort((a, b) => Number(b.label === IN_FAVOR_LABEL) - Number(a.label === IN_FAVOR_LABEL))
   return [...results].sort((a, b) => b.count - a.count)
 }
 
@@ -190,7 +192,7 @@ export function explanationText(target: DecisionTarget, outcome?: Outcome, expla
   const base = explanation.baseIncludesSecretary ? es.results.explanationBaseWithSecretary(outcome.base, explanation.baseDelegates) : es.results.explanationBase(outcome.base)
   const sentences = [es.results.explanationRule(EXPLANATION_RULES[explanation.rule] ?? EXPLANATION_RULES.simple, base, outcome.threshold)]
   if (isDecision(target) && target.decisionFormat === 'boolean') {
-    const favor = results.find((result) => result.label === es.results.inFavor)?.count ?? 0
+    const favor = results.find((result) => result.label === IN_FAVOR_LABEL)?.count ?? 0
     return [...sentences, es.results.explanationFavor(favor, outcome.approved ? es.results.approved : es.results.notApproved)].join(' ')
   }
   const ordered = results.map((result, order) => ({ ...result, order })).sort((a, b) => b.count - a.count || a.order - b.order)
@@ -294,7 +296,7 @@ export function actaRows(target: RoundRecord): ActaRow[] {
   const booleanApproved = isDecision(target) && target.decisionFormat === 'boolean' && target.outcome?.approved
   return ranked.map((result, index) => {
     const outcome = outcomeTag(target.outcome, result.optionId)
-    const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === es.results.inFavor)
+    const winner = outcome === 'elected' || Boolean(booleanApproved && result.label === IN_FAVOR_LABEL)
     const tied = !target.outcome && isTied(byVotes, byVotes.indexOf(result))
     const tag = winner ? winnerText(target, result.label) as ActaRow['tag'] : outcome === 'runoff' ? es.results.runoffTag : tied ? es.results.tiedTag : null
     return { key: result.optionId || result.label, rank: index + 1, label: result.label, count: result.count, percent: eligible ? percentOf(result.count, eligible) : null, tag, winner }

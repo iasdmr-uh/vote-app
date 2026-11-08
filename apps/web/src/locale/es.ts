@@ -2,6 +2,7 @@ const plural = (count: number, one: string, many: string) => (count === 1 ? one 
 const votes = (count: number) => `${count} ${plural(count, 'voto', 'votos')}`
 
 const codeMismatchPrefix = 'El código no corresponde'
+const deleteTyped = 'BORRAR'
 const register = 'Agregar a oficiales'
 
 export const es = {
@@ -238,8 +239,8 @@ export const es = {
         title: '¿Borrar todos los datos de la Asamblea?',
         consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta y guardar el registro que se acaba de descargar.',
         label: 'Borrar datos',
-        reasonLabel: 'Escribe BORRAR para confirmar',
-        typed: 'BORRAR',
+        reasonLabel: `Escribe ${deleteTyped} para confirmar`,
+        typed: deleteTyped,
       },
     },
     notices: {
@@ -301,7 +302,6 @@ export const es = {
     departmentsLabel: 'Departamentos',
   },
   results: {
-    inFavor: 'A favor',
     preparing: 'Preparando el resultado',
     continuing: 'Pasan a la siguiente votación',
     continuingSentence: 'Pasan a la siguiente votación.',

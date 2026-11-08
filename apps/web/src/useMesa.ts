@@ -241,22 +241,21 @@ function chooseRoundCategory(category: RoundCategory) {
 async function moderatorAction(path: string, method = 'POST', body?: unknown, onSuccess?: (result: any) => void | Promise<void>) {
   const removed = body && typeof body === 'object' && 'status' in body && body.status === 'removed'
   const reopening = body && typeof body === 'object' && 'status' in body && body.status === 'lobby_open'
-  const confirm = es.moderator.confirm
   const config = path.endsWith('/lobby') && reopening
-    ? confirm.reopenEntry
+    ? es.moderator.confirm.reopenEntry
     : path.endsWith('/lobby')
-    ? confirm.closeEntry
+    ? es.moderator.confirm.closeEntry
     : path.endsWith('/rounds')
-      ? confirm.prepareBallot
+      ? es.moderator.confirm.prepareBallot
       : path.endsWith('/open')
-        ? { title: confirm.openVote.title, consequence: confirm.openVote.consequence, label: confirm.openVote.label, ...(roomWarning.value ? { warning: confirm.openVote.warning(roomWarning.value) } : {}) }
+        ? { title: es.moderator.confirm.openVote.title, consequence: es.moderator.confirm.openVote.consequence, label: es.moderator.confirm.openVote.label, ...(roomWarning.value ? { warning: es.moderator.confirm.openVote.warning(roomWarning.value) } : {}) }
         : path.endsWith('/close')
-          ? confirm.closeVote
+          ? es.moderator.confirm.closeVote
           : path.endsWith('/repeat')
-            ? confirm.repeatVote
+            ? es.moderator.confirm.repeatVote
             : removed
-              ? confirm.removeParticipant
-              : confirm.saveChanges
+              ? es.moderator.confirm.removeParticipant
+              : es.moderator.confirm.saveChanges
   moderationConfirmation.value = { ...config, path, method, ...(body === undefined ? {} : { body }), ...(onSuccess ? { onSuccess } : {}) }
 }
 
