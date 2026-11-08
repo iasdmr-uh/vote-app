@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { Position, RoundRecord } from '../../../apps/web/src/types'
 import { actaPositions, actaRounds } from './acta-fixture'
-import { actaKind, actaMetaText, actaRows, actaSheetRows, actaSummary, isTied, orgChart, votesText, notVotedOf, notVotedText, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../../apps/web/src/resultados'
+import { actaKind, actaMetaText, connectedText, actaRows, actaSheetRows, actaSummary, isTied, orgChart, votesText, notVotedOf, notVotedText, percentOf, rankedResults, rankOf, turnoutOf, votedText } from '../../../apps/web/src/resultados'
 
 test.describe('resultados', () => {
   const tiedFirst = [{ count: 4 }, { count: 4 }, { count: 2 }, { count: 0 }, { count: 0 }]
@@ -33,6 +33,12 @@ test.describe('resultados', () => {
     expect(notVotedOf(5, 4)).toBe(0)
     expect(turnoutOf({ participationCount: 7, eligibleCount: 9 })).toEqual({ recorded: 7, eligible: 9 })
     expect(turnoutOf({ recordedCount: 8, participationCount: 7, eligibleCount: 9 })).toEqual({ recorded: 8, eligible: 9 })
+  })
+
+  test('texto de teléfonos conectados', () => {
+    expect(connectedText(47, 50)).toBe('47 de 50 conectados')
+    expect(connectedText(50, 50)).toBe('50 de 50 conectados')
+    expect(connectedText(0, 0)).toBe('0 de 0 conectados')
   })
 
   test('cargos y comisiones usan la misma base', () => {
