@@ -168,14 +168,18 @@ test('in an election, someone taken out stops counting from the next vote even i
   } finally { await cleanup() }
 })
 
-test('the regional secretary is not taken out through the participant list', { skip }, async () => {
+test('the regional secretary is taken out by the mesa and never returned through the participant list', { skip }, async () => {
   const { prisma, service, assemblyId, cleanup } = await setup('secretary-exit', ['Miqueas'])
   try {
     const secretary = await prisma.participantSession.create({
       data: { assemblyId, firstName: 'Débora', lastName: 'Secretaria', isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) },
     })
-    await assert.rejects(service.takeOutOfRoom(secretary.id), NotFoundException)
-    assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: secretary.id } })).status, 'active')
+    assert.deepEqual(await service.takeOutOfRoom(secretary.id), { id: secretary.id, firstName: 'Débora', lastName: 'Secretaria', status: 'left' })
+    assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: secretary.id } })).status, 'left')
+    assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.taken_out' } }), 1)
+    await assert.rejects(service.returnToRoom(secretary.id), ConflictException)
+    assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: secretary.id } })).status, 'left')
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 1, accredited: 1, quorum: 1 })
   } finally { await cleanup() }
 })
 
