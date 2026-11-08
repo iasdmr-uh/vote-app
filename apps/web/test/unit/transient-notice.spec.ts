@@ -33,4 +33,15 @@ describe('showTransientNotice', () => {
     timer.pending[0]!.run()
     assert.equal(notice.value, 'La Asamblea quedó finalizada.')
   })
+
+  test('keeps a repeated notice until its own time runs out', () => {
+    const notice = ref('')
+    const timer = fakeTimer()
+    showTransientNotice(notice, 'Acción registrada.', timer.schedule)
+    showTransientNotice(notice, 'Acción registrada.', timer.schedule)
+    timer.pending[0]!.run()
+    assert.equal(notice.value, 'Acción registrada.')
+    timer.pending[1]!.run()
+    assert.equal(notice.value, '')
+  })
 })
