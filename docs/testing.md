@@ -1,5 +1,7 @@
 # Testing
 
+**Status:** Approved
+
 ## Runners
 
 | Runner | Used for |
