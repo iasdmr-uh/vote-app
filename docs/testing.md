@@ -20,7 +20,7 @@
 | Unit | `apps/api/test/unit/`, `apps/web/test/unit/` | Pure functions and single classes with stubs | Election rules, display helpers, guards and the realtime gateway | Local, CI |
 | Integration | `apps/api/test/integration/` | `VotingService` on PostgreSQL | Stored state, locks and vote secrecy | Local, CI |
 | HTTP | `apps/api/test/http/` | Nest in the test process, through `fetch` | Access, request validation and the moderator channel | Local, CI |
-| Scenarios | `tests/scenarios/` | Data replayed by other levels | Whole sessions give the same result at every level | With the level that replays them |
+| Scenarios | `apps/api/test/scenarios/` | Data replayed by other levels | Whole sessions give the same result at every level | With the level that replays them |
 | Mocked end-to-end | `tests/e2e/mocked/` | The browser, with the API intercepted | What each screen shows | Local, CI |
 | Real-stack end-to-end | `tests/e2e/real-stack/` | The browser, API and PostgreSQL | Flows across the phone, mesa and projector | Local only |
 | Load | `tests/load/` | k6 against a running stack | 50 to 70 concurrent sessions | Local only |
@@ -81,7 +81,7 @@ Goldberg 2.12 names five outcomes a command can have. This app has no message qu
 
 ## Scenarios
 
-- A new election rule starts as a fixture in `tests/scenarios/`.
+- A new election rule starts as a fixture in `apps/api/test/scenarios/`.
 - The unit, integration and real-stack levels replay the same fixture and expect the same result.
 - Fixtures include abstentions.
 - Source: Adzic, Specification by Example.
