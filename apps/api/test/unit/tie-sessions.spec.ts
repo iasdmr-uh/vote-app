@@ -7,7 +7,7 @@ import { writeChain, type ChainVote } from '../scenarios/chain-diagram.js'
 import { assertBallotsValid, assertVoteInvariants, candidatesOf, expandBallots, seatsOf, seededShuffle, sorted, tallyOf, type VoteResult } from '../scenarios/session-tools.js'
 import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
 
-const outputDirectory = process.env.TIE_FIXTURES_OUT ?? fileURLToPath(new URL('../../../../test-results/tie-fixtures/', import.meta.url))
+const outputDirectory = process.env.SCENARIOS_OUT ?? fileURLToPath(new URL('../../../../test-results/scenarios/', import.meta.url))
 
 type Run = { votes: ChainVote[]; elected: string[] }
 

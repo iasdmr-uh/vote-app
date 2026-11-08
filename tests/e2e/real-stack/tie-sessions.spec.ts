@@ -6,8 +6,8 @@ import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/scenar
 import { api, castVoteByApi, closeAndPublish, confirm, expectBadge, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
 
 const slowMo = Number(process.env.E2E_SLOWMO ?? 0)
-const seed = Number(process.env.TIE_FIXTURES_SEED ?? 29)
-const outputDirectory = join(process.env.TIE_FIXTURES_OUT ?? join(process.cwd(), 'test-results', 'tie-fixtures'), 'browser')
+const seed = Number(process.env.SCENARIOS_SEED ?? 29)
+const outputDirectory = join(process.env.SCENARIOS_OUT ?? join(process.cwd(), 'test-results', 'scenarios'), 'browser')
 
 test.describe.configure({ timeout: slowMo ? 3_600_000 : 300_000 })
 

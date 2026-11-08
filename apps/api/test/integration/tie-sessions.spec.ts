@@ -14,7 +14,7 @@ import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
-const outputDirectory = process.env.TIE_FIXTURES_OUT ?? fileURLToPath(new URL('../../../../test-results/tie-fixtures/', import.meta.url))
+const outputDirectory = process.env.SCENARIOS_OUT ?? fileURLToPath(new URL('../../../../test-results/scenarios/', import.meta.url))
 
 type Option = { id: string; label: string }
 type Mesa = Awaited<ReturnType<VotingService['moderatorAssembly']>>
