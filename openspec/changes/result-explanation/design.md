@@ -38,7 +38,7 @@
 
 ### D3. One web helper builds the paragraph
 
-- `explanationText(target, outcome, results)` in `resultados.ts` returns the paragraph from the spec. It reads the rule, base, threshold and reasons from the outcome and the labels and counts from the rows.
+- `explanationText(target, outcome, explanation, results)` in `resultados.ts` returns the paragraph from the spec. It reads the base and threshold from the outcome, the rule, reasons and base composition from the explanation, and the labels and counts from the rows.
 - Each screen calls it. None of them repeats the wording.
 
 ### D4. A toggle in the mesa, a line on the projector

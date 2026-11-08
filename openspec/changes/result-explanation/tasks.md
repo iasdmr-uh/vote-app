@@ -14,8 +14,8 @@
 
 ## 3. Explanation text
 
-- [ ] 3.1 Failing unit tests for `explanationText` from every paragraph scenario in the spec, including the secretary base and «1 voto»
-- [ ] 3.2 Add `explanationText` to `resultados.ts`
+- [x] 3.1 Failing unit tests for `explanationText` from every paragraph scenario in the spec, including the secretary base and «1 voto»
+- [x] 3.2 Add `explanationText` to `resultados.ts`
 
 ## 4. Screens
 
