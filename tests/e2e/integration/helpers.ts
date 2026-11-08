@@ -177,7 +177,6 @@ export async function voteAll(phones: Phone[], ballots: Array<string[] | null>) 
   for (const [index, choices] of ballots.entries()) if (choices) await vote(phones[index], choices)
 }
 
-/** Open, let everyone vote, close and publish one vote, waiting for the mesa's counter in between. */
 export async function runVote(room: Room, ballots: Array<string[] | null>) {
   const { mesa } = room
   await confirm(mesa, 'Abrir votación')
@@ -185,22 +184,21 @@ export async function runVote(room: Room, ballots: Array<string[] | null>) {
   await voteAll(room.phones, ballots)
   const cast = ballots.filter(Boolean).length
   await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
-  await closeAndPublish(room)
+  await closeAndShow(room)
 }
 
-export async function closeAndPublish(room: Room) {
+export async function closeAndShow(room: Room) {
   const { mesa, projector } = room
   await confirm(mesa, 'Cerrar votación')
-  await expect(mesa.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
-  await expect(projector.getByText(/Votación cerrada/)).toBeVisible()
-  // Closed results stay with the mesa until it publishes them.
-  await expect(projector.locator('.pj-results')).toHaveCount(0)
-  await confirm(mesa, 'Publicar conteo')
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
-  // A settled result opens on its slide (#48); the scenarios then check the detailed count behind it.
   await expect(projector.locator('.pj-results, .slide').first()).toBeVisible()
   if (await projector.locator('.slide').isVisible()) await projector.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(projector.locator('.pj-results')).toBeVisible()
+}
+
+export async function addToOfficials(mesa: Page) {
+  await confirm(mesa, 'Agregar a oficiales')
+  await expect(mesa.locator('.ballot-card')).toContainText('Registrado como oficial')
 }
 
 /** A result row of the vote the mesa is looking at (not the acta below it). */

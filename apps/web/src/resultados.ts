@@ -44,7 +44,7 @@ export function rankedResults<T extends Counted>(results: T[], eligible?: number
 
 export function decisionTie(target: RoundRecord) {
   const seats = target.category === 'committee' ? Math.max(1, target.electionSeats ?? target.memberCount ?? 1) : 1
-  const ranked = [...(target.results?.length ? target.results : target.privateResults || [])].sort((a, b) => b.count - a.count)
+  const ranked = [...(target.results || [])].sort((a, b) => b.count - a.count)
   const edge = ranked[seats - 1]?.count ?? 0
   if (ranked.length <= seats || edge === 0 || ranked[seats].count !== edge) return null
   const tied = ranked.filter((result) => result.count === edge)
@@ -55,6 +55,17 @@ export function decisionTie(target: RoundRecord) {
 }
 
 /** Badge of a candidate in a computed result: elected, or passing to the runoff. */
+export const RESULT_WORDING = {
+  preparing: 'Preparando el resultado',
+  continuing: 'Pasan a la siguiente votación',
+  final: 'Resultado final',
+  elected: 'Electos',
+  approved: 'Aprobada',
+  notApproved: 'No aprobada',
+  register: 'Agregar a oficiales',
+  registered: 'Registrado como oficial',
+} as const
+
 export function outcomeTag(outcome: Outcome | undefined, optionId?: string) {
   if (!outcome || !optionId) return null
   if (outcome.elected.includes(optionId)) return 'elected' as const
@@ -147,7 +158,7 @@ export function formatNames(names: string[]) {
 }
 
 export function countsOf(target: RoundRecord) {
-  return target.results?.length ? target.results : target.privateResults || []
+  return target.results || []
 }
 
 export function verdictOf(target: RoundRecord) {

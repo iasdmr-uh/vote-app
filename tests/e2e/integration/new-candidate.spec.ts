@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { api, closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
+import { api, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, moderatorToken, openRoom, prepareBallot, projectorRow, runVote, voteAll } from './helpers'
 
 /**
  * C. A new candidate (#40). The mesa may add one from the 3rd vote on, never in the first runoff. Five
@@ -38,7 +38,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   // 2nd vote: Ana 2, Carlos 2, one does not vote; still no majority.
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez'], null])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('4')
-  await closeAndPublish(room)
+  await closeAndShow(room)
   await expect(mesa.locator('.ballot-card .voters-total')).toContainText('votaron · 1 no votó')
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Desempate')
   await expectBadge(mesaRow(mesa, 'Carlos Gómez'), 'Desempate')
@@ -68,7 +68,7 @@ test('C · candidato nuevo: no se ofrece en la 2.ª votación, sí en la 3.ª, y
   }
   await voteAll(phones, [['Elena Castro'], ['Elena Castro'], ['Elena Castro'], ['Ana Ruiz'], ['Carlos Gómez']])
   await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
-  await closeAndPublish(room)
+  await closeAndShow(room)
 
   await expectBadge(mesaRow(mesa, 'Elena Castro'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), null)

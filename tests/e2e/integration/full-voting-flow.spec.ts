@@ -25,26 +25,16 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
   expect(duplicate.status()).toBe(409)
   expect((await moderatorState(request, assemblyId)).rounds[0].participationCount).toBe(1)
 
-  await confirm(mesa, 'Cerrar votación')
-  await expect(mesa.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
-  await expect(mesa.locator('.badge-private')).toHaveText('Solo la mesa')
-  const hidden = await request.get(`${api}/assemblies/${encodeURIComponent(joinCode)}/public-state`)
-  expect(hidden.ok()).toBeTruthy()
-  expect(await hidden.json()).not.toHaveProperty('results')
-
   const projector = await openProjector(browser, joinCode)
   await expect(projector.getByRole('heading', { name: 'Vocal 1' })).toBeVisible()
-  await expect(projector.locator('.pj-status')).toHaveText('Votación cerrada')
-  await expect(projector.getByText('Opción Ámbar')).toHaveCount(0)
-
-  await confirm(mesa, 'Publicar conteo')
-  // The elected office opens on its slide (P2, #48); the detailed count is behind «Ver conteo».
+  await confirm(mesa, 'Cerrar votación')
+  await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
+  await expect(projector.locator('.result-summary')).toContainText('Resultado final')
   await expect(projector.locator('.slide-office .office-name')).toHaveText('Opción Ámbar')
   await expect(projector.locator('.slide-office .office-votes')).toHaveText('1 de 1 votos · 100 %')
   await projector.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(projector.locator('.pj-status')).toHaveText('Conteo publicado')
   await expect(projector.locator('.pj-results .pj-label')).toHaveText(['Opción Ámbar', 'Opción Índigo'])
-  // One vote of one habilitado is a majority: elected on the projector and on the phone.
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Opción Ámbar')
   await expect(delegate.page.locator('.official-card strong')).toHaveText('Opción Ámbar')
 })

@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext, type Browser, type Page } from '@
 import { writeChain, type ChainVote } from '../../../apps/api/test/fixtures/chain-diagram.js'
 import { candidatesOf, expandBallots, seatsOf, seededShuffle, sorted } from '../../../apps/api/test/fixtures/session-tools.js'
 import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/fixtures/tie-sessions.js'
-import { api, castVoteByApi, closeAndPublish, confirm, expectBadge, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
+import { api, castVoteByApi, closeAndShow, confirm, expectBadge, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
 
 const slowMo = Number(process.env.E2E_SLOWMO ?? 0)
 const seed = Number(process.env.TIE_FIXTURES_SEED ?? 29)
@@ -18,7 +18,6 @@ type MesaRound = {
   options: Option[]
   eligibleCount: number
   participationCount: number
-  privateResults?: Array<{ label: string; count: number }>
   results?: Array<{ label: string; count: number }>
   outcome?: { threshold: number; elected: string[]; runoff: string[] }
 }
@@ -105,7 +104,7 @@ async function playVote(args: { browser: Browser; request: APIRequestContext; me
 function chainOf(state: { rounds: MesaRound[] }, fixture: Fixture) {
   const settled = state.rounds.filter((round) => round.status === 'published' && round.outcome)
   return settled.map((round, index): ChainVote => {
-    const counts = round.results ?? round.privateResults ?? []
+    const counts = round.results ?? []
     return {
       number: index + 1,
       base: round.eligibleCount,
@@ -139,7 +138,7 @@ for (const fixture of sessions) {
     for (const [index, vote] of fixture.votes.entries()) {
       const played = await playVote({ browser, request, mesa, assemblyId, tokens, fixture, vote, index, secretaryToken })
       secretaryToken = played.secretaryToken
-      await closeAndPublish(room)
+      await closeAndShow(room)
 
       const state = await moderatorState(request, assemblyId)
       const round = state.rounds.find((item: MesaRound) => item.id === played.roundId) as MesaRound
