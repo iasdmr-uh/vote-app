@@ -27,8 +27,8 @@ test('flujo real de asamblea: ingreso, voto único, cierre y publicación', asyn
 
   const projector = await openProjector(browser, joinCode)
   await expect(projector.getByRole('heading', { name: 'Vocal 1' })).toBeVisible()
-  await confirm(mesa, 'Cerrar votación')
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
+  await expect(mesa.getByRole('button', { name: 'Cerrar votación' })).toHaveCount(0)
   await expect(projector.locator('.result-summary')).toContainText('Resultado final')
   await expect(projector.locator('.slide-office .office-name')).toHaveText('Opción Ámbar')
   await expect(projector.locator('.slide-office .office-votes')).toHaveText('1 de 1 votos · 100 %')

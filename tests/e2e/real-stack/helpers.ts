@@ -188,8 +188,9 @@ export async function runVote(room: Room, ballots: Array<string[] | null>) {
 }
 
 export async function closeAndShow(room: Room) {
-  const { mesa, projector } = room
-  await confirm(mesa, 'Cerrar votación')
+  const { mesa, projector, assemblyId } = room
+  const { rounds } = await moderatorState(mesa.request, assemblyId)
+  if (rounds.some((round: { status: string }) => round.status === 'open')) await confirm(mesa, 'Cerrar votación')
   await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
   await expect(projector.locator('.pj-results, .slide').first()).toBeVisible()
   if (await projector.locator('.slide').isVisible()) await projector.getByRole('button', { name: 'Ver conteo' }).click()

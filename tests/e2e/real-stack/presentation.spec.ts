@@ -8,9 +8,8 @@ test('el proyector muestra el electo al publicar y sigue «Presentar oficiales»
   await prepareBallot(mesa, { kind: 'office', title: 'Presidente', candidates: ['María López', 'Carlos Gómez'] })
   await confirm(mesa, 'Abrir votación')
   for (const phone of phones) await vote(phone, ['María López'])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('2')
-
-  await confirm(mesa, 'Cerrar votación')
+  await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
+  await expect(mesa.getByRole('button', { name: 'Cerrar votación' })).toHaveCount(0)
   const office = projector.locator('.slide-office')
   await expect(office.locator('.office-name')).toHaveText('María López')
   await expect(office.locator('.office-votes')).toHaveText('2 de 2 votos · 100 %')
