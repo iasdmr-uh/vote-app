@@ -6,7 +6,7 @@ Amending the Estatutos needs 2/3 of the Assembly's votes, and the tool cannot ru
 
 - The mesa can choose «2/3» as the approval rule when it prepares a decision, next to «Mayoría simple» and «3/4».
 - A 2/3 decision needs at least 2/3 of the base, rounded up. The base is everyone in the room when voting opens, abstentions included, the same base the other rules use. 28 in the room needs 19.
-- Delegates see «2/3» and the votes needed before they vote.
+- Before voting, delegates see the rule and the votes needed for every decision, whether simple majority, 2/3 or 3/4. The user decided this on 8 Nov 2026.
 - Results, the public screen and the acta name 2/3 and the votes needed.
 - The database accepts only the three known approval rules.
 - Elections are not affected.

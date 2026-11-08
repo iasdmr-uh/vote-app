@@ -59,14 +59,24 @@ Source: #54, every ballot uses one rule from a fixed list.
 
 ### Requirement: The rule and the votes needed are shown
 
-Delegates SHALL see «2/3» and the votes needed on their phone before they vote. The results, the public screen and the acta SHALL name «2/3» and the votes needed.
+Before they vote, delegates SHALL see on their phone the rule of every decision and the votes it needs, whether simple majority, 2/3 or 3/4. An election SHALL show no approval rule. The results, the public screen and the acta SHALL name «2/3» and the votes needed.
 
-Source: #87.
+Source: #87. #54 asks for the rule before voting. The user decided on 8 Nov 2026 that every decision shows it, not only 2/3.
 
 #### Scenario: Phone before voting
 
 - **WHEN** a 2/3 decision is open with 28 in the room
 - **THEN** the phone shows «Se aprueba con 2/3 · 19 votos» above the options
+
+#### Scenario: Simple majority on the phone
+
+- **WHEN** a simple-majority decision is open with 28 in the room
+- **THEN** the phone shows «Se aprueba con mayoría simple · 15 votos» above the options
+
+#### Scenario: Election on the phone
+
+- **WHEN** an election is open
+- **THEN** the phone shows no approval rule
 
 #### Scenario: Results and acta
 

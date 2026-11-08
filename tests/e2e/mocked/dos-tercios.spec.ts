@@ -78,3 +78,50 @@ test('el acta nombra 2/3 y los votos necesarios', async ({ page }) => {
   await expect(acta.locator('.acta-kind')).toHaveText(['DECISIÓN · NO APROBADA'])
   await expect(acta.locator('.acta-meta')).toHaveText(['Se aprueba con 2/3 · 19 votos · 26 de 28 votaron · 2 no votaron'])
 })
+
+const phoneRounds = [
+  { approvalRule: 'two_thirds', approvalThreshold: 19, text: 'Se aprueba con 2/3 · 19 votos' },
+  { approvalRule: 'three_quarters', approvalThreshold: 21, text: 'Se aprueba con 3/4 · 21 votos' },
+  { approvalRule: 'simple', approvalThreshold: 15, text: 'Se aprueba con mayoría simple · 15 votos' },
+]
+
+for (const { approvalRule, approvalThreshold, text } of phoneRounds) {
+  test(`el teléfono muestra «${text}» antes de votar`, async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'two-thirds-session'))
+    await page.route(api, async (route) => {
+      if (new URL(route.request().url()).pathname.endsWith('/participant/me')) {
+        await route.fulfill({ json: {
+          assembly: { id: 'two-thirds-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending',
+          currentRound: {
+            id: 'reforma', title: 'Reforma de Estatutos', status: 'open', format: 'single_choice', category: 'decision', decisionFormat: 'boolean',
+            approvalRule, approvalThreshold, options: [{ id: 'favor', label: 'A favor' }, { id: 'contra', label: 'En contra' }],
+          },
+        } })
+        return
+      }
+      await route.fulfill({ status: 404, json: { message: 'No mock route for the phone rule test' } })
+    })
+
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Reforma de Estatutos' })).toBeVisible()
+    await expect(page.getByText(text)).toBeVisible()
+  })
+}
+
+test('el teléfono no muestra una regla de aprobación en una elección', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'election-session'))
+  await page.route(api, async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/participant/me')) {
+      await route.fulfill({ json: {
+        assembly: { id: 'election-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending',
+        currentRound: { id: 'presidente', title: 'Presidente', status: 'open', format: 'single_choice', category: 'office', options: [{ id: 'isaias', label: 'Isaías' }, { id: 'jeremias', label: 'Jeremías' }] },
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for the election phone test' } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Presidente' })).toBeVisible()
+  await expect(page.getByText(/Se aprueba con/)).toHaveCount(0)
+})

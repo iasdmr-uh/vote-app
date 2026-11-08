@@ -4,7 +4,6 @@
 - `rounds.approval_rule` is a text column with default `'simple'` and no check constraint.
 - `openRound` freezes the base in `rounds.eligible_count`. Decisions and elections share that base.
 - `approvalText` in `resultados.ts` names the rule for the results, the projector slides, the acta and the mesa record.
-- The phone shows no rule before voting for any decision today.
 
 ## Goals / Non-Goals
 
@@ -33,7 +32,7 @@ A migration adds `CHECK (approval_rule IN ('simple', 'three_quarters', 'two_thir
 
 ### Server sends the votes needed
 
-The state the phone reads gains `approvalThreshold` for an open decision, computed with `thresholdVotes` over the frozen base. The phone shows «Se aprueba con 2/3 · 19 votos» from it. The phone does not restate the formula.
+Decision rounds in the API state gain `approvalThreshold` once the base is frozen, computed with `thresholdVotes`. The phone shows «Se aprueba con 2/3 · 19 votos» from it for every decision, by the user's decision of 8 Nov 2026. The phone does not restate the formula.
 
 ### Shared rule label
 
@@ -41,4 +40,4 @@ The state the phone reads gains `approvalThreshold` for an open decision, comput
 
 ## Risks / Trade-offs
 
-- [Which decisions show the rule on the phone before voting] → #87 asks for 2/3, and #54 asks for every ballot. The user decides. This change shows 2/3 either way.
+- [The phone shows the rule for simple majority and 3/4 too, beyond #87] → The user chose this on 8 Nov 2026, so phones stay consistent across decisions and #54's ask is met for decisions.
