@@ -11,7 +11,7 @@ const {
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
-const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+const moderationConfirmation = ref<{ title: string; consequence: string; warning?: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
 const moderationReason = ref('')
 const moderatorCredential = ref('')
 const assemblyName = ref('Asamblea de Delegados')
@@ -54,6 +54,14 @@ const attendance = computed(() => {
   const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
   const disabled = participants.filter((person) => person.votingDisabled && !person.voted).length
   return { ...record, pending, disabled }
+})
+const roomWarning = computed(() => {
+  const room = state.value?.room
+  return room && room.present < room.quorum ? 'Sin quórum' : ''
+})
+const roomLine = computed(() => {
+  const room = state.value?.room
+  return room ? `En sala ${room.present} de ${room.accredited} · quórum ${room.quorum}` : ''
 })
 const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
@@ -252,7 +260,7 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown, on
     : path.endsWith('/rounds')
       ? { title: '¿Preparar esta papeleta?', consequence: 'Revisa el cargo y las opciones. No se podrán editar después de abrir la votación.', label: 'Preparar papeleta' }
       : path.endsWith('/open')
-        ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación' }
+        ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación', ...(roomWarning.value ? { warning: `${roomWarning.value}. Hay menos personas en la sala que el quórum. Puedes abrir la votación de todos modos.` } : {}) }
         : path.endsWith('/close')
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
           : path.endsWith('/repeat')
@@ -550,7 +558,7 @@ export function useMesa() {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
     showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, regionalSecretaryInBallot, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
-    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
+    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
     annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,

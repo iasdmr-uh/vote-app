@@ -347,6 +347,8 @@ label .hint { font-weight: 500; }
 .mesa-participants { position: sticky; top: 1rem; }
 .mesa-participants .section-heading { flex-direction: row; align-items: center; }
 .count-pill { display: inline-grid; min-width: 2.25rem; height: 1.8rem; place-items: center; padding: 0 .55rem; border-radius: 999px; background: #eaf0fc; color: var(--blue-dark); font-weight: 800; }
+.room-line { margin: .75rem 0 0; color: var(--blue-dark); font-size: .88rem; font-weight: 600; }
+.quorum-warning { color: #9c3329; font-weight: 700; }
 .attendance-summary { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin: .75rem 0 0; color: var(--blue-dark); font-size: .88rem; font-weight: 600; }
 .attendance-summary > span { display: inline-flex; align-items: center; }
 .mesa-person-list { display: grid; max-height: 60vh; margin: .9rem 0 0; padding: 0; overflow: auto; list-style: none; }

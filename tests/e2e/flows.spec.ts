@@ -1325,6 +1325,53 @@ test('la mesa retira a alguien de la sala, lo ve en Fuera de la sala y lo regres
   expect(calls).toEqual(['take-out', 'return'])
 })
 
+test('la mesa ve la línea de quórum, en rojo sin quórum, y el aviso al abrir una votación', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  let room = { present: 3, accredited: 4, quorum: 3 }
+  let opened = ''
+  const draft = { id: 'r1', title: 'Presidencia', status: 'draft', category: 'position', format: 'single_choice', options: [{ id: 'o1', label: 'Isaías' }, { id: 'o2', label: 'Jeremías' }], voteNumber: 1, runoff: false, officialResult: null }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Elías', lastName: 'Tisbita' }], participantCount: room.present, room,
+        rounds: [draft], currentRound: draft,
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/open')) {
+      opened = url.pathname
+      await route.fulfill({ status: 201, json: { roundId: 'r1', status: 'open' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for quorum test' } })
+  })
+
+  await page.goto('/moderator')
+  const line = page.locator('.room-line')
+  await expect(line).toHaveText('En sala 3 de 4 · quórum 3')
+  await expect(line).not.toHaveClass(/quorum-warning/)
+  await page.getByRole('button', { name: 'Abrir votación' }).click()
+  await expect(page.getByRole('dialog')).not.toContainText('Sin quórum')
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
+
+  room = { present: 2, accredited: 4, quorum: 3 }
+  await page.reload()
+  await expect(line).toContainText('En sala 2 de 4 · quórum 3')
+  await expect(line).toContainText('Sin quórum')
+  await expect(line).toHaveClass(/quorum-warning/)
+  await expect(line).toHaveCSS('color', 'rgb(156, 51, 41)')
+  await page.getByRole('button', { name: 'Abrir votación' }).click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Sin quórum')
+  await page.getByRole('dialog').getByRole('button', { name: 'Abrir votación' }).click()
+  await expect.poll(() => opened).toContain('/moderator/rounds/r1/open')
+})
+
 test('el proyector nunca muestra un estado crudo como «lobby_open»', async ({ page }) => {
   const rawStates = /lobby_open|lobby_closed|in_progress|\b(preparing|draft|open|closed|published|annulled|completed|removed|left)\b/
   const scenarios: Array<{ name: string; state: Record<string, unknown> }> = [

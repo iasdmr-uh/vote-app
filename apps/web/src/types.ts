@@ -30,6 +30,7 @@ export type PublicState = {
   attendanceRound?: { roundId: string; status: string; votedCount: number; eligibleCount?: number } | null
   leftParticipants?: Array<{ id: string; firstName: string; lastName: string }>
   participantCount?: number
+  room?: { present: number; accredited: number; quorum: number }
   recordedCount?: number
   eligibleCount?: number
   participationStatus?: 'pending' | 'recorded'

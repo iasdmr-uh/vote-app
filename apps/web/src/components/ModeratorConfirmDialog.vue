@@ -11,6 +11,7 @@ const { moderationConfirmation, moderationReason, confirmModeratorAction } = use
     <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="moderation-confirm-title" aria-describedby="moderation-confirm-description">
       <h2 id="moderation-confirm-title">{{ moderationConfirmation.title }}</h2>
       <p id="moderation-confirm-description">{{ moderationConfirmation.consequence }}</p>
+      <p v-if="moderationConfirmation.warning" class="quorum-warning" role="alert">{{ moderationConfirmation.warning }}</p>
       <label v-if="moderationConfirmation.reasonLabel" class="confirmation-reason">{{ moderationConfirmation.reasonLabel }}<textarea v-model="moderationReason" rows="3" maxlength="1000" required :placeholder="moderationConfirmation.reasonPlaceholder"></textarea></label>
       <div class="confirmation-actions">
         <button class="secondary" :disabled="loading" @click="moderationConfirmation = null">Cancelar</button>
