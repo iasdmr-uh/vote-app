@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { decisionOutcome, electionOutcome, thresholdVotes, type Tally } from '../src/voting/results-engine.js'
-import { writeChain, type ChainVote } from './fixtures/chain-diagram.js'
-import { assertBallotsValid, assertVoteInvariants, candidatesOf, expandBallots, seatsOf, seededShuffle, sorted, tallyOf, type VoteResult } from './fixtures/session-tools.js'
-import { fixtures, type Fixture } from './fixtures/tie-sessions.js'
+import { decisionOutcome, electionOutcome, thresholdVotes, type Tally } from '../../src/voting/results-engine.js'
+import { writeChain, type ChainVote } from '../scenarios/chain-diagram.js'
+import { assertBallotsValid, assertVoteInvariants, candidatesOf, expandBallots, seatsOf, seededShuffle, sorted, tallyOf, type VoteResult } from '../scenarios/session-tools.js'
+import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
 
-const outputDirectory = process.env.TIE_FIXTURES_OUT ?? fileURLToPath(new URL('../../../test-results/tie-fixtures/', import.meta.url))
+const outputDirectory = process.env.SCENARIOS_OUT ?? fileURLToPath(new URL('../../../../test-results/scenarios/', import.meta.url))
 
 type Run = { votes: ChainVote[]; elected: string[] }
 

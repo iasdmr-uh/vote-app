@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { HttpException, type ExecutionContext } from '@nestjs/common'
-import { hashCredential, matchesSecret, newOpaqueCredential } from '../src/auth/credentials.js'
-import { ModeratorGuard, RateLimitGuard } from '../src/auth/auth.guards.js'
-import type { AuthService } from '../src/auth/auth.service.js'
-import { validateEnvironment } from '../src/config/environment.js'
+import { hashCredential, matchesSecret, newOpaqueCredential } from '../../src/auth/credentials.js'
+import { ModeratorGuard, RateLimitGuard } from '../../src/auth/auth.guards.js'
+import type { AuthService } from '../../src/auth/auth.service.js'
+import { validateEnvironment } from '../../src/config/environment.js'
 
 function httpContext(authorization?: string, extraHeaders: Record<string, string> = {}): ExecutionContext {
   return {

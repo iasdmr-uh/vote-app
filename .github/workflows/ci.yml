@@ -79,8 +79,11 @@ jobs:
       - name: Apply database migrations
         run: npm run db:deploy --workspace @asdmr/api
 
-      - name: Run API tests
+      - name: Run API unit tests
         run: npm test --workspace @asdmr/api
+
+      - name: Run API integration tests
+        run: npm run test:integration --workspace @asdmr/api
 
   e2e:
     name: Playwright E2E

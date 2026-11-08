@@ -1,13 +1,13 @@
 import { join } from 'node:path'
 import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test'
-import { writeChain, type ChainVote } from '../../../apps/api/test/fixtures/chain-diagram.js'
-import { candidatesOf, expandBallots, seatsOf, seededShuffle, sorted } from '../../../apps/api/test/fixtures/session-tools.js'
-import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/fixtures/tie-sessions.js'
+import { writeChain, type ChainVote } from '../../../apps/api/test/scenarios/chain-diagram.js'
+import { candidatesOf, expandBallots, seatsOf, seededShuffle, sorted } from '../../../apps/api/test/scenarios/session-tools.js'
+import { fixtures, type Fixture, type Vote } from '../../../apps/api/test/scenarios/tie-sessions.js'
 import { api, castVoteByApi, closeAndPublish, confirm, expectBadge, finishLiveAssembly, mesaRow, moderatorState, openMesa, openProjector, prepareBallot, projectorRow } from './helpers'
 
 const slowMo = Number(process.env.E2E_SLOWMO ?? 0)
-const seed = Number(process.env.TIE_FIXTURES_SEED ?? 29)
-const outputDirectory = join(process.env.TIE_FIXTURES_OUT ?? join(process.cwd(), 'test-results', 'tie-fixtures'), 'browser')
+const seed = Number(process.env.SCENARIOS_SEED ?? 29)
+const outputDirectory = join(process.env.SCENARIOS_OUT ?? join(process.cwd(), 'test-results', 'scenarios'), 'browser')
 
 test.describe.configure({ timeout: slowMo ? 3_600_000 : 300_000 })
 

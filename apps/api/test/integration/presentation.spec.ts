@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { NotFoundException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { PresentationService } from '../src/voting/presentation.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import { PrismaService } from '../../src/prisma/prisma.service.js'
+import { PresentationService } from '../../src/voting/presentation.service.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 
@@ -117,7 +117,7 @@ test('opening a vote ends «Presentar oficiales», audits it and tells the proje
 test('POST /moderator/presentation only accepts on/off and slides 0, 1 and 2', async () => {
   const { plainToInstance } = await import('class-transformer')
   const { validate } = await import('class-validator')
-  const { PresentationDto } = await import('../src/voting/dtos.js')
+  const { PresentationDto } = await import('../../src/voting/dtos.js')
   const errors = async (body: unknown) => (await validate(plainToInstance(PresentationDto, body))).map((error) => error.property)
   assert.deepEqual(await errors({ active: true, slide: 1 }), [])
   assert.deepEqual(await errors({ active: false, slide: 0, assemblyId: randomUUID() }), [])

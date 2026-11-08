@@ -22,11 +22,13 @@ Requires Node `^22.22.3 || ^24.15.0`. CI uses 24.15.0. Local setup is in `docs/d
 | Run web | `npm run dev` |
 | Typecheck | `npm run typecheck` |
 | Build | `npm run build` |
-| API tests | `npm test --workspace @asdmr/api` |
-| One API test file | `cd apps/api && node --import tsx --test test/committee-ballot.spec.ts` |
+| Unit tests | `npm test` |
+| Integration tests | `npm run test:integration` |
+| One API test file | `cd apps/api && node --import tsx --test test/unit/committee-ballot.spec.ts` |
 | Mocked E2E | `npm run test:e2e` |
-| One E2E file | `npx playwright test tests/e2e/resultados.spec.ts --project=chromium` |
-| Real-stack E2E | `npm run test:e2e:integration` |
+| One E2E file | `npx playwright test tests/e2e/mocked/resultados.spec.ts --project=chromium` |
+| Real-stack E2E | `npm run test:e2e:real-stack` |
+| Scenarios in the browser | `npm run test:scenarios:browser:headed` |
 | Load test | `npm run test:load` |
 
 - The repo has no lint script.
@@ -34,9 +36,10 @@ Requires Node `^22.22.3 || ^24.15.0`. CI uses 24.15.0. Local setup is in `docs/d
 
 ## Tests
 
-- `*.integration.spec.ts` files skip silently unless `TEST_DATABASE_URL` is set. Point it at a disposable database with migrations applied, because these tests run `VACUUM FULL` and delete data.
+- `docs/testing.md` defines the test levels and conventions.
+- `npm run test:integration` fails unless `TEST_DATABASE_URL` is set. Point it at a disposable database with migrations applied, because these tests run `VACUUM FULL` and delete data.
 - `npm run test:e2e` intercepts API responses, so it does not exercise the API or database.
-- `npm run test:e2e:integration` starts its own isolated PostgreSQL through Docker or local tools. CI does not run it.
+- `npm run test:e2e:real-stack` starts its own isolated PostgreSQL through Docker or local tools. CI does not run it.
 - Service tests construct `VotingService` directly and stub `RealtimeGateway` with a `Proxy`.
 
 ## Architecture

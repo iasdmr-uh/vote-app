@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { roomNumbers } from '../src/voting/room.js'
+import { roomNumbers } from '../../src/voting/room.js'
 
 test('the quorum is two thirds of the accredited, rounded up', () => {
   const quorums = [[0, 0], [1, 1], [2, 2], [3, 2], [4, 3], [45, 30], [46, 31], [47, 32]]

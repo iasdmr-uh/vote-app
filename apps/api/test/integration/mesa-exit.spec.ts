@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { AuthService, MODERATOR_ACTOR } from '../src/auth/auth.service.js'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { ParticipantLeaveController } from '../src/voting/voting.controller.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { AuthService, MODERATOR_ACTOR } from '../../src/auth/auth.service.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
+import { PrismaService } from '../../src/prisma/prisma.service.js'
+import { ParticipantLeaveController } from '../../src/voting/voting.controller.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
