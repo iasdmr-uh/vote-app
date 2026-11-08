@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "workspaces": ["apps/*"],
   "engines": { "node": "^22.22.3 || ^24.15.0", "npm": ">=10" },
+  "config": {
+    "testDatabaseUrl": "postgresql://asdmr_voting:local_test_only@127.0.0.1:55433/asdmr_voting_test?schema=public"
+  },
   "scripts": {
     "dev": "npm run dev --workspace @asdmr/web",
     "dev:api": "npm run start:dev --workspace @asdmr/api",
@@ -11,13 +14,17 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspace @asdmr/api",
     "test:integration": "npm run test:integration --workspace @asdmr/api",
+    "test:integration:local": "npm run test:db:up && TEST_DATABASE_URL=$npm_package_config_testDatabaseUrl npm run test:integration",
     "test:e2e": "playwright test",
     "test:e2e:real-stack": "node scripts/run-e2e-real-stack.mjs",
     "test:e2e:ui": "playwright test --ui",
     "test:scenarios": "npm run test:scenarios --workspace @asdmr/api",
+    "test:scenarios:local": "npm run test:db:up && TEST_DATABASE_URL=$npm_package_config_testDatabaseUrl npm run test:scenarios",
     "test:scenarios:browser": "node scripts/run-scenarios-browser.mjs",
     "test:scenarios:browser:headed": "node scripts/run-scenarios-browser.mjs --headed",
-    "test:load": "k6 run tests/load/voting.js"
+    "test:load": "k6 run tests/load/voting.js",
+    "test:db:up": "docker compose --profile test up -d --wait postgres-test && DATABASE_URL=$npm_package_config_testDatabaseUrl npm run db:deploy --workspace @asdmr/api",
+    "test:db:down": "docker compose --profile test rm -fsv postgres-test"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0"
