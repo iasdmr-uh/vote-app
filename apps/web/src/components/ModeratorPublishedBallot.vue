@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RESULT_WORDING, countsOf, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
+import { RESULT_WORDING, countsOf, electedSoFar, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import ResultsList from './ResultsList.vue'
 import ResultSummary from './ResultSummary.vue'
@@ -17,6 +17,7 @@ const { showNextBallotForm, rootRoundOf, eligibleOf, rankedRows, runoffOf, openR
 
 const election = computed(() => rootRoundOf(props.currentRoundRecord)?.officialResult ?? null)
 const final = computed(() => props.currentRoundRecord.final && election.value ? { elected: election.value.elected, approved: election.value.approved ?? null } : null)
+const soFar = computed(() => electedSoFar(rootRoundOf(props.currentRoundRecord), election.value?.elected, props.currentRoundRecord.final))
 
 function runoffButtonText(target: RoundRecord) {
   const runoff = runoffOf(target)
@@ -32,7 +33,7 @@ function runoffButtonText(target: RoundRecord) {
     <p class="voters-total"><strong>{{ currentRoundRecord.participationCount ?? state?.recordedCount ?? 0 }} de {{ eligibleOf(currentRoundRecord) }}</strong><span>votaron<template v-if="eligibleOf(currentRoundRecord)"> · {{ notVotedText(currentRoundRecord.participationCount ?? state?.recordedCount ?? 0, eligibleOf(currentRoundRecord)) }}</template></span></p>
   </div>
   <p v-if="verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === 'No aprobada' }]">{{ verdictOf(currentRoundRecord) }}</p>
-  <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" />
+  <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" :so-far="soFar" />
   <p v-if="final && election?.registeredAt" class="status-line">{{ RESULT_WORDING.registered }}</p>
   <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ RESULT_WORDING.register }}</button></div>
   <ResultsList :rows="rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />

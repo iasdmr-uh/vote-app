@@ -2,7 +2,7 @@ export type RoundCategory = 'office' | 'committee' | 'decision'
 /** Decision only: A favor / En contra, or options written by the mesa. */
 export type DecisionFormat = 'boolean' | 'options'
 /** 'simple': more than half of the habilitados; 'three_quarters': at least 3/4. */
-export type ApprovalRule = 'simple' | 'three_quarters'
+export type ApprovalRule = 'simple' | 'three_quarters' | 'two_thirds'
 
 /** Computed by the API's results engine; ids are the round's ballot options. Decisions add `rule` and `approved`. */
 export type Outcome = { seats: number; base: number; threshold: number; elected: string[]; runoff: string[]; openSeats: number; rule?: ApprovalRule; approved?: boolean }

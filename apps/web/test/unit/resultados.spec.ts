@@ -15,6 +15,7 @@ import {
   decisionVerdict,
   displayOrder,
   electedInVote,
+  electedSoFar,
   formatNames,
   isTied,
   majorityText,
@@ -342,6 +343,16 @@ describe('labels', () => {
     assert.equal(approvalText(decision(), decision().outcome), 'Se aprueba con 3/4 · 29 votos')
   })
 
+  test('approvalText: names the 2/3 rule and the votes it needs', () => {
+    const amendment = decision({ approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(approvalText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
+  test('majorityText: a closed 2/3 decision names its rule before the count is published', () => {
+    const amendment = decision({ status: 'closed', approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(majorityText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
   test('approvalText: names the simple majority and uses the singular for one vote', () => {
     assert.equal(approvalText(decision({ approvalRule: 'simple' }), { ...outcome(1, []), rule: undefined }), 'Se aprueba con mayoría simple · 1 voto')
   })
@@ -658,5 +669,35 @@ describe('orgChart', () => {
 
   test('orgChart: no positions give an empty chart', () => {
     assert.deepEqual(orgChart([]), { boardTop: [], boardBottom: [], departmentRows: [] })
+  })
+})
+
+describe('electedSoFar', () => {
+  const committee = { category: 'committee' as const, memberCount: 5 }
+  const three = [{ label: 'Isaías' }, { label: 'Jeremías' }, { label: 'Ezequiel' }]
+  const five = [...three, { label: 'Daniel' }, { label: 'Oseas' }]
+
+  test('electedSoFar: a committee of five with three elected lists them with the seat count', () => {
+    assert.deepEqual(electedSoFar(committee, three, null), { title: 'Electos hasta ahora · 3 de 5', names: 'Isaías · Jeremías · Ezequiel' })
+  })
+
+  test('electedSoFar: the wording never says final or official while seats are open', () => {
+    assert.doesNotMatch(electedSoFar(committee, three, null)!.title, /final|oficial/i)
+  })
+
+  test('electedSoFar: a complete election has no preliminary block', () => {
+    assert.equal(electedSoFar(committee, five, null), null)
+    assert.equal(electedSoFar(committee, five, { elected: five, approved: null }), null)
+  })
+
+  test('electedSoFar: nobody elected yet shows nothing', () => {
+    assert.equal(electedSoFar(committee, [], null), null)
+    assert.equal(electedSoFar(committee, undefined, null), null)
+  })
+
+  test('electedSoFar: an office or decision is never partial', () => {
+    assert.equal(electedSoFar({ category: 'office', memberCount: null }, [{ label: 'Isaías' }], null), null)
+    assert.equal(electedSoFar({ category: 'decision', memberCount: null }, [{ label: 'Sí' }], null), null)
+    assert.equal(electedSoFar(undefined, three, null), null)
   })
 })
