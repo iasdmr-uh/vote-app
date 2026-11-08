@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { decisionVerdict, displayOrder, explanationText, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, winnerText } from '../resultados'
+import { baseSumText, decisionVerdict, explanationText, majorityText, marksCheckText, marksPerBallot, notVotedRow, notVotedText, outcomeTag, resultRows, winnerText } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
-defineProps<{
+const props = defineProps<{
   statusLabel: string
   eligible: number
   recorded: number
@@ -13,19 +13,16 @@ const { state, round } = useAssembly()
 
 const isCommittee = computed(() => round.value?.category === 'committee')
 
-const results = computed(() => displayOrder(round.value, state.value?.results || []))
+const results = computed(() => [...resultRows(state.value?.results || [], props.eligible), notVotedRow(props.recorded, props.eligible)])
+const marksLine = computed(() => round.value ? marksCheckText(marksPerBallot(round.value), props.recorded) : '')
 const outcome = computed(() => state.value?.outcome)
 const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
 const explanation = computed(() => round.value ? explanationText(round.value, outcome.value, state.value?.explanation, state.value?.results) : '')
 const booleanDecision = computed(() => round.value?.category === 'decision' && round.value.decisionFormat === 'boolean')
 const verdict = computed(() => booleanDecision.value && round.value ? decisionVerdict(round.value, outcome.value) : '')
 
-function tagOf(result: { optionId?: string }) {
-  return outcomeTag(outcome.value, result.optionId)
-}
-
-function isTied(index: number) {
-  return tiedAt(results.value, index)
+function tagOf(row: { key: string }) {
+  return outcomeTag(outcome.value, row.key)
 }
 
 const columns = computed(() => results.value.length > 8 ? 2 : 1)
@@ -61,15 +58,18 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
     <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
   </header>
   <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
-  <ol ref="resultsList" class="pj-results" :class="{ 'pj-unranked': booleanDecision }" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
-    <li v-for="(result, index) in results" :key="result.label" class="pj-card" :class="{ 'pj-first': index === 0 && result.count > 0 }">
-      <span v-if="!booleanDecision" class="pj-rank">{{ index + 1 }}</span>
-      <span class="pj-name"><span class="pj-label">{{ result.label }}</span><em v-if="tagOf(result) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, result.label) : '' }}</em><em v-else-if="tagOf(result) === 'runoff'" class="pj-tie">Desempate</em><em v-else-if="!outcome && isTied(index)" class="pj-tie">Empate</em></span>
-      <strong class="pj-votes">{{ result.count }} {{ result.count === 1 ? 'voto' : 'votos' }}</strong>
-      <span class="pj-percent">{{ percentOf(result.count, eligible) }} %</span>
-      <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, percentOf(result.count, eligible))}%` }"></span></span>
+  <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
+    <li v-for="row in results" :key="row.key" class="pj-card" :class="{ 'pj-not-voted': row.key === 'not-voted' }">
+      <span class="pj-name"><span class="pj-label">{{ row.label }}</span><em v-if="tagOf(row) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, row.label) : '' }}</em><em v-else-if="tagOf(row) === 'runoff'" class="pj-tie">Desempate</em></span>
+      <strong class="pj-votes">{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong>
+      <span class="pj-percent">{{ row.percent }} %</span>
+      <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span>
     </li>
   </ol>
+  <div class="pj-checks">
+    <p>{{ baseSumText(recorded, eligible) }}</p>
+    <p v-if="marksLine">{{ marksLine }}</p>
+  </div>
 </template>
 
 <style scoped>
@@ -103,10 +103,7 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
   padding: 0;
   list-style: none;
 }
-.pj-results li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); align-items: center; column-gap: calc(var(--u) * 30 * var(--k)); row-gap: calc(var(--u) * 16 * var(--k)); padding: calc(var(--u) * 26 * var(--k)) calc(var(--u) * 40); }
-.pj-unranked li { grid-template-columns: minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); }
-.pj-rank { display: grid; width: calc(var(--u) * 76 * var(--k)); height: calc(var(--u) * 76 * var(--k)); place-items: center; border-radius: 50%; background: var(--soft); color: var(--ink); font-size: calc(var(--u) * 32 * var(--k)); font-weight: 800; }
-.pj-first .pj-rank { background: var(--blue); color: #fff; }
+.pj-results li { display: grid; grid-template-columns: minmax(0, 1fr) auto calc(var(--u) * 130 * var(--k)); align-items: center; column-gap: calc(var(--u) * 30 * var(--k)); row-gap: calc(var(--u) * 16 * var(--k)); padding: calc(var(--u) * 26 * var(--k)) calc(var(--u) * 40); }
 .pj-name { display: flex; min-width: 0; align-items: center; gap: calc(var(--u) * 20 * var(--k)); overflow: hidden; font-size: calc(var(--u) * 48 * var(--k)); font-weight: 600; white-space: nowrap; }
 .pj-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pj-name em { flex: none; padding: calc(var(--u) * 6 * var(--k)) calc(var(--u) * 18 * var(--k)); border-radius: 999px; font-size: calc(var(--u) * 26 * var(--k)); font-style: normal; font-weight: 700; }
@@ -116,4 +113,8 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
 .pj-percent { color: var(--muted); font-size: calc(var(--u) * 40 * var(--k)); font-weight: 600; text-align: right; white-space: nowrap; }
 .pj-bar { grid-column: 1 / -1; height: calc(var(--u) * 16 * var(--k)); overflow: hidden; border-radius: 999px; background: var(--soft); }
 .pj-bar span { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+.pj-results .pj-not-voted { background: transparent; box-shadow: inset 0 0 0 calc(var(--u) * 3) var(--soft); }
+.pj-not-voted .pj-name, .pj-not-voted .pj-votes { color: var(--muted); }
+.pj-not-voted .pj-bar span { background: var(--muted); }
+.pj .pj-checks { display: flex; flex-wrap: wrap; gap: calc(var(--u) * 8) calc(var(--u) * 48); margin-top: calc(var(--u) * 20); color: var(--muted); font-size: calc(var(--u) * 30); font-weight: 600; }
 </style>

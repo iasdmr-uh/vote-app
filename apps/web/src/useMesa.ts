@@ -2,7 +2,7 @@ import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { showTransientNotice } from './transient-notice'
-import { RESULT_WORDING, actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
+import { RESULT_WORDING, actaSheetRows, decisionTie } from './resultados'
 import type { ApprovalRule, DecisionFormat, Position, RoundCategory, RoundRecord } from './types'
 import { useAssembly } from './useAssembly'
 
@@ -113,18 +113,6 @@ function eligibleOf(target: RoundRecord) {
   if (own !== undefined) return own
   if (target.id === round.value?.id && eligibleVotes.value) return eligibleVotes.value
   return state.value?.participants?.length ?? 0
-}
-
-function rankedRows(unsorted: Array<{ optionId?: string; label: string; count: number }>, base: number) {
-  const results = [...unsorted].sort((a, b) => b.count - a.count)
-  return results.map((result, index) => ({
-    key: result.optionId || result.label,
-    label: result.label,
-    count: result.count,
-    rank: index + 1,
-    tied: isTied(results, index),
-    percent: percentOf(result.count, base),
-  }))
 }
 
 function annulRound(target: { id: string; title: string }) {
@@ -598,7 +586,7 @@ export function useMesa() {
     showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
     secrecyCleanupPendingRounds, voteOpen, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
-    roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
+    roundChain, voteNumber, rootRoundOf, eligibleOf, electionComplete, runoffOf,
     annulRound, registerOfficial, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData,

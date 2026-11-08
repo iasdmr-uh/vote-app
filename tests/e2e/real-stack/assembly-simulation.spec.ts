@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
 
 /**
  * Simulates a whole Asamblea against the real API and PostgreSQL: nine delegate phones, the projector
@@ -52,14 +52,14 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await snap(mesa, 'mesa-presidencia-sin-mayoria-M20')
   await snap(projector, 'proyector-presidencia-sin-mayoria')
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
-  await expect(phones[0].page.locator('.phone-status-open')).toHaveText('DESEMPATE · 2.ª VOTACIÓN')
+  await expect(phones[0].page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await snap(phones[0].page, 'telefono-desempate-T02')
   await voteAll(phones, phones.map((_, index) => [index < 6 ? 'María López' : 'Carlos Gómez']))
   await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
   await closeAndShow(room)
   await expectBadge(mesaRow(mesa, 'María López'), 'Electo/a')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ María López')
-  await expect(phones[3].page.locator('.official-card strong')).toHaveText('María López')
+  await expectProjectorFinal(projector, 'María López')
+  await expectPhoneShowsNoResult(phones[3])
   await snap(projector, 'proyector-presidencia-electa')
   await snap(phones[3].page, 'telefono-presidencia-electa')
   note(`Presidente (1.ª votación + desempate): ${Math.round((Date.now() - started) / 1000)} s`)
@@ -82,7 +82,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Juan Mora', 'Elena Castro'] })
   await runVote(room, phones.map((_, index) => [index < 5 ? 'Ana Ruiz' : index < 7 ? 'Elena Castro' : 'Juan Mora']))
   await expectBadge(mesaRow(mesa, 'Ana Ruiz'), 'Electo/a')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
+  await expectProjectorFinal(projector, 'Ana Ruiz')
   note(`Secretario (anulada + nueva papeleta): ${Math.round((Date.now() - started) / 1000)} s`)
 
   await addToOfficials(mesa)
@@ -111,7 +111,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   for (const name of ['Pedro Vargas', 'Luis Pérez', 'Juan Mora']) await expectBadge(mesaRow(mesa, name), 'Electo/a')
   for (const name of ['Rosa Díaz', 'Carlos Gómez']) await expectBadge(mesaRow(mesa, name), null)
   await expect(mesa.getByRole('button', { name: /Abrir desempate/ })).toHaveCount(0)
-  const projected = projector.locator('.pj-results li')
+  const projected = projector.locator('.pj-results li:not(.pj-not-voted)')
   await expect(projected).toHaveCount(7)
   // Shares are over the 9 habilitados.
   await expect(projectorRow(projector, 'Elena Castro').locator('.pj-percent')).toHaveText('100 %')
