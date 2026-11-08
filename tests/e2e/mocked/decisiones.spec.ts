@@ -264,6 +264,7 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
         results: [{ optionId: 's', label: 'San Pedro Sula', count: 22 }, { optionId: 't', label: 'Tegucigalpa', count: 15 }],
         outcome: { seats: 1, base: 38, threshold: 20, elected: ['s'], runoff: [], openSeats: 0, rule: 'simple', approved: true },
         officialResult: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
+        final: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], approved: true },
       } })
       return
     }

@@ -64,6 +64,7 @@ export const RESULT_WORDING = {
   continuing: 'Pasan a la siguiente votación',
   final: 'Resultado final',
   elected: 'Electos',
+  electedSoFar: 'Electos hasta ahora',
   approved: 'Aprobada',
   notApproved: 'No aprobada',
   register: 'Agregar a oficiales',
@@ -94,6 +95,12 @@ export function electedInVote(target: RoundRecord) {
   const elected = target.outcome?.elected ?? []
   const counts = countsOf(target)
   return elected.map((optionId) => counts.find((result) => result.optionId === optionId)?.label).filter((label): label is string => Boolean(label))
+}
+
+export function electedSoFar(target: { category?: string; memberCount?: number | null } | null | undefined, elected: Array<{ label: string }> | undefined, final: unknown) {
+  const seats = Math.max(1, target?.memberCount ?? 1)
+  if (final || target?.category !== 'committee' || !elected?.length || elected.length >= seats) return null
+  return { title: `${RESULT_WORDING.electedSoFar} · ${elected.length} de ${seats}`, names: elected.map((person) => person.label).join(' · ') }
 }
 
 export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {

@@ -74,7 +74,8 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(projectorRow(projector, name), 'Desempate')
   await expect(projector.locator('.pj-subtitle')).toHaveText('3 integrantes · Mayoría: 4')
   await expect(projector.locator('.pj-turnout')).toContainText('votaron · 2 no votaron')
-  await expect(phones[0].page.locator('.official-card strong')).toHaveText('Ana Ruiz')
+  await expect(phones[0].page.locator('.result-so-far strong')).toHaveText('Ana Ruiz')
+  await expect(phones[0].page.locator('.official-card')).toHaveCount(0)
   await expectBadge(phoneRow(phones[0], 'Ana Ruiz'), 'Electo/a')
   for (const name of ['Bruno Díaz', 'Carla Mora', 'Diego Paz']) await expectBadge(phoneRow(phones[0], name), 'Desempate')
 
@@ -110,8 +111,10 @@ test('B · comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 pue
   await expectBadge(mesaRow(mesa, 'Bruno Díaz'), 'Electo/a')
   await expectBadge(mesaRow(mesa, 'Carla Mora'), 'Desempate')
   await expectBadge(mesaRow(mesa, 'Diego Paz'), 'Desempate')
-  await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz · Bruno Díaz')
-  await expect(phones[3].page.locator('.official-card strong')).toHaveText('Ana Ruiz · Bruno Díaz')
+  await expect(projector.locator('.result-so-far')).toContainText('Electos hasta ahora · 2 de 3')
+  await expect(projector.locator('.pj-elected')).toHaveCount(0)
+  await expect(phones[3].page.locator('.result-so-far strong')).toHaveText('Ana Ruiz · Bruno Díaz')
+  await expect(phones[3].page.locator('.official-card')).toHaveCount(0)
   await expectBadge(phoneRow(phones[3], 'Bruno Díaz'), 'Electo/a')
 
   // 3rd vote, 1 seat: it may take a new candidate (#40), but this one opens as it is.
