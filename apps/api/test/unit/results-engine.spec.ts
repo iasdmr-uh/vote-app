@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { decisionOutcome, electionOutcome, meetsThreshold, thresholdVotes, type Tally } from '../src/voting/results-engine.js'
+import { decisionOutcome, electionOutcome, meetsThreshold, thresholdVotes, type Tally } from '../../src/voting/results-engine.js'
 
 function tallies(counts: Record<string, number>): Tally[] {
   return Object.entries(counts).map(([optionId, count]) => ({ optionId, count }))

@@ -1,51 +1,30 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
-import { writeChain, type ChainVote } from './fixtures/chain-diagram.js'
-import { assertVoteInvariants, candidatesOf, delegateName, expandBallots, seatsOf, seededShuffle, sorted } from './fixtures/session-tools.js'
-import { fixtures, type Fixture } from './fixtures/tie-sessions.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
+import { writeChain, type ChainVote } from '../scenarios/chain-diagram.js'
+import { assertVoteInvariants, candidatesOf, delegateName, expandBallots, seatsOf, seededShuffle, sorted } from '../scenarios/session-tools.js'
+import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
-const outputDirectory = process.env.TIE_FIXTURES_OUT ?? fileURLToPath(new URL('../../../test-results/tie-fixtures/', import.meta.url))
+const outputDirectory = process.env.SCENARIOS_OUT ?? fileURLToPath(new URL('../../../../test-results/scenarios/', import.meta.url))
 
 type Option = { id: string; label: string }
 type Mesa = Awaited<ReturnType<VotingService['moderatorAssembly']>>
 
 async function withAssembly(name: string, count: number, body: (context: { service: VotingService; assemblyId: string; people: string[] }) => Promise<void>) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  const organizationId = randomUUID()
-  let assemblyId: string | undefined
+  const prisma = await connectDatabase()
+  const service = new VotingService(prisma, gatewayStub().gateway)
+  const names = Array.from({ length: count }, (_, index) => delegateName(index + 1))
+  const seeded = await seedAssembly(prisma, service, { label: name, delegates: names })
   try {
-    await prisma.organization.create({ data: { id: organizationId, name: `${name}-${organizationId}`, type: 'union' } })
-    const joinCode = newOpaqueCredential()
-    assemblyId = (await prisma.assembly.create({ data: { organizationId, name, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-    const people: string[] = []
-    for (let number = 1; number <= count; number += 1) {
-      const [firstName, lastName] = delegateName(number).split(' ') as [string, string]
-      const joined = await service.joinAssembly(joinCode, firstName, lastName)
-      people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
-    }
-    await service.changeLobby(assemblyId, 'lobby_closed')
-    await body({ service, assemblyId, people })
+    await body({ service, assemblyId: seeded.assemblyId, people: names.map((person) => seeded.people[person]!.id) })
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    }
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await seeded.cleanup()
     await prisma.$disconnect()
   }
 }
@@ -173,6 +152,6 @@ async function playFixture(fixture: Fixture, seed: number | null) {
 }
 
 for (const fixture of fixtures) {
-  test(`api · ${fixture.id} · natural order`, { skip }, () => playFixture(fixture, null))
-  test(`api · ${fixture.id} · shuffled ballots`, { skip }, () => playFixture(fixture, 29))
+  test(`api · ${fixture.id} · natural order`, () => playFixture(fixture, null))
+  test(`api · ${fixture.id} · shuffled ballots`, () => playFixture(fixture, 29))
 }

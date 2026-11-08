@@ -1,42 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException } from '@nestjs/common'
-import { randomUUID } from 'node:crypto'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('the mesa can annul a ballot, repeat it, and annulling takes back what it computed', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const roundStates: string[] = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
-    if (name === 'roundState') roundStates.push((args[1] as { status: string }).status)
-  } }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
-  const organizationId = randomUUID()
+test('the mesa can annul a ballot, repeat it, and annulling takes back what it computed', async () => {
+  const prisma = await connectDatabase()
+  const { gateway, events } = gatewayStub()
+  const service = new VotingService(prisma, gateway)
+  const roundStates = () => events.filter((event) => event.name === 'roundState').map((event) => (event.payload as { status: string }).status)
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'annulment-test', delegates: ['Ana', 'Luis', 'Marta'] })
+  const voters = ['Ana', 'Luis', 'Marta'].map((name) => people[name]!.id)
 
   try {
-    // Its own organization, so this file can run in parallel with tests that use createAssembly().
-    const organization = await prisma.organization.create({ data: { id: organizationId, name: `annulment-test-${organizationId}`, type: 'union' } })
-    const created = { joinCode: newOpaqueCredential(), assemblyId: '' }
-    created.assemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Annulment test', status: 'lobby_open', joinCodeHash: hashCredential(created.joinCode) } })).id
-    assemblyId = created.assemblyId
-    const voters = []
-    for (const name of ['Ana', 'Luis', 'Marta']) {
-      const joined = await service.joinAssembly(created.joinCode, name, 'Delegado')
-      voters.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
-    }
-    await service.changeLobby(assemblyId, 'lobby_closed')
-
     const round = await service.createRound(assemblyId, {
       title: 'Presidencia', format: 'single_choice', options: [{ label: 'Juan Peres' }, { label: 'María López' }], countingRule: { kind: 'count_only' },
     })
@@ -47,7 +25,7 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     // A misspelled name is noticed while the ballot is open.
     const annulled = await service.annulRound(round.id, 'Nombre mal escrito: Juan Pérez')
     assert.equal(annulled.status, 'annulled')
-    assert.equal(roundStates.at(-1), 'annulled', 'phones and projector are told the ballot was annulled')
+    assert.equal(roundStates().at(-1), 'annulled', 'phones and projector are told the ballot was annulled')
     const stored = await prisma.round.findUniqueOrThrow({ where: { id: round.id } })
     assert.equal(stored.annulReason, 'Nombre mal escrito: Juan Pérez')
     assert.ok(stored.votesUnlinkedAt, 'the deleted votes went through the secrecy cleanup')
@@ -55,7 +33,7 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     assert.equal(await prisma.participation.count({ where: { roundId: round.id } }), 1, 'the participation receipt stays as a record')
     await assert.rejects(service.castVote(voters[1]!, round.id, round.options[0]!.id), ConflictException)
     await assert.rejects(service.publishRound(round.id), ConflictException)
-    const publicAfterAnnul = await service.publicState(created.joinCode)
+    const publicAfterAnnul = await service.publicState(joinCode)
     assert.equal(publicAfterAnnul.round?.status, 'annulled')
     assert.equal('results' in publicAfterAnnul, false)
     assert.equal(await prisma.auditEvent.count({ where: { roundId: round.id, action: 'round.annulled' } }), 1)
@@ -69,17 +47,17 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     await service.castVote(voters[1]!, repeat.id, repeat.options[1]!.id)
     await service.castVote(voters[2]!, repeat.id, repeat.options[0]!.id)
     await service.closeRound(repeat.id)
-    assert.equal('officialResult' in await service.publicState(created.joinCode), false, 'the result stays with the mesa until published')
+    assert.equal('officialResult' in await service.publicState(joinCode), false, 'the result stays with the mesa until published')
     const results = (await service.publishRound(repeat.id)).results
     assert.deepEqual(results.map((option) => [option.label, option.count]), [['María López', 2], ['Juan Peres', 1]])
-    assert.deepEqual((await service.publicState(created.joinCode)).officialResult?.elected.map((item) => item.label), ['María López'], '2 of 3 is a majority')
+    assert.deepEqual((await service.publicState(joinCode)).officialResult?.elected.map((item) => item.label), ['María López'], '2 of 3 is a majority')
     assert.equal((await service.annulRound(round.id, 'otra vez')).status, 'annulled', 'annulling again is a no-op')
     await assert.rejects(service.repeatRound(repeat.id, { optionIds: [repeat.options[0]!.id] }), /anulada/, 'a counted vote is never repeated by hand')
 
     // Annulling a counted vote takes its elected out of the official result.
     await service.annulRound(repeat.id, 'Se contó con un error')
     assert.equal(await prisma.officialResult.count({ where: { roundId: round.id } }), 0)
-    assert.equal('officialResult' in await service.publicState(created.joinCode), false)
+    assert.equal('officialResult' in await service.publicState(joinCode), false)
 
     // Annulling a vote that prepared a runoff discards the runoff draft too; an earlier vote waits for the later one.
     const secretary = await service.createRound(assemblyId, {
@@ -109,12 +87,7 @@ test('the mesa can annul a ballot, repeat it, and annulling takes back what it c
     assert.equal(await prisma.auditEvent.count({ where: { roundId: third.id, action: 'round.runoff_discarded' } }), 1)
     assert.equal((await service.completeAssembly(assemblyId, true)).status, 'completed')
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await cleanup()
     await prisma.$disconnect()
   }
 })

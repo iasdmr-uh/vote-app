@@ -2,39 +2,18 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
-import { PrismaService } from '../src/prisma/prisma.service.js'
-import { VotingService } from '../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
+import { VotingService } from '../../src/voting/voting.service.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('inhabilitar during an open vote rejects the vote, keeps the base and a vote already cast, and habilitar restores it', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const events: Array<{ name: string; target: unknown; payload: unknown }> = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
-    events.push({ name, target: args[0], payload: args[1] })
-  } }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  const organizationId = randomUUID()
-  let assemblyId: string | undefined
+test('inhabilitar during an open vote rejects the vote, keeps the base and a vote already cast, and habilitar restores it', async () => {
+  const prisma = await connectDatabase()
+  const { gateway, events } = gatewayStub()
+  const service = new VotingService(prisma, gateway)
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'disable-test', delegates: ['Ana', 'Luis', 'Marta', 'Pedro'] })
 
   try {
-    const organization = await prisma.organization.create({ data: { id: organizationId, name: `disable-test-${organizationId}`, type: 'union' } })
-    const joinCode = newOpaqueCredential()
-    assemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Disable test', status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-    const people: Record<string, { id: string; token: string }> = {}
-    for (const name of ['Ana', 'Luis', 'Marta', 'Pedro']) {
-      const joined = await service.joinAssembly(joinCode, name, 'Delegado')
-      const session = await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })
-      people[name] = { id: session.id, token: joined.participantSessionToken }
-    }
-    await service.changeLobby(assemblyId, 'lobby_closed')
     const round = await service.createRound(assemblyId, {
       title: 'Presidencia', format: 'single_choice', countingRule: { kind: 'count_only' },
       options: [{ label: 'Opción A' }, { label: 'Opción B' }],
@@ -98,11 +77,7 @@ test('inhabilitar during an open vote rejects the vote, keeps the base and a vot
     await service.completeAssembly(assemblyId, true)
     await assert.rejects(service.setVotingDisabled(people.Marta!.id, true), ConflictException)
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    }
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await cleanup()
     await prisma.$disconnect()
   }
 })

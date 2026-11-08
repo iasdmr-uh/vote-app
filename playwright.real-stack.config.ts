@@ -6,10 +6,10 @@ const webPort = process.env.E2E_WEB_PORT ?? '4174'
 const baseURL = `http://127.0.0.1:${webPort}`
 const apiURL = `http://127.0.0.1:${apiPort}`
 const databaseUrl = process.env.DATABASE_URL
-if (!databaseUrl) throw new Error('Use npm run test:e2e:integration to provide an isolated DATABASE_URL')
+if (!databaseUrl) throw new Error('Use npm run test:e2e:real-stack to provide an isolated DATABASE_URL')
 
 export default defineConfig({
-  testDir: './tests/e2e/integration',
+  testDir: './tests/e2e/real-stack',
   fullyParallel: false,
   // Specs share one database and the API allows a single active Asamblea, so they run one after another.
   workers: 1,
