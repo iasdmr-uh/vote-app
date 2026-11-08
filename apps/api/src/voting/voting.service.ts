@@ -845,6 +845,9 @@ export class VotingService implements OnModuleInit {
       if (!assembly || !['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('El ingreso debe estar cerrado antes de abrir una papeleta')
       const otherOpen = await tx.round.findFirst({ where: { assemblyId: round.assembly_id, status: 'open' }, select: { id: true } })
       if (otherOpen) throw new ConflictException('Ya hay una papeleta abierta')
+      if (await this.pendingElectionOtherThan(tx, round.assembly_id, round.committee_root_round_id ?? round.id)) {
+        throw new ConflictException('Otra elección espera su resultado oficial o su anulación')
+      }
       if (round.committee_root_round_id && await this.openSeatsOf(tx, round.committee_root_round_id) === 0) {
         throw new ConflictException('Todos los puestos de esta elección ya están ocupados')
       }
@@ -869,6 +872,20 @@ export class VotingService implements OnModuleInit {
       if (result.presentationEnded) this.realtime.presentationState(result.assemblyId, presentationOf({ presentationActive: false, presentationSlide: result.presentationSlide }))
     }
     return payload
+  }
+
+  private async pendingElectionOtherThan(tx: Prisma.TransactionClient, assemblyId: string, rootId: string) {
+    const votes = await tx.round.findMany({
+      where: { assemblyId, status: { not: 'draft' } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, status: true, committeeRootRoundId: true },
+    })
+    const latestByElection = new Map(votes.map((vote) => [vote.committeeRootRoundId ?? vote.id, vote.status]))
+    latestByElection.delete(rootId)
+    const unsettled = [...latestByElection].filter(([, status]) => status === 'closed' || status === 'published').map(([root]) => root)
+    if (!unsettled.length) return false
+    const registered = await tx.officialResult.count({ where: { roundId: { in: unsettled }, registeredAt: { not: null } } })
+    return registered < unsettled.length
   }
 
   async closeRound(roundId: string) {
@@ -963,6 +980,9 @@ export class VotingService implements OnModuleInit {
       if (round.status === 'annulled') return { assemblyId: round.assembly_id, title: round.title, previousStatus: round.status, changed: false }
       // Only the latest vote of an election can be annulled: a later vote was prepared from its result.
       const rootId = round.committee_root_round_id ?? round.id
+      if ((await tx.officialResult.findUnique({ where: { roundId: rootId }, select: { registeredAt: true } }))?.registeredAt) {
+        throw new ConflictException('El resultado ya está registrado como oficial')
+      }
       const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true, countingRule: true } })
       const later = chain.slice(chain.findIndex((item) => item.id === roundId) + 1)
       const pendingRunoffs = later.filter((item) => item.status === 'draft' && runoffSourceOf(item.countingRule) === roundId)

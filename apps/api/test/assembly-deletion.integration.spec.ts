@@ -5,6 +5,7 @@ import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
 import { OperatorLogService } from '../src/voting/operator-log.service.js'
+import { OfficialRosterService } from '../src/voting/official-roster.service.js'
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
@@ -21,6 +22,7 @@ test('after the acta, the mesa erases every record of a completed assembly', {
     if (name === 'assemblyDeleted') deletedAssemblies.push(args[0] as string)
   } }) as RealtimeGateway
   const service = new VotingService(prisma, realtime)
+  const roster = new OfficialRosterService(prisma, realtime)
   const organizationId = randomUUID()
   let assemblyId = ''
   let otherAssemblyId = ''
@@ -42,8 +44,9 @@ test('after the acta, the mesa erases every record of a completed assembly', {
       title: 'Presidencia', format: 'single_choice', options: [{ label: 'Rosa' }, { label: 'Pedro' }], countingRule: { kind: 'count_only' },
     })
     await service.openRound(round.id)
-    await service.castVote(sessions[0]!, round.id, round.options[0]!.id)
+    for (const session of sessions) await service.castVote(session, round.id, round.options[0]!.id)
     await service.closeRound(round.id)
+    await roster.register(round.id)
 
     const committee = await service.createRound(assemblyId, {
       title: 'Comisión de Finanzas', format: 'multiple_choice', category: 'committee', memberCount: 1, options: [{ label: 'Luis' }, { label: 'Marta' }], countingRule: { kind: 'count_only' },

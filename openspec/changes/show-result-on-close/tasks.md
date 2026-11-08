@@ -24,9 +24,9 @@
 
 ## 4. Gates
 
-- [ ] 4.1 Failing tests: opening a vote of another election is refused while an election is pending, and allowed for its own runoff, after annulment and after registering
-- [ ] 4.2 Failing tests: annulment is refused once the next vote of the election opened or the election is registered
-- [ ] 4.3 Add both checks under the existing locks
+- [x] 4.1 Failing tests: opening a vote of another election is refused while an election is pending, and allowed for its own runoff, after annulment and after registering
+- [x] 4.2 Failing tests: annulment is refused once the next vote of the election opened or the election is registered
+- [x] 4.3 Add both checks under the existing locks
 
 ## 5. Web
 

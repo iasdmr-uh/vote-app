@@ -5,6 +5,7 @@ import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
+import { OfficialRosterService } from '../src/voting/official-roster.service.js'
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
@@ -18,6 +19,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
   await prisma.$connect()
   const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
   const service = new VotingService(prisma, realtime)
+  const roster = new OfficialRosterService(prisma, realtime)
   const organizationId = randomUUID()
   const joinCode = newOpaqueCredential()
   let assemblyId: string | undefined
@@ -69,6 +71,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.deepEqual(projector.results?.map((option) => [option.label, option.count]), [['A favor', 6], ['En contra', 1]])
     assert.equal(projector.eligibleCount, 8, 'percentages are over the habilitados, the inhabilitado included')
     await service.setVotingDisabled(delegates[7]!.id, false)
+    await roster.register(budget.id)
 
     // 2 · Mayoría simple over 8: 5 needed. A 4-4 tie is not approved.
     const statute = await service.createRound(activeAssemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })
@@ -80,6 +83,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     const closedStatute = (await service.moderatorAssembly(activeAssemblyId)).rounds.find((item) => item.id === statute.id)!
     assert.equal(closedStatute.outcome && 'approved' in closedStatute.outcome && closedStatute.outcome.approved, false)
     assert.equal(closedStatute.outcome?.threshold, 5)
+    await roster.register(statute.id)
 
     // 3 · Options with mayoría simple: Tegucigalpa 3, San Pedro Sula 3, La Ceiba 1, Choluteca 1 → nobody has 5,
     // so a draft repeats between the two tied first, as a runoff of the same decision and rule.

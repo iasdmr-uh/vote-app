@@ -5,6 +5,7 @@ import { NotFoundException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { PresentationService } from '../src/voting/presentation.service.js'
+import { OfficialRosterService } from '../src/voting/official-roster.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
@@ -78,6 +79,7 @@ test('opening a vote ends «Presentar oficiales», audits it and tells the proje
   } }) as RealtimeGateway
   const voting = new VotingService(prisma, realtime)
   const presentation = new PresentationService(prisma, realtime)
+  const roster = new OfficialRosterService(prisma, realtime)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
 
@@ -98,6 +100,7 @@ test('opening a vote ends «Presentar oficiales», audits it and tells the proje
 
     // With the presentation already off, opening the next vote records nothing more.
     await voting.closeRound(budget.id)
+    await roster.register(budget.id)
     const next = await voting.createRound(assemblyId, { title: 'Reforma', format: 'multiple_choice', category: 'decision', decisionFormat: 'boolean' })
     events.length = 0
     await voting.openRound(next.id)

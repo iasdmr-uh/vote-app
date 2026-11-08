@@ -153,3 +153,59 @@ test('the database refuses to change a roster entry, and «Borrar datos» still 
     assert.equal(await prisma.round.count({ where: { assemblyId } }), 0)
   })
 })
+
+async function singleVote({ service, assemblyId }: Context, title: string) {
+  return service.createRound(assemblyId, { title, format: 'single_choice', category: 'office', options: [{ label: 'Isaías' }, { label: 'Jeremías' }, { label: 'Ezequiel' }] })
+}
+
+test('another election waits while an election has a runoff pending or a final result off the roster', { skip }, async () => {
+  await withAssembly(4, async (context) => {
+    const { service, roster, voters } = context
+    const { first, runoff } = await committeeAfterFirstVote(context)
+    const secretary = await singleVote(context, 'Secretario')
+
+    await assert.rejects(service.openRound(secretary.id), ConflictException, 'a runoff is pending')
+    await settleRunoff(context, runoff)
+    await assert.rejects(service.openRound(secretary.id), ConflictException, 'the final result is not on the roster')
+
+    await roster.register(first.id)
+    await service.openRound(secretary.id)
+    for (const voter of voters) await service.castVote(voter, secretary.id, secretary.options[0]!.id)
+    await service.closeRound(secretary.id)
+  })
+})
+
+test('the runoff of the same election opens, and an annulled vote frees the next election', { skip }, async () => {
+  await withAssembly(4, async (context) => {
+    const { service, voters } = context
+    const president = await singleVote(context, 'Presidente')
+    await service.openRound(president.id)
+    const picks = ['Isaías', 'Isaías', 'Jeremías', 'Ezequiel']
+    for (const [index, voter] of voters.entries()) await service.castVote(voter, president.id, idOf(president.options, picks[index]!))
+    await service.closeRound(president.id)
+    const runoff = (await service.moderatorAssembly(context.assemblyId)).rounds.find((item) => item.runoffSourceRoundId === president.id)!
+    const secretary = await singleVote(context, 'Secretario')
+
+    await service.openRound(runoff.id)
+    for (const voter of voters) await service.castVote(voter, runoff.id, idOf(runoff.options, 'Isaías'))
+    await service.closeRound(runoff.id)
+    await assert.rejects(service.openRound(secretary.id), ConflictException)
+
+    await service.annulRound(runoff.id, 'Papeleta mal impresa')
+    await service.openRound(secretary.id)
+  })
+})
+
+test('annulment is refused once the election is on the roster', { skip }, async () => {
+  await withAssembly(3, async (context) => {
+    const { prisma, service, roster, voters } = context
+    const president = await singleVote(context, 'Presidente')
+    await service.openRound(president.id)
+    for (const voter of voters) await service.castVote(voter, president.id, president.options[0]!.id)
+    await service.closeRound(president.id)
+    await roster.register(president.id)
+
+    await assert.rejects(service.annulRound(president.id, 'Nombre mal escrito'), ConflictException)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: president.id } })).status, 'published')
+  })
+})
