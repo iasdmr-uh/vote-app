@@ -44,12 +44,13 @@ async function expectToggle(page: Page, scope: string, text: string) {
   const area = page.locator(scope)
   const button = area.getByRole('button', { name: '¿Cómo se decidió?' })
   await expect(button).toHaveAttribute('aria-expanded', 'false')
-  await expect(area.getByText(text, { exact: true })).toHaveCount(0)
+  await expect(area.getByText(text, { exact: true })).toBeHidden()
   await button.click()
   await expect(button).toHaveAttribute('aria-expanded', 'true')
   await expect(area.getByText(text, { exact: true })).toBeVisible()
   await button.click()
-  await expect(area.getByText(text, { exact: true })).toHaveCount(0)
+  await expect(button).toHaveAttribute('aria-expanded', 'false')
+  await expect(area.getByText(text, { exact: true })).toBeHidden()
 }
 
 test('the mesa opens and closes the explanation of a preliminary result', async ({ page }) => {

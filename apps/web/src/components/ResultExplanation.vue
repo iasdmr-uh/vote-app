@@ -13,7 +13,7 @@ const text = computed(() => explanationText(props.target, props.target.outcome, 
 <template>
   <div v-if="text" class="result-explanation">
     <button type="button" class="link-button" :aria-expanded="open" :aria-controls="id" @click="open = !open">¿Cómo se decidió?</button>
-    <p v-if="open" :id="id" class="result-explanation-text">{{ text }}</p>
+    <p v-show="open" :id="id" class="result-explanation-text">{{ text }}</p>
   </div>
 </template>
 
