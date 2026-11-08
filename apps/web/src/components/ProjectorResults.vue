@@ -18,7 +18,7 @@ const outcome = computed(() => state.value?.outcome)
 const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
 const booleanDecision = computed(() => round.value?.category === 'decision' && round.value.decisionFormat === 'boolean')
 const verdict = computed(() => booleanDecision.value && round.value ? decisionVerdict(round.value, outcome.value) : '')
-const officeElected = computed(() => !isCommittee.value || (round.value?.voteNumber ?? 1) > 1 ? state.value?.officialResult?.elected || [] : [])
+const officeElected = computed(() => !state.value?.final ? [] : !isCommittee.value || (round.value?.voteNumber ?? 1) > 1 ? state.value?.officialResult?.elected || [] : [])
 
 function tagOf(result: { optionId?: string }) {
   return outcomeTag(outcome.value, result.optionId)

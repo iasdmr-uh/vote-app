@@ -64,6 +64,7 @@ export const RESULT_WORDING = {
   continuing: 'Pasan a la siguiente votación',
   final: 'Resultado final',
   elected: 'Electos',
+  electedSoFar: 'Electos hasta ahora',
   approved: 'Aprobada',
   notApproved: 'No aprobada',
   register: 'Agregar a oficiales',
@@ -96,6 +97,12 @@ export function electedInVote(target: RoundRecord) {
   return elected.map((optionId) => counts.find((result) => result.optionId === optionId)?.label).filter((label): label is string => Boolean(label))
 }
 
+export function electedSoFar(target: { category?: string; memberCount?: number | null } | null | undefined, elected: Array<{ label: string }> | undefined, final: unknown) {
+  const seats = Math.max(1, target?.memberCount ?? 1)
+  if (final || target?.category !== 'committee' || !elected?.length || elected.length >= seats) return null
+  return { title: `${RESULT_WORDING.electedSoFar} · ${elected.length} de ${seats}`, names: elected.map((person) => person.label).join(' · ') }
+}
+
 export function completedCommittee(target: RoundRecord, rounds: RoundRecord[]) {
   const root = rounds.find((item) => item.id === (target.committeeRootRoundId || target.id))
   const members = root?.officialResult?.elected ?? []
@@ -124,6 +131,8 @@ export function majorityText(target: DecisionTarget & { runoff?: boolean }, outc
 
 type DecisionTarget = { category?: string; decisionFormat?: string | null; approvalRule?: string | null }
 
+const RULE_LABELS: Record<string, string> = { three_quarters: '3/4', two_thirds: '2/3' }
+
 export function isDecision(target?: DecisionTarget | null) {
   return target?.category === 'decision'
 }
@@ -131,7 +140,7 @@ export function isDecision(target?: DecisionTarget | null) {
 /** "Se aprueba con 3/4 · 29 votos" or "Se aprueba con mayoría simple · 20 votos" for a decision. */
 export function approvalText(target: DecisionTarget, outcome?: Outcome) {
   if (!outcome) return ''
-  const rule = (outcome.rule ?? target.approvalRule) === 'three_quarters' ? '3/4' : 'mayoría simple'
+  const rule = RULE_LABELS[outcome.rule ?? target.approvalRule ?? ''] ?? 'mayoría simple'
   return `Se aprueba con ${rule} · ${outcome.threshold} ${outcome.threshold === 1 ? 'voto' : 'votos'}`
 }
 

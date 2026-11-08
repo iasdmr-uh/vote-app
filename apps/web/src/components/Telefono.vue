@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RESULT_WORDING, decisionVerdict, displayOrder, isDecision, isTied, percentOf, voteLabel } from '../resultados'
+import { RESULT_WORDING, decisionVerdict, displayOrder, electedSoFar, isDecision, isTied, percentOf, voteLabel } from '../resultados'
 import { useAssembly } from '../useAssembly'
 import PhoneBallot from './PhoneBallot.vue'
 import PhoneJoinForm from './PhoneJoinForm.vue'
@@ -38,6 +38,7 @@ const resultRows = computed(() => {
     percent: percentOf(result.count, resultBase.value),
   }))
 })
+const officialResult = computed(() => state.value?.final ? state.value.officialResult : undefined)
 const verdict = computed(() => round.value ? decisionVerdict(round.value, state.value?.outcome, state.value?.results) : '')
 
 function switchToIncomingAssembly() {
@@ -98,8 +99,8 @@ async function submitVote() {
     <template v-else>
       <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
       <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
-      <ResultSummary v-if="round?.status === 'published'" :final="state?.final" :continuing="state?.continuing" />
-      <PhoneResults v-if="resultRows.length || state?.officialResult || verdict" :round="round" :rows="resultRows" :verdict="verdict" :base="resultBase" :voters="resultVoters" :official-result="state?.officialResult" :outcome="state?.outcome" />
+      <ResultSummary v-if="round?.status === 'published'" :final="state?.final" :continuing="state?.continuing" :so-far="electedSoFar(round, state?.officialResult?.elected, state?.final)" />
+      <PhoneResults v-if="resultRows.length || officialResult || verdict" :round="round" :rows="resultRows" :verdict="verdict" :base="resultBase" :voters="resultVoters" :official-result="officialResult" :outcome="state?.outcome" />
       <h1 v-else-if="round?.status === 'annulled' && assemblyStatus !== 'completed'">Votación anulada</h1>
       <h1 v-else-if="round?.status === 'closed' && assemblyStatus !== 'completed'">{{ RESULT_WORDING.preparing }}</h1>
       <h1 v-else-if="assemblyStatus !== 'completed' && !voteRecorded">Sala de espera</h1>

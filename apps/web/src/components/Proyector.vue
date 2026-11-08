@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, voteLabel } from '../resultados'
+import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, electedSoFar, voteLabel } from '../resultados'
 import { resultSlide } from '../diapositivas'
 import { useAssembly } from '../useAssembly'
 import Diapositiva from './Diapositiva.vue'
@@ -20,6 +20,7 @@ const progressPercent = computed(() => eligible.value > 0 ? Math.min(100, Math.r
 const presentationSlide = computed(() => state.value?.presentation?.active ? state.value.presentation.slide : null)
 // A settled published result is shown as its slide (P2, P3, P6); the detailed count stays one click away.
 const publishedSlide = computed(() => resultSlide(state.value))
+const soFar = computed(() => electedSoFar(round.value, state.value?.officialResult?.elected, state.value?.final))
 const showCount = ref(false)
 watch(() => round.value?.id, () => { showCount.value = false })
 
@@ -65,7 +66,7 @@ async function toggleProjectorFullscreen() {
   <section v-if="!code" class="card join-card"><h1>Proyector</h1><form @submit.prevent="go(`/projector?code=${encodeURIComponent(code)}`)"><label>Código de sala<input v-model="code" required /></label><button class="primary">Mostrar sala</button></form></section>
   <section v-else-if="view === 'slide' || view === 'presentation'" class="pj-stage">
     <p v-if="realtimeActive && !realtimeConnected" class="pj-offline" role="status" aria-live="polite">Reconectando…</p>
-    <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" />
+    <ResultSummary v-if="view === 'slide'" class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" />
     <Diapositiva v-if="view === 'slide'" :result="publishedSlide" />
     <Diapositiva v-else :presentation="presentationSlide ?? 0" />
   </section>
@@ -85,7 +86,7 @@ async function toggleProjectorFullscreen() {
     </template>
 
     <template v-else-if="view === 'results'">
-      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" />
+      <ResultSummary class="pj-result-summary" :final="state?.final" :continuing="state?.continuing" :so-far="soFar" />
       <ProjectorResults :status-label="statusLabel" :eligible="eligible" :recorded="recorded" />
     </template>
 
