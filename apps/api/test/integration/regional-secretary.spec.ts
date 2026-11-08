@@ -325,3 +325,16 @@ test('adding the regional secretary after a take-out brings them back with a new
     await service.castVote(first.participantId, fourth.id, optionId(fourth, 'Ana'))
   })
 })
+
+test('the regional secretary cannot use an unused entry QR while a vote is open, and can once it closes', async () => {
+  await withAssembly('secretary-qr-open-vote', 4, async ({ service, assemblyId, people }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const invitation = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    await service.openRound(fourth.id)
+    await assert.rejects(service.redeemResumeCode(resumeCodeOf(invitation.resumeUrl)), ConflictException)
+    for (const person of people) await service.castVote(person, fourth.id, optionId(fourth, 'Ana'))
+    await service.closeRound(fourth.id)
+    const redeemed = await service.redeemResumeCode(resumeCodeOf(invitation.resumeUrl))
+    assert.equal(redeemed.participant.firstName, 'Marta')
+  })
+})

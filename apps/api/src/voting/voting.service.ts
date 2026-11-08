@@ -20,7 +20,7 @@ import { presentationOf } from './presentation.service.js'
 import { tiedAtCut, type ThresholdRule } from './results-engine.js'
 import { roomNumbers } from './room.js'
 import { appUrl } from './app-url.js'
-import { assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
+import { assertNoOpenRound, assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
 import { baseOf, basePeople, countInRoom, freezeRoundBase, roundBase, roundBases } from './base-count.js'
 import { ORGANIZATION_ID, RESULTS_ENGINE_ACTOR, RESUME_CODE_TTL_MS, SECRECY_CLEANUP_PENDING, VACUUM_LOCK_TIMEOUT_MS } from './constants.js'
 import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn, waitsForSourceResult } from './round-rules.js'
@@ -148,12 +148,17 @@ export class VotingService implements OnModuleInit {
   async issueResumeCode(participantId: string) {
     const resumeCode = newOpaqueCredential()
     const expiresAt = new Date(Date.now() + RESUME_CODE_TTL_MS)
+    const identity = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { assemblyId: true } })
+    if (!identity) throw new NotFoundException('Participante no encontrado')
     const participant = await this.prisma.$transaction(async (tx) => {
+      await lockAssembly(tx, identity.assemblyId)
       const current = await tx.participantSession.findUnique({
-        where: { id: participantId }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, assembly: { select: { status: true } } },
+        where: { id: participantId }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, isRegionalSecretary: true, assembly: { select: { status: true } } },
       })
       if (!current || current.status !== 'active') throw new NotFoundException('Participante no encontrado')
       assertNotCompleted(current.assembly.status)
+      if (current.isRegionalSecretary) throw new ConflictException('La secretaría regional no se reconecta; retírala de la sala y agrégala de nuevo')
+      await assertNoOpenRound(tx, current.assemblyId, 'Reconecta el dispositivo cuando cierre la votación abierta')
       await tx.participantSession.update({ where: { id: participantId }, data: { resumeCodeHash: hashCredential(resumeCode), resumeExpiresAt: expiresAt } })
       await recordAudit(tx, { assemblyId: current.assemblyId, action: 'participant.resume_code_issued', metadata: { participantId, personName: `${current.firstName} ${current.lastName}` } })
       return current
@@ -169,13 +174,17 @@ export class VotingService implements OnModuleInit {
   async redeemResumeCode(resumeCode: string) {
     const participantSessionToken = newOpaqueCredential()
     const resumeCodeHash = hashCredential(resumeCode)
+    const identity = await this.prisma.participantSession.findUnique({ where: { resumeCodeHash }, select: { assemblyId: true } })
+    if (!identity) throw new NotFoundException('El código de reconexión no es válido o ya venció')
     const participant = await this.prisma.$transaction(async (tx) => {
+      await lockAssembly(tx, identity.assemblyId)
       const current = await tx.participantSession.findUnique({
         where: { resumeCodeHash }, select: { id: true, assemblyId: true, status: true, firstName: true, lastName: true, resumeExpiresAt: true },
       })
       if (!current || current.status !== 'active' || !current.resumeExpiresAt || current.resumeExpiresAt <= new Date()) {
         throw new NotFoundException('El código de reconexión no es válido o ya venció')
       }
+      await assertNoOpenRound(tx, current.assemblyId, 'Hay una votación en curso. Vuelve a escanear este código cuando termine.')
       // Conditional update makes the code single-use even if two devices redeem it at once.
       const claimed = await tx.participantSession.updateMany({
         where: { id: current.id, resumeCodeHash },
