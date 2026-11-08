@@ -175,6 +175,7 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 | Exposición accidental del voto | Separación de almacenamiento, ausencia de relación persona-opción en el diseño, controles de acceso y revisión técnica. |
 | Interpretación incorrecta del Reglamento o reglas electorales | Reglas confirmadas con la mesa (2 de noviembre de 2026), cálculo con pruebas por caso y anulación por la mesa; no automatizar quórum en V1. |
 | Falla del dispositivo o sesión desconectada | Diseñar reconexión segura sin permitir segundo voto; definir cómo la mesa resolverá casos excepcionales. |
+| «X de Y conectados» leído como asistencia | El conteo indica solo teléfonos conectados. Un teléfono con la pantalla bloqueada puede perder la conexión y contar como no conectado, y un teléfono conectado no prueba que su dueño esté en la sala. |
 | Resultados publicados antes de validación | Estado de resultados retenidos y acción explícita de publicación por el moderador. |
 
 ## 16. Fases futuras

@@ -9,10 +9,10 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 | Método y ruta | Audiencia | Propósito / datos mínimos |
 |---|---|---|
 | `POST /assemblies/:assemblyCode/join` | Delegado | Entrada `{firstName,lastName}`; crea sesión y devuelve `participantSessionToken` una sola vez y estado de sala. No eco de datos innecesarios. |
-| `GET /participant/me` | Sesión participante | Estado propio, papeleta actual/última y participación propia; resultados agregados solo si esa ronda ya fue publicada. Nunca lista ajena ni selección. |
+| `GET /participant/me` | Sesión participante | Estado propio, papeleta actual/última y participación propia; resultados agregados solo si esa ronda ya fue publicada. Incluye `connectionGraceMs`, el margen antes de mostrar el aviso de conexión. Nunca lista ajena ni selección. |
 | `POST /participant/rounds/:roundId/vote` | Sesión participante | `{optionId, confirmation:true}` u `{optionIds}` con exactamente los puestos abiertos en comisiones; `403` si está inhabilitado; respuesta genérica `{accepted:true, participationStatus:"recorded"}`. No devuelve conteos. |
-| `GET /assemblies/:assemblyCode/public-state` | Público/proyector | Estado, QR/URL de sala y datos públicos permitidos por etapa; sin credenciales ni selecciones. Lista de nombres sujeta a decisión pendiente. |
-| `GET /moderator/assemblies/:assemblyId` | Moderador autorizado | Estado administrativo, lista operativa e indicadores agregados permitidos; sin selecciones/conteos por opción antes de publicar. |
+| `GET /assemblies/:assemblyCode/public-state` | Público/proyector | Estado, QR/URL de sala y datos públicos permitidos por etapa; sin credenciales ni selecciones. Lista de nombres sujeta a decisión pendiente. Con una votación abierta incluye `connection: {roundId, connected, base}`. |
+| `GET /moderator/assemblies/:assemblyId` | Moderador autorizado | Estado administrativo, lista operativa e indicadores agregados permitidos; sin selecciones/conteos por opción antes de publicar. Con una votación abierta incluye `connection: {roundId, connected, base}`, sin indicar quién. |
 | `POST /moderator/assemblies` | Moderador autorizado | Crear/abrir Asamblea; devuelve identificador y código aleatorio de ingreso. |
 | `PATCH /moderator/assemblies/:assemblyId/lobby` | Moderador autorizado | Abrir/cerrar lobby; cada transición registra auditoría. Reapertura condicionada a validación. |
 | `PATCH /moderator/participants/:participantId` | Moderador autorizado | Corregir o retirar nombre/sesión según política aprobada; auditar acción mínima. |
@@ -32,11 +32,13 @@ La base de datos y el snapshot HTTP son fuente de verdad. Canal de conexión pú
 
 | Sala/audiencia | Eventos entrantes | Eventos salientes mínimos |
 |---|---|---|
-| `assembly:{id}:public` proyector/público | Ninguno que otorgue rol | `lobby.state`, `assembly.state`, `round.state`, `participation.count`, `results.published`; nombres solo si se valida la lista pública. |
-| `assembly:{id}:moderators` moderadores autorizados | Acciones se hacen por HTTP; no duplicar comandos | `participant.joined`, `participant.updated`, `lobby.state`, `round.state`, `participation.count`, auditoría mínima. Lista de quién participó requiere decisión de acceso. |
+| `assembly:{id}:public` proyector/público | Ninguno que otorgue rol | `lobby.state`, `assembly.state`, `round.state`, `participation.count`, `connection.count`, `results.published`; nombres solo si se valida la lista pública. |
+| `assembly:{id}:moderators` moderadores autorizados | Acciones se hacen por HTTP; no duplicar comandos | `participant.joined`, `participant.updated`, `lobby.state`, `round.state`, `participation.count`, `connection.count`, auditoría mínima. Lista de quién participó requiere decisión de acceso. |
 | `participant:{sessionId}` sesión propia | Ninguno necesario | `participant.state`, `round.opened`, `round.closed`, `results.published` autorizado. Solo estado y papeleta propia; sin actividad individual ajena. |
 
 Los eventos no contienen conjuntamente identidad y selección; no se emite selección individual. Los conteos de participación son agregados, sin totales por opción antes de publicar. Tras reconexión el cliente solicita snapshot HTTP y luego retoma eventos; no confía en eventos perdidos ni marca un voto confirmado sin respuesta del servidor. Reintentos no producen segunda participación.
+
+`connection.count` lleva solo `{roundId, connected, base}` mientras una votación está abierta. `connected` cuenta las personas de la base con al menos un teléfono conectado, y una caída menor al margen de gracia no lo cambia. El latido de Socket.IO detecta una caída silenciosa en pocos segundos.
 
 ## Privacidad del transporte
 
