@@ -26,6 +26,6 @@ None. `openspec/specs/` has no specs yet.
 
 - API: the results engine reports the rule for elections and a reason per option. The public and mesa states carry the base composition.
 - Database: rounds record whether the regional secretary was in the base when the base was frozen.
-- Web: a new explanation helper in `resultados.ts`. `ModeratorPublishedBallot.vue` and `ModeratorVotingBallot.vue` gain the information button. `ProjectorResults.vue` gains the fixed line. Phone views are unchanged.
+- Web: a new explanation helper in `resultados.ts`. `ModeratorPublishedBallot.vue` and `ModeratorResultsRecord.vue` gain the information button. `ProjectorResults.vue` gains the fixed line. Phone views are unchanged.
 - Unchanged: counting rules, the acta, result rows and percentages (#86).
 - Source issues: #57, #58. Related: #54, #59, #76, #86.

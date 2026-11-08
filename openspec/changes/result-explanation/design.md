@@ -43,7 +43,7 @@
 
 ### D4. A toggle in the mesa, a line on the projector
 
-- A small `ResultExplanation.vue` renders a button with `aria-expanded` and the paragraph below it. Both mesa result cards use it.
+- A small `ResultExplanation.vue` renders a button with `aria-expanded` and the paragraph below it. The published result card and each round in the results record use it. The closed-vote card shows no result, so it gets no button.
 - The projector renders the same paragraph as a plain line under the majority line.
 - The phone does not import the helper or the component.
 

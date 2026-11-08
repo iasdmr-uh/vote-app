@@ -19,10 +19,10 @@
 
 ## 4. Screens
 
-- [ ] 4.1 Failing mocked E2E tests: a mesa result opens and closes the paragraph with its information button, for a preliminary and a final result
-- [ ] 4.2 Failing mocked E2E test: the projector shows the paragraph as a fixed line with no button
-- [ ] 4.3 Failing mocked E2E test: the phone shows no rule, paragraph or information button, open or closed
-- [ ] 4.4 Add `ResultExplanation.vue` to both mesa result cards and the fixed line to `ProjectorResults.vue`
+- [x] 4.1 Failing mocked E2E tests: a mesa result opens and closes the paragraph with its information button, for a preliminary and a final result, and in the results record
+- [x] 4.2 Failing mocked E2E test: the projector shows the paragraph as a fixed line with no button
+- [x] 4.3 Failing mocked E2E test: the phone shows no rule, paragraph or information button, open or closed
+- [x] 4.4 Add `ResultExplanation.vue` to the published result card and the results record, and the fixed line to `ProjectorResults.vue`
 
 ## 5. Verification
 
