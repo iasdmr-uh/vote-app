@@ -134,7 +134,8 @@ model Round {
   options        BallotOption[]
   participations Participation[]
   votes          AnonymousVote[]
-  officialResult OfficialResult?
+  officialResult OfficialResult? @relation("ElectionResult")
+  settledResult  OfficialResult? @relation("SettlingRound")
   auditEvents    AuditEvent[]
   committeeRoot Round? @relation("committee_rounds", fields: [committeeRootRoundId], references: [id], onDelete: Cascade)
   committeeRounds Round[] @relation("committee_rounds")
@@ -167,8 +168,12 @@ model OfficialResult {
   note        String?
   actorRef    String                 @map("actor_ref")
   declaredAt  DateTime               @default(now()) @map("declared_at")
-  publishedAt DateTime?              @map("published_at")
-  round       Round                  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  publishedAt    DateTime?              @map("published_at")
+  settledRoundId String?                @unique @map("settled_round_id") @db.Uuid
+  approved       Boolean?
+  registeredAt   DateTime?              @map("registered_at")
+  round          Round                  @relation("ElectionResult", fields: [roundId], references: [id], onDelete: Cascade)
+  settledRound   Round?                 @relation("SettlingRound", fields: [settledRoundId], references: [id], onDelete: SetNull)
   options     OfficialResultOption[]
 
   @@map("official_results")

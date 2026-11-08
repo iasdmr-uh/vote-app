@@ -116,3 +116,44 @@ test('the service offers no action to publish a result', { skip }, async () => {
     assert.equal('publishRound' in service, false)
   })
 })
+
+test('the vote that settles an election is recorded, and a vote that leaves seats open is not', { skip }, async () => {
+  await withAssembly(4, async ({ prisma, service, assemblyId, voters }) => {
+    const first = await service.createRound(assemblyId, { title: 'Comisión de Finanzas', category: 'committee', memberCount: 3, format: 'multiple_choice', options: ['Isaías', 'Jeremías', 'Ezequiel', 'Daniel', 'Oseas'].map((label) => ({ label })) })
+    const id = (round: { options: Array<{ id: string; label: string }> }, label: string) => round.options.find((option) => option.label === label)!.id
+    await service.openRound(first.id)
+    const ballots = [['Isaías', 'Jeremías', 'Ezequiel'], ['Isaías', 'Daniel', 'Oseas'], ['Isaías', 'Jeremías', 'Daniel'], ['Isaías', 'Ezequiel', 'Oseas']]
+    for (const [index, voter] of voters.entries()) await service.castVote(voter, first.id, ballots[index]!.map((label) => id(first, label)))
+    await service.closeRound(first.id)
+
+    const afterFirst = await prisma.officialResult.findUniqueOrThrow({ where: { roundId: first.id } })
+    assert.equal(afterFirst.settledRoundId, null, 'seats remain open')
+    const runoff = (await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.runoffSourceRoundId === first.id)!
+    const runoffRound = { options: runoff.options.map((option) => ({ id: option.id, label: option.label })) }
+    await service.openRound(runoff.id)
+    for (const voter of voters) await service.castVote(voter, runoff.id, [id(runoffRound, 'Jeremías'), id(runoffRound, 'Ezequiel')])
+    await service.closeRound(runoff.id)
+
+    const settled = await prisma.officialResult.findUniqueOrThrow({ where: { roundId: first.id } })
+    assert.equal(settled.settledRoundId, runoff.id)
+    assert.equal(settled.approved, null, 'an election has no approval')
+
+    await service.annulRound(runoff.id, 'Se contó con un error')
+    assert.equal((await prisma.officialResult.findUniqueOrThrow({ where: { roundId: first.id } })).settledRoundId, null, 'annulling the settling vote unsettles the election')
+  })
+})
+
+test('a yes or no decision records whether it was approved', { skip }, async () => {
+  await withAssembly(3, async ({ prisma, service, assemblyId, voters }) => {
+    const statute = await service.createRound(assemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })
+    const [, contra] = statute.options
+    await service.openRound(statute.id)
+    for (const voter of voters) await service.castVote(voter, statute.id, contra!.id)
+    await service.closeRound(statute.id)
+
+    const row = await prisma.officialResult.findUniqueOrThrow({ where: { roundId: statute.id } })
+    assert.equal(row.settledRoundId, statute.id)
+    assert.equal(row.approved, false)
+    assert.equal(row.registeredAt, null)
+  })
+})

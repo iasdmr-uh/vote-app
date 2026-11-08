@@ -8,10 +8,10 @@
 
 ## 2. Final result and who goes on
 
-- [ ] 2.1 Migration: `settled_round_id`, `approved` and `registered_at` on `official_results`
-- [ ] 2.2 Failing tests: a settling vote records `settled_round_id`, a decision records `approved`, and an A favor / En contra decision gets a row
+- [x] 2.1 Migration: `settled_round_id`, `approved` and `registered_at` on `official_results`
+- [x] 2.2 Failing tests: a settling vote records `settled_round_id`, a decision records `approved`, and an A favor / En contra decision gets a row
 - [ ] 2.3 Failing tests: public, participant and mesa state say final and list everyone elected in the election, or list who goes to the next vote
-- [ ] 2.4 Record settlement in `settleElection` and clear it on annulment
+- [x] 2.4 Record settlement in `settleElection` and clear it on annulment
 - [ ] 2.5 Expose final, approved and next-vote candidates in the public, participant and mesa state
 
 ## 3. Official roster

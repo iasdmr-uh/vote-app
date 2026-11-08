@@ -975,6 +975,7 @@ export class VotingService implements OnModuleInit {
       }
       // Whoever this vote elected leaves the official result, and the runoff it prepared is discarded.
       await tx.officialResultOption.deleteMany({ where: { officialResult: { roundId: rootId }, option: { roundId } } })
+      await tx.officialResult.updateMany({ where: { roundId: rootId, settledRoundId: roundId }, data: { settledRoundId: null, approved: null } })
       await tx.officialResult.deleteMany({ where: { roundId: rootId, options: { none: {} } } })
       if (pendingRunoffs.length) {
         await keepRoundTitlesInLog(tx, pendingRunoffs.map((item) => item.id))
@@ -1178,13 +1179,15 @@ export class VotingService implements OnModuleInit {
     const rootId = round.committeeRootRoundId ?? round.id
     const labelOf = new Map(round.options.map((option) => [option.id, option.label]))
     const now = new Date()
-    if (outcome.elected.length) {
+    const settles = outcome.openSeats === 0
+    if (outcome.elected.length || settles) {
       const seatsTaken = await tx.officialResultOption.count({ where: { officialResult: { roundId: rootId } } })
       const seats = outcome.elected.map((optionId, index) => ({ optionId, seatOrder: seatsTaken + index }))
+      const settlement = settles ? { settledRoundId: roundId, approved: 'approved' in outcome ? outcome.approved : null } : {}
       await tx.officialResult.upsert({
         where: { roundId: rootId },
-        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: seats } },
-        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: seats } },
+        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, ...settlement, options: { create: seats } },
+        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, ...settlement, options: { create: seats } },
       })
     }
     const rootTitle = round.committeeRootRoundId ? (await tx.round.findUniqueOrThrow({ where: { id: rootId }, select: { title: true } })).title : round.title
