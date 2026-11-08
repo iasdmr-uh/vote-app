@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RESULT_WORDING, connectedText, majorityText, voteLabel } from '../resultados'
+import { REGIONAL_SECRETARY_NOTE, RESULT_WORDING, connectedText, majorityText, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
@@ -15,7 +15,7 @@ const { showNextBallotForm, rootRoundOf, eligibleOf, annulRound, moderatorAction
 
 <template>
               <template v-if="round.status === 'open'">
-                <div class="eyebrow-row"><p class="status-label status-label-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span></div>
+                <div class="eyebrow-row"><p class="status-label status-label-open"><span class="status-dot" aria-hidden="true"></span>VOTACIÓN ABIERTA</p><span v-if="voteLabel(currentRoundRecord)" class="badge badge-info">{{ voteLabel(currentRoundRecord) }}</span><span v-if="round.regionalSecretaryVotes" class="badge badge-info">{{ REGIONAL_SECRETARY_NOTE }}</span></div>
                 <h2 class="ballot-title">{{ (currentRoundRecord && rootRoundOf(currentRoundRecord)?.title) || round.title }}</h2>
                 <p class="vote-progress"><strong>{{ state?.recordedCount ?? 0 }}</strong><span>de {{ eligibleVotes }} ya {{ (state?.recordedCount ?? 0) === 1 ? 'votó' : 'votaron' }}</span></p>
                 <span class="vote-progress-bar" aria-hidden="true"><span :style="{ width: `${eligibleVotes ? Math.min(100, Math.round(((state?.recordedCount ?? 0) / eligibleVotes) * 100)) : 0}%` }"></span></span>
