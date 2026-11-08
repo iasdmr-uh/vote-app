@@ -24,4 +24,4 @@
 
 ## 5. Verify
 
-- [ ] 5.1 `npm run db:generate --workspace @asdmr/api`, `npm run typecheck`, API tests with `TEST_DATABASE_URL`, `npm run test:e2e`, `npm run test:e2e:integration`
+- [x] 5.1 `npm run db:generate --workspace @asdmr/api`, `npm run typecheck`, API tests with `TEST_DATABASE_URL`, `npm run test:e2e`, `npm run test:e2e:integration`
