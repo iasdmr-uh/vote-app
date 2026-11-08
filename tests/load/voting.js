@@ -145,14 +145,14 @@ export function setup() {
     options: [{ label: 'Opción sintética' }],
     countingRule: { kind: 'count_only' },
   }, [200, 201])
-  controlRequest('POST', `/moderator/rounds/${encodeURIComponent(round.id)}/open`, undefined, [200])
+  controlRequest('POST', `/moderator/rounds/${encodeURIComponent(round.id)}/open`, undefined, [200, 201])
 
   const optionId = round.options?.[0]?.id
   if (!optionId) throw new Error('Staging setup failed: created round has no option ID.')
 
   if (MODE === 'closed-vote') {
     batchVotes(participants, round.id, optionId)
-    controlRequest('POST', `/moderator/rounds/${encodeURIComponent(round.id)}/close`, undefined, [200])
+    controlRequest('POST', `/moderator/rounds/${encodeURIComponent(round.id)}/close`, undefined, [200, 201])
   }
 
   return { participants, roundId: round.id, optionId }
