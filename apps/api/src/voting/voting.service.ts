@@ -450,7 +450,6 @@ export class VotingService implements OnModuleInit {
     return { assembly, completed: completed.map((item) => ({ ...item, completedAt: item.completedAt?.toISOString() ?? null })) }
   }
 
-  /** The join code is stored only as a hash, so a lost QR can be replaced but never shown again. */
   /**
    * After the assembly the acta is the record, not the database (Secretaría, Oct 2026). Only a completed
    * assembly can be erased: names, receipts, votes and the audit trail go with it, and VACUUM FULL
