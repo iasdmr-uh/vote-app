@@ -51,13 +51,13 @@ export class PublicAssemblyController {
   constructor(private readonly voting: VotingService, private readonly connections: ConnectionCountService) {}
 
   @Post('resume')
-  resume(@Body() input: ResumeSessionDto) {
-    return this.voting.redeemResumeCode(input.resumeCode)
+  async resume(@Body() input: ResumeSessionDto) {
+    return { ...await this.voting.redeemResumeCode(input.resumeCode), connectionGraceMs: CONNECTION_GRACE_MS }
   }
 
   @Post(':assemblyCode/join')
-  join(@Param('assemblyCode') assemblyCode: string, @Body() input: JoinAssemblyDto) {
-    return this.voting.joinAssembly(assemblyCode, input.firstName, input.lastName)
+  async join(@Param('assemblyCode') assemblyCode: string, @Body() input: JoinAssemblyDto) {
+    return { ...await this.voting.joinAssembly(assemblyCode, input.firstName, input.lastName), connectionGraceMs: CONNECTION_GRACE_MS }
   }
 
   @Get(':assemblyCode/public-state')

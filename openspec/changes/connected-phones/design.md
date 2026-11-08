@@ -47,7 +47,7 @@ The public-state and moderator state responses gain `connection: { roundId, conn
 
 ### Phone signal with a 3 s grace
 
-`useAssembly` derives one phone signal from the socket. It turns connected at once and turns down only after the grace of continuous disconnection. The phone reads the grace as `connectionGraceMs` from `GET /participant/me`, because the web image cannot import API code. The phone starts down until its first connection, as the notice does today. During an open vote the phone shows «Conectado» when the signal is connected and the existing notice when it is down. The grace also applies to the phone notice outside a vote, because the flicker problem is the same there. The projector and mesa notices keep their current behavior.
+`useAssembly` derives one phone signal from the socket. It turns connected at once and turns down only after the grace of continuous disconnection. The phone reads the grace as `connectionGraceMs` from `GET /participant/me` and from the join and resume responses, because the web image cannot import API code. The phone starts down until its first connection, as the notice does today. During an open vote the phone shows «Conectado» when the signal is connected and the existing notice when it is down. The grace also applies to the phone notice outside a vote, because the flicker problem is the same there. The projector and mesa notices keep their current behavior.
 
 The socket retries after 0.5 s, then at most every 1 s, and gives up on an attempt that gets no answer within 1 s. Default Socket.IO retries back off to 5 s and wait 20 s for an answer, so a short drop would outlast the grace. With the shorter cadence the phone reconnects at most about 2 s after the network returns.
 

@@ -46,3 +46,15 @@ test('a phone learns the grace period from its own state', async () => {
   const state = await new ParticipantController(voting).me({ [PARTICIPANT_ID]: 'p1' } as never) as Record<string, unknown>
   assert.equal(state.connectionGraceMs, CONNECTION_GRACE_MS)
 })
+
+test('a phone that joins learns the grace period at once', async () => {
+  const joining = { ...voting, async joinAssembly() { return { participantSessionToken: 't' } } } as unknown as VotingService
+  const joined = await new PublicAssemblyController(joining, counts(null)).join('code', { firstName: 'Delegado', lastName: '1' } as never) as Record<string, unknown>
+  assert.equal(joined.connectionGraceMs, CONNECTION_GRACE_MS)
+})
+
+test('a phone that resumes its session learns the grace period at once', async () => {
+  const resuming = { ...voting, async redeemResumeCode() { return { participantSessionToken: 't' } } } as unknown as VotingService
+  const resumed = await new PublicAssemblyController(resuming, counts(null)).resume({ resumeCode: 'r' } as never) as Record<string, unknown>
+  assert.equal(resumed.connectionGraceMs, CONNECTION_GRACE_MS)
+})

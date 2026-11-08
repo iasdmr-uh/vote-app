@@ -8,7 +8,7 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 
 | Método y ruta | Audiencia | Propósito / datos mínimos |
 |---|---|---|
-| `POST /assemblies/:assemblyCode/join` | Delegado | Entrada `{firstName,lastName}`; crea sesión y devuelve `participantSessionToken` una sola vez y estado de sala. No eco de datos innecesarios. |
+| `POST /assemblies/:assemblyCode/join` | Delegado | Entrada `{firstName,lastName}`; crea sesión y devuelve `participantSessionToken` una sola vez, estado de sala y `connectionGraceMs`. No eco de datos innecesarios. |
 | `GET /participant/me` | Sesión participante | Estado propio, papeleta actual/última y participación propia; resultados agregados solo si esa ronda ya fue publicada. Incluye `connectionGraceMs`, el margen antes de mostrar el aviso de conexión. Nunca lista ajena ni selección. |
 | `POST /participant/rounds/:roundId/vote` | Sesión participante | `{optionId, confirmation:true}` u `{optionIds}` con exactamente los puestos abiertos en comisiones; `403` si está inhabilitado; respuesta genérica `{accepted:true, participationStatus:"recorded"}`. No devuelve conteos. |
 | `GET /assemblies/:assemblyCode/public-state` | Público/proyector | Estado, QR/URL de sala y datos públicos permitidos por etapa; sin credenciales ni selecciones. Lista de nombres sujeta a decisión pendiente. Con una votación abierta incluye `connection: {roundId, connected, base}`. |
