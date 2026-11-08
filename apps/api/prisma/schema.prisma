@@ -232,6 +232,7 @@ model AuditEvent {
   action     String
   occurredAt DateTime @default(now()) @map("occurred_at")
   metadata   Json?
+  sequence   BigInt   @default(autoincrement())
   assembly   Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   round      Round?   @relation(fields: [roundId], references: [id], onDelete: SetNull)
 
