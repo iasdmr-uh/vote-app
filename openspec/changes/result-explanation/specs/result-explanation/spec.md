@@ -48,9 +48,9 @@ Source: #57, `docs/scope.md` rule 17.
 - **WHEN** a vote opens with 28 delegates in the room and the regional secretary voting
 - **THEN** its result reports a base of 29, made of 28 delegates and the secretaría regional
 
-#### Scenario: Secretary leaves after the vote opens
+#### Scenario: Secretary leaves after the vote
 
-- **WHEN** the regional secretary is in a vote's base and leaves before it closes
+- **WHEN** the regional secretary is in a vote's base and is taken out of the room after it closes
 - **THEN** its result still reports the base as 28 delegates plus the secretaría regional
 
 #### Scenario: Secretary does not vote
