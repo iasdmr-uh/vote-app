@@ -41,6 +41,8 @@ export type ElectionOutcome = {
   openSeats: number
 }
 
+export type OptionReason = 'elected' | 'tied_at_cut' | 'no_majority' | 'added_for_choice' | 'out'
+
 /**
  * Elected: within the top `seats` places AND with a majority of the base. When more candidates have a
  * majority than seats, the most voted win; a tie at the cut goes to a runoff among only the tied ones.
@@ -48,8 +50,6 @@ export type ElectionOutcome = {
  * more candidates than open seats, the next ranked candidate (and anyone tied with it) also goes.
  * Ties keep the ballot order of `tallies`.
  */
-export type OptionReason = 'elected' | 'tied_at_cut' | 'no_majority' | 'added_for_choice' | 'out'
-
 function classifyElection(tallies: Tally[], seats: number, base: number, rule: ThresholdRule) {
   const wanted = Math.max(1, Math.trunc(seats))
   const threshold = thresholdVotes(base, rule)
