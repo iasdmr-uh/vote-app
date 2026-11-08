@@ -8,7 +8,7 @@ const {
 } = useAssembly()
 const { attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
 const secretaryOut = computed(() => state.value?.regionalSecretary?.status === 'left')
-const voteOpen = computed(() => round.value?.status === 'open')
+const voteOpen = computed(() => Boolean(state.value?.rounds?.some((item) => item.status === 'open')))
 
 function closePersonMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
@@ -19,7 +19,7 @@ function closePersonMenu(event: Event) {
   <aside class="card mesa-participants" aria-labelledby="mesa-participants-title">
     <div class="section-heading"><h2 id="mesa-participants-title">Participantes</h2><span class="count-pill">{{ state?.participants?.length ?? 0 }}</span></div>
     <p v-if="roomLine" class="room-line" :class="{ 'quorum-warning': roomWarning }">{{ roomLine }}<strong v-if="roomWarning"> · {{ roomWarning }}</strong></p>
-    <p v-if="attendance" class="attendance-summary"><span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span>{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span><span v-if="attendance.disabled">{{ attendance.disabled }} {{ attendance.disabled === 1 ? 'inhabilitado' : 'inhabilitados' }}</span></p>
+    <p v-if="attendance" class="attendance-summary"><span>{{ attendance.votedCount }} {{ attendance.votedCount === 1 ? 'votó' : 'votaron' }}</span><span v-if="attendance.pending !== null">{{ attendance.pending }} {{ attendance.pending === 1 ? 'falta' : 'faltan' }}</span><span v-if="attendance.disabled">{{ attendance.disabled }} {{ attendance.disabled === 1 ? 'inhabilitado' : 'inhabilitados' }}</span></p>
     <ul class="mesa-person-list">
       <li v-for="(person, index) in state?.participants || []" :key="person.id || `${person.firstName}-${person.lastName}-${index}`" :class="{ 'person-disabled': person.votingDisabled }">
         <span class="person-name">{{ person.firstName }} {{ person.lastName }}<span v-if="person.votingDisabled" class="badge badge-disabled">Inhabilitado</span></span>

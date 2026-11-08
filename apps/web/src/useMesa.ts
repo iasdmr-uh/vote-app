@@ -51,7 +51,7 @@ const attendance = computed(() => {
   if (!record) return null
   const participants = state.value?.participants || []
   const disabled = participants.filter((person) => person.votingDisabled).length
-  const pending = Math.max(0, (record.eligibleCount ?? participants.length) - record.votedCount - disabled)
+  const pending = record.status === 'open' ? Math.max(0, (record.eligibleCount ?? participants.length) - record.votedCount - disabled) : null
   return { ...record, pending, disabled }
 })
 const roomWarning = computed(() => {
