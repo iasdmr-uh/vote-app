@@ -7,7 +7,7 @@ function person(mesa: Page, name: string) {
   return mesa.locator('.mesa-person-list li').filter({ hasText: name })
 }
 
-test('H · la mesa retira a alguien de la sala, lo regresa y lo reconecta con el QR', async ({ browser, request }) => {
+test('H · la mesa retira a alguien de la sala entre votaciones, lo regresa y lo reconecta con el QR', async ({ browser, request }) => {
   const room = await openRoom(browser, request, 'Asamblea H · retirar y regresar', ['María López', 'Carlos Gómez', 'Rosa Díaz'])
   const { mesa, phones, assemblyId } = room
   const [maria, , rosa] = phones
@@ -19,14 +19,17 @@ test('H · la mesa retira a alguien de la sala, lo regresa y lo reconecta con el
   await expect(rosa.page.getByRole('button', { name: 'Salir' })).toHaveCount(0)
 
   await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
+  await expect(person(mesa, 'Rosa Díaz').getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
+  await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
+
+  await confirm(mesa, 'Cerrar votación')
+  await expect(mesa.locator('.ballot-card')).toContainText('VOTACIÓN CERRADA')
+  await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
   await person(mesa, 'Rosa Díaz').getByRole('button', { name: 'Retirar de la sala' }).click()
   await mesa.getByRole('dialog').getByRole('button', { name: 'Retirar de la sala', exact: true }).click()
   await expect(mesa.locator('.out-of-room')).toContainText('Rosa Díaz')
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('2')
   expect((await moderatorState(request, assemblyId)).rounds[0].eligibleCount).toBe(3)
-
-  await confirm(mesa, 'Cerrar votación')
-  await expect(mesa.locator('.ballot-card')).toContainText('VOTACIÓN CERRADA')
   await mesa.locator('.out-of-room').getByRole('button', { name: 'Regresar a la sala' }).click()
   await expect(mesa.locator('.out-of-room')).toHaveCount(0)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('3')
