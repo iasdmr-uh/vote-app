@@ -1,6 +1,8 @@
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many)
 const votes = (count: number) => `${count} ${plural(count, 'voto', 'votos')}`
 
+const codeMismatchPrefix = 'El código no corresponde'
+
 export const es = {
   common: {
     dateLocale: 'es-HN',
@@ -11,7 +13,10 @@ export const es = {
     openProjector: 'Abrir proyector',
     connectionLost: 'Conexión interrumpida · Intentando reconectar. Los datos mostrados son los últimos confirmados.',
     problemPrefix: 'Ocurrió un problema.',
-    codeMismatchPrefix: 'El código no corresponde',
+    codeMismatchPrefix,
+    assemblyEnded: 'Asamblea finalizada',
+    voteAnnulled: 'Votación anulada',
+    roomCode: 'Código de sala',
     updating: 'Actualizando estado…',
     requestFailed: 'No se pudo completar la solicitud. Intenta de nuevo.',
     votes,
@@ -19,6 +24,34 @@ export const es = {
     list: (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0] || ''),
   },
   phone: {
+    connected: 'Conectado',
+    otherAssemblyQr: 'Este QR corresponde a otra Asamblea.',
+    switchAssembly: 'Cerrar sesión y cambiar a la Asamblea del QR',
+    voteOpen: 'VOTACIÓN ABIERTA',
+    voteDisabled: 'Voto inhabilitado',
+    voteRecorded: 'Tu voto quedó registrado',
+    waitingRoom: 'Sala de espera',
+    voteInProgress: 'Votación en curso',
+    waitForNextBallot: 'Espera la siguiente papeleta',
+    selectedOfSeats: (selected: number, seats: number) => `${selected} de ${seats}`,
+    reviewVote: 'Revisar mi voto',
+    codeNotFound: `${codeMismatchPrefix} a una sala abierta.`,
+    welcome: 'Bienvenido',
+    firstName: 'Nombre',
+    lastName: 'Apellido',
+    firstNamePlaceholder: 'Tu nombre',
+    lastNamePlaceholder: 'Tu apellido',
+    joining: 'Entrando…',
+    joinRoom: 'Entrar a la sala',
+    resultsEyebrow: 'RESULTADOS',
+    votersTotal: (voters: number, base: number) => `${voters} de ${base}`,
+    voted: 'votaron',
+    resultEyebrow: 'RESULTADO',
+    officialResultEyebrow: 'RESULTADO OFICIAL',
+    confirmVote: 'Confirma tu voto',
+    back: 'Volver',
+    sending: 'Enviando…',
+    submitVote: 'Confirmar voto',
     sessionEnded: 'La sesión de delegado ya no está activa. Vuelve a ingresar mientras el ingreso a la asamblea esté abierto.',
     reconnected: 'Tu sesión se reconectó en este dispositivo.',
     resumeCodeInvalid: 'El código de reconexión no es válido o ya venció. Pide uno nuevo a la mesa.',

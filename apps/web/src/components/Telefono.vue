@@ -86,26 +86,26 @@ async function submitVote() {
 <template>
   <PhoneJoinForm v-if="!sessionToken" />
   <section v-else class="card participant-card phone-screen">
-    <p v-if="showConnected" class="phone-connected" role="status"><span class="status-dot" aria-hidden="true"></span>Conectado</p>
+    <p v-if="showConnected" class="phone-connected" role="status"><span class="status-dot" aria-hidden="true"></span>{{ es.phone.connected }}</p>
     <div v-if="pendingJoinCode" class="notice error" role="alert">
-      Este QR corresponde a otra Asamblea.
-      <button class="secondary" @click="switchToIncomingAssembly">Cerrar sesión y cambiar a la Asamblea del QR</button>
+      {{ es.phone.otherAssemblyQr }}
+      <button class="secondary" @click="switchToIncomingAssembly">{{ es.phone.switchAssembly }}</button>
     </div>
     <PhoneVoteReview v-if="ballotShown && round && reviewingVote" :round="round" :reviewed-options="reviewedOptions" @confirm="submitVote" />
     <template v-else-if="votingDisabled && round">
-      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : 'VOTACIÓN ABIERTA' }}</p>
-      <h1>Voto inhabilitado</h1>
+      <p class="phone-status phone-status-disabled"><span class="status-dot" aria-hidden="true"></span>{{ round.title }} · {{ round.runoff ? voteLabel(round) : es.phone.voteOpen }}</p>
+      <h1>{{ es.phone.voteDisabled }}</h1>
     </template>
     <PhoneBallot v-else-if="ballotShown && round" :round="round" :seats-to-fill="seatsToFill" :selection-complete="selectionComplete" @review="reviewVote" />
     <template v-else>
-      <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>Tu voto quedó registrado</p>
-      <h1 v-if="assemblyStatus === 'completed'">Asamblea finalizada</h1>
+      <p v-if="voteRecorded && assemblyStatus !== 'completed'" class="phone-recorded" role="status"><span aria-hidden="true">✓</span>{{ es.phone.voteRecorded }}</p>
+      <h1 v-if="assemblyStatus === 'completed'">{{ es.common.assemblyEnded }}</h1>
       <ResultSummary v-if="round?.status === 'published'" :final="state?.final" :continuing="state?.continuing" :so-far="electedSoFar(round, state?.officialResult?.elected, state?.final)" />
       <PhoneResults v-if="resultRows.length || officialResult || verdict" :round="round" :rows="resultRows" :verdict="verdict" :base="resultBase" :voters="resultVoters" :official-result="officialResult" :outcome="state?.outcome" />
-      <h1 v-else-if="round?.status === 'annulled' && assemblyStatus !== 'completed'">Votación anulada</h1>
+      <h1 v-else-if="round?.status === 'annulled' && assemblyStatus !== 'completed'">{{ es.common.voteAnnulled }}</h1>
       <h1 v-else-if="round?.status === 'closed' && assemblyStatus !== 'completed'">{{ es.results.preparing }}</h1>
-      <h1 v-else-if="assemblyStatus !== 'completed' && !voteRecorded">Sala de espera</h1>
-      <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? 'Votación en curso' : 'Espera la siguiente papeleta' }}</p>
+      <h1 v-else-if="assemblyStatus !== 'completed' && !voteRecorded">{{ es.phone.waitingRoom }}</h1>
+      <p v-if="assemblyStatus !== 'completed'" class="phone-waiting phone-action" role="status"><span class="status-dot" aria-hidden="true"></span>{{ round?.status === 'open' ? es.phone.voteInProgress : es.phone.waitForNextBallot }}</p>
     </template>
   </section>
 </template>

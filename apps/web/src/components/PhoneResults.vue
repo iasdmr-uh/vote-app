@@ -17,12 +17,12 @@ defineProps<{
 <template>
   <section class="phone-results" aria-labelledby="phone-results-title">
     <div class="phone-results-heading">
-      <div><p class="eyebrow">RESULTADOS</p><h2 id="phone-results-title">{{ round?.title }}</h2></div>
-      <p v-if="base" class="voters-total"><strong>{{ voters }} de {{ base }}</strong><span>votaron</span></p>
+      <div><p class="eyebrow">{{ es.phone.resultsEyebrow }}</p><h2 id="phone-results-title">{{ round?.title }}</h2></div>
+      <p v-if="base" class="voters-total"><strong>{{ es.phone.votersTotal(voters, base) }}</strong><span>{{ es.phone.voted }}</span></p>
     </div>
     <p v-if="round?.regionalSecretaryVotes" class="status-line">{{ es.results.regionalSecretaryNote }}</p>
-    <div v-if="verdict" class="official-card"><p class="eyebrow">RESULTADO</p><strong>{{ verdict }}</strong></div>
-    <div v-else-if="officialResult" class="official-card"><p class="eyebrow">RESULTADO OFICIAL</p><strong>{{ officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="officialResult.note">{{ officialResult.note }}</p></div>
+    <div v-if="verdict" class="official-card"><p class="eyebrow">{{ es.phone.resultEyebrow }}</p><strong>{{ verdict }}</strong></div>
+    <div v-else-if="officialResult" class="official-card"><p class="eyebrow">{{ es.phone.officialResultEyebrow }}</p><strong>{{ officialResult.elected.map((person) => person.label).join(' · ') }}</strong><p v-if="officialResult.note">{{ officialResult.note }}</p></div>
     <ResultsList v-if="rows.length" :rows="rows" :outcome="outcome" :target="round" />
   </section>
 </template>
