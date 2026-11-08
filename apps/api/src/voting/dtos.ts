@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer'
+import { LOG_PURPOSES, type LogPurpose } from './operator-log.js'
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
@@ -54,6 +55,11 @@ export class LobbyPatchDto {
 export class ResumeSessionDto {
   @IsString() @MinLength(20) @MaxLength(100)
   resumeCode!: string
+}
+
+export class LogDownloadDto {
+  @IsIn(LOG_PURPOSES)
+  purpose!: LogPurpose
 }
 
 export class CompleteAssemblyDto {

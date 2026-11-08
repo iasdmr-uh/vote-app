@@ -6,12 +6,13 @@ import { RealtimeAuthService } from '../src/auth/auth.service.js'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
+import { OperatorLogService } from '../src/voting/operator-log.service.js'
 import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
 
-type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[]; auth: RealtimeAuthService; replaced: string[] }
+type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[]; auth: RealtimeAuthService; replaced: string[]; log: OperatorLogService }
 type Ballot = Array<{ id: string; label: string }>
 type Vote = { id: string; options: Ballot }
 
@@ -40,7 +41,7 @@ async function withAssembly(name: string, count: number, body: (context: Context
       people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
     }
     await service.changeLobby(assemblyId, 'lobby_closed')
-    await body({ service, assemblyId, joinCode, people, auth, replaced })
+    await body({ service, assemblyId, joinCode, people, auth, replaced, log: new OperatorLogService(prisma) })
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
@@ -116,6 +117,26 @@ test('the regional secretary breaks a tie in the 4th vote as one more secret vot
     assert.equal(screen.round?.regionalSecretaryVotes, true)
     assert.deepEqual(screen.officialResult?.elected.map((person) => person.label), ['Ana'])
     assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 11)
+  })
+})
+
+test('the log names the regional secretary added to a vote', { skip }, async () => {
+  await withAssembly('secretary-in-log', 4, async ({ service, assemblyId, people, log }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const { csv } = await log.download(assemblyId, 'review')
+    assert.match(csv, /"Marta Regional agregado como secretario regional: /)
+  })
+})
+
+test('the log keeps the vote title of a regional secretary entry after its runoff is discarded', { skip }, async () => {
+  await withAssembly('secretary-runoff-discarded', 4, async ({ service, assemblyId, people, log }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const third = (await service.moderatorAssembly(assemblyId)).rounds.filter((round) => round.status !== 'draft').at(-1)!
+    await service.annulRound(third.id, 'Error de conteo')
+    const { csv } = await log.download(assemblyId, 'review')
+    assert.match(csv, /"Marta Regional agregado como secretario regional: Presidencia"/)
   })
 })
 

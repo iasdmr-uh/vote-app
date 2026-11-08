@@ -751,6 +751,10 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
       await route.fulfill({ json: { assemblyId: 'synthetic-assembly', deleted: true, vacuumed: true } })
       return
     }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/log')) {
+      await route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: '﻿"Hora","Tipo","Acción"\r\n' })
+      return
+    }
     if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
     if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null } }); return }
     await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
