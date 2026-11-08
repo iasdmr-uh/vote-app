@@ -37,7 +37,7 @@ Requires Node `^22.22.3 || ^24.15.0`. CI uses 24.15.0. Local setup is in `docs/d
 ## Tests
 
 - `docs/testing.md` defines the test levels and conventions.
-- `npm run test:integration` fails unless `TEST_DATABASE_URL` is set. Point it at a disposable database with migrations applied, because these tests run `VACUUM FULL` and delete data.
+- Integration tests fail unless `TEST_DATABASE_URL` is set. Point it at a disposable database with migrations applied, because these tests run `VACUUM FULL` and delete data.
 - `npm run test:e2e` intercepts API responses, so it does not exercise the API or database.
 - `npm run test:e2e:real-stack` starts its own isolated PostgreSQL through Docker or local tools. CI does not run it.
 - Service tests construct `VotingService` directly and stub `RealtimeGateway` with a `Proxy`.

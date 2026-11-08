@@ -1,41 +1,22 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
-import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
+import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
-
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
 
 /** A closed-lobby assembly with `count` delegates, torn down after `body`. */
 async function withAssembly(name: string, count: number, body: (ctx: { service: VotingService; prisma: PrismaService; assemblyId: string; people: string[] }) => Promise<void>) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  const organizationId = randomUUID()
-  let assemblyId: string | undefined
+  const prisma = await connectDatabase()
+  const service = new VotingService(prisma, gatewayStub().gateway)
+  const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
+  const { assemblyId, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
   try {
-    const organization = await prisma.organization.create({ data: { id: organizationId, name: `${name}-${organizationId}`, type: 'union' } })
-    const joinCode = newOpaqueCredential()
-    assemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-    const people: string[] = []
-    for (let index = 0; index < count; index += 1) {
-      const joined = await service.joinAssembly(joinCode, `Delegado ${index + 1}`, 'Prueba')
-      people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
-    }
-    await service.changeLobby(assemblyId, 'lobby_closed')
-    await body({ service, prisma, assemblyId, people })
+    await body({ service, prisma, assemblyId, people: names.map((person) => people[person]!.id) })
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    }
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await cleanup()
     await prisma.$disconnect()
   }
 }
@@ -44,9 +25,7 @@ type Ballot = Array<{ id: string; label: string }>
 const idsOf = (ballot: Ballot, labels: string[]) => labels.map((label) => ballot.find((option) => option.label === label)!.id)
 const labelsOf = (ballot: Ballot, ids: string[]) => ids.map((id) => ballot.find((option) => option.id === id)!.label)
 
-test('committee of 2, base 10: A 8, B 6, C 6 elects A and drafts a runoff between B and C for 1 seat', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
+test('committee of 2, base 10: A 8, B 6, C 6 elects A and drafts a runoff between B and C for 1 seat', async () => {
   await withAssembly('tie-at-cut', 10, async ({ service, assemblyId, people }) => {
     const first = await service.createRound(assemblyId, {
       title: 'Comisión de Finanzas', category: 'committee', memberCount: 2, format: 'multiple_choice',
@@ -88,9 +67,7 @@ test('committee of 2, base 10: A 8, B 6, C 6 elects A and drafts a runoff betwee
   })
 })
 
-test('nobody left to add: a committee of 2 with 2 candidates repeats the same runoff; from the 3rd vote the mesa may add a candidate, or annul', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
+test('nobody left to add: a committee of 2 with 2 candidates repeats the same runoff; from the 3rd vote the mesa may add a candidate, or annul', async () => {
   await withAssembly('nobody-to-add', 5, async ({ service, prisma, assemblyId, people }) => {
     const first = await service.createRound(assemblyId, {
       title: 'Comisión de Música', category: 'committee', memberCount: 2, format: 'multiple_choice',

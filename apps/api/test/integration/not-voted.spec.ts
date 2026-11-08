@@ -1,35 +1,19 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('the published count gives "no votaron" as the majority base minus votes cast, inhabilitados included', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  const organizationId = randomUUID()
-  let assemblyId: string | undefined
+test('the published count gives "no votaron" as the majority base minus votes cast, inhabilitados included', async () => {
+  const prisma = await connectDatabase()
+  const service = new VotingService(prisma, gatewayStub().gateway)
+  const delegates = ['Ana', 'Luis', 'Marta', 'Pedro', 'Rosa']
+  const seeded = await seedAssembly(prisma, service, { label: 'not-voted-test', delegates })
+  const { assemblyId, joinCode } = seeded
+  const people = Object.fromEntries(delegates.map((name) => [name, seeded.people[name]!.id]))
 
   try {
-    const organization = await prisma.organization.create({ data: { id: organizationId, name: `not-voted-test-${organizationId}`, type: 'union' } })
-    const joinCode = newOpaqueCredential()
-    assemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Not voted test', status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-    const people: Record<string, string> = {}
-    for (const name of ['Ana', 'Luis', 'Marta', 'Pedro', 'Rosa']) {
-      const joined = await service.joinAssembly(joinCode, name, 'Delegado')
-      people[name] = (await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id
-    }
-    await service.changeLobby(assemblyId, 'lobby_closed')
     const round = await service.createRound(assemblyId, {
       title: 'Presidencia', format: 'single_choice', countingRule: { kind: 'count_only' },
       options: [{ label: 'Opción A' }, { label: 'Opción B' }],
@@ -63,11 +47,7 @@ test('the published count gives "no votaron" as the majority base minus votes ca
     await service.takeOutOfRoom(people.Pedro!)
     assert.equal((await service.publicState(joinCode)).eligibleCount, 5)
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    }
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await seeded.cleanup()
     await prisma.$disconnect()
   }
 })

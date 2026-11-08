@@ -3,30 +3,18 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { removeOrganization } from '../support/seed.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('database voting flow: unique concurrent cast, close gate, then explicit publish', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
+test('database voting flow: unique concurrent cast, close gate, then explicit publish', async () => {
+  const prisma = await connectDatabase()
   const organizationId = randomUUID()
   const joinCode = newOpaqueCredential()
   const token = newOpaqueCredential()
-  const noOp = () => undefined
-  const realtimeEvents: Array<{ name: string; payload: unknown }> = []
-  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
-    if (name === 'assemblyState') realtimeEvents.push({ name: String(name), payload: args[1] })
-    return noOp()
-  } }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
+  const { gateway, events } = gatewayStub()
+  const service = new VotingService(prisma, gateway)
 
   try {
     const organization = await prisma.organization.create({ data: { id: organizationId, name: `test-${organizationId}`, type: 'union' } })
@@ -38,7 +26,7 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
         joinCodeHash: hashCredential(joinCode),
       },
     })
-    assemblyId = assembly.id
+    const assemblyId = assembly.id
     const participant = await prisma.participantSession.create({
       data: { assemblyId, firstName: 'Test', lastName: 'Participant', tokenHash: hashCredential(token) },
     })
@@ -111,6 +99,7 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
     const repeatedCompletion = await service.completeAssembly(assemblyId, true)
     assert.deepEqual(repeatedCompletion, completed)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'assembly.completed' } }), 1)
+    const realtimeEvents = events.filter((event) => event.name === 'assemblyState')
     assert.equal(realtimeEvents.length, 1)
     assert.deepEqual(realtimeEvents[0]?.payload, { status: 'completed', completedAt: completed.completedAt })
 
@@ -134,33 +123,20 @@ test('database voting flow: unique concurrent cast, close gate, then explicit pu
     assert.equal(completedModeratorState.completedAt, completed.completedAt)
 
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })
 
-test('database committee flow: the mesa sees who voted, closing elects by majority and chains two runoffs until the committee is complete', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
+test('database committee flow: the mesa sees who voted, closing elects by majority and chains two runoffs until the committee is complete', async () => {
+  const prisma = await connectDatabase()
   const organizationId = randomUUID()
   const joinCode = newOpaqueCredential()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
+  const service = new VotingService(prisma, gatewayStub().gateway)
   try {
     const organization = await prisma.organization.create({ data: { id: organizationId, name: `committee-test-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Committee integration', status: 'lobby_closed', joinCodeHash: hashCredential(joinCode) } })
     const activeAssemblyId = assembly.id
-    assemblyId = activeAssemblyId
     // One by one, so the mesa's list (ordered by arrival) matches this array.
     const delegates: Array<{ id: string }> = []
     for (let index = 0; index < 6; index += 1) delegates.push(await prisma.participantSession.create({ data: {
@@ -261,14 +237,7 @@ test('database committee flow: the mesa sees who voted, closing elects by majori
     assert.deepEqual((await service.publicState(joinCode)).officialResult?.elected.map((person) => person.label), ['Ana Reyes', 'Luis Mejía', 'Rosa Paz'])
     assert.equal(await prisma.auditEvent.count({ where: { round: { OR: [{ id: round.id }, { committeeRootRoundId: round.id }] }, action: 'round.result_computed' } }), 3)
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.participantSession.deleteMany({ where: { assembly: { organizationId } } })
-    await prisma.assembly.deleteMany({ where: { organizationId } })
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })
