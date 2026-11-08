@@ -95,7 +95,7 @@ Goldberg 2.12 names five outcomes a command can have. This app has no message qu
 - Mocked tests declare API responses through a shared fixture.
 - Real-stack tests call the API only to set up and to read back stored state.
 - Real-stack tests stay few. (Goldberg 3.7)
-- A mocked test that fails with `ERR_NETWORK_CHANGED` in its trace on a host running Docker hit interface churn from containers starting or stopping, so rerun it.
+- A mocked test that fails with `ERR_NETWORK_CHANGED` in its trace on a host running Docker failed because a container started or stopped, so rerun it. If it fails again without that error, treat it as a real failure.
 
 ## Commands
 
