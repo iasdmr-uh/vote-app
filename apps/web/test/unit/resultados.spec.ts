@@ -9,13 +9,13 @@ import {
   actaSummary,
   approvalText,
   completedCommittee,
-  electedSoFar,
   connectedText,
   countsOf,
   decisionTie,
   decisionVerdict,
   displayOrder,
   electedInVote,
+  electedSoFar,
   formatNames,
   isTied,
   majorityText,
@@ -691,4 +691,3 @@ describe('electedSoFar', () => {
     assert.equal(electedSoFar(undefined, three, null), null)
   })
 })
-
