@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, openRoom, prepareBallot, runVote, voteAll, type Room } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectClosedByItself, openRoom, prepareBallot, runVote, voteAll, type Room } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -28,7 +28,7 @@ test('2/3 con 7 en la sala: 5 votos aprueban, 4 no aprueban aunque sean mayoría
     await expect(phone.page.getByText(/Se aprueba con/)).toHaveCount(0)
   }
   await voteAll(phones, [favor, favor, favor, favor, favor, contra, contra])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('7')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
   await expectVerdict(room, 'Aprobada')
 

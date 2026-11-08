@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectBadge, mesaRow, openRoom, phoneRow, prepareBallot, projectorRow, runVote, voteAll, type Room } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, expectClosedByItself, mesaRow, openRoom, phoneRow, prepareBallot, projectorRow, runVote, voteAll, type Room } from './helpers'
 
 /**
  * E. Decisions (#42). Six habilitados: mayoría simple is 4 and 3/4 is 5 (ceil of 4.5). A favor / En
@@ -44,7 +44,7 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
   await expect(phones[0].page.locator('.options label')).toHaveText(['A favor', 'En contra'])
   await expect(phones[0].page.locator('.options input[type=radio]')).toHaveCount(2)
   await voteAll(phones, [favor, favor, favor, favor, favor, contra])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('6')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
   await expectVerdict(room, 'Aprobada', 'Se aprueba con 3/4 · 5 votos')
   await projectorShares(projector, [['A favor', '5 votos', '83 %'], ['En contra', '1 voto', '17 %']])
@@ -88,7 +88,7 @@ test('E · decisiones: 3/4 aprobada y no aprobada, empate 50/50 con mayoría sim
     await expect(phone.page.locator('.options label')).toHaveText(['Tegucigalpa', 'San Pedro Sula'])
   }
   await voteAll(phones, [['Tegucigalpa'], ['Tegucigalpa'], ['Tegucigalpa'], ['Tegucigalpa'], ['San Pedro Sula'], ['San Pedro Sula']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('6')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
   await expect(mesa.locator('.ballot-card .decision-verdict')).toHaveText('Tegucigalpa')
   await expectBadge(mesaRow(mesa, 'Tegucigalpa'), 'Aprobada')

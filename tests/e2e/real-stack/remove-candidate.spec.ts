@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { closeAndShow, confirm, moderatorState, openRoom, participantState, prepareBallot, runVote, voteAll } from './helpers'
+import { closeAndShow, confirm, expectClosedByItself, moderatorState, openRoom, participantState, prepareBallot, runVote, voteAll } from './helpers'
 
 /**
  * G. «Quitar» on a candidate the mesa added (#40). Five habilitados, majority 3: two votes without majority
@@ -49,7 +49,7 @@ test('G · quitar un candidato nuevo: sale del borrador y ningún teléfono lo r
     expect(state.openRound.options.map((option: { label: string }) => option.label)).toEqual(['Ana Ruiz', 'Carlos Gómez'])
   }
   await voteAll(phones, [['Ana Ruiz'], ['Ana Ruiz'], ['Ana Ruiz'], ['Carlos Gómez'], ['Carlos Gómez']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('5')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
   for (const phone of phones) await expect(phone.page.locator('.official-card strong')).toHaveText('Ana Ruiz')
 })

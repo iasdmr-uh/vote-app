@@ -183,8 +183,13 @@ export async function runVote(room: Room, ballots: Array<string[] | null>) {
   await expect(mesa.getByText('VOTACIÓN ABIERTA', { exact: true })).toBeVisible()
   await voteAll(room.phones, ballots)
   const cast = ballots.filter(Boolean).length
-  await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
+  if (cast === room.phones.length) await expectClosedByItself(mesa)
+  else await expect(mesa.locator('.vote-progress strong')).toHaveText(String(cast))
   await closeAndShow(room)
+}
+
+export async function expectClosedByItself(mesa: Page) {
+  await expect(mesa.getByText('CONTEO PUBLICADO', { exact: true })).toBeVisible()
 }
 
 export async function closeAndShow(room: Room) {
