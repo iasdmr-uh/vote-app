@@ -6,9 +6,8 @@ import { useMesa } from '../useMesa'
 const {
   origin, loading, state, code, qrImage, assemblyStatus, lobbyStatus, assemblyId, round, formatDateTime,
 } = useAssembly()
-const { attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
+const { voteOpen, attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
 const secretaryOut = computed(() => state.value?.regionalSecretary?.status === 'left')
-const voteOpen = computed(() => Boolean(state.value?.rounds?.some((item) => item.status === 'open')))
 
 function closePersonMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')

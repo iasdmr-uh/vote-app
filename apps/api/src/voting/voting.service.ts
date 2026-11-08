@@ -58,6 +58,9 @@ export class VotingService implements OnModuleInit {
   }
 
   async retrySecrecyCleanup(assemblyId: string) {
+    if (await this.prisma.round.count({ where: { assemblyId, status: 'open' } }) > 0) {
+      throw new ConflictException('La limpieza se completa al cerrar la votación abierta')
+    }
     await this.ensureVotesUnlinkedOrFail(assemblyId)
     await this.showSeparatedResults(assemblyId)
     return { assemblyId, secrecyCleanupPending: false }

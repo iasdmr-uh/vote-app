@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
-import { lockAssembly, recordAudit } from './assembly-tx.js'
+import { assertNoOpenRound, lockAssembly, recordAudit } from './assembly-tx.js'
 
 @Injectable()
 export class OfficialRosterService {
@@ -14,6 +14,7 @@ export class OfficialRosterService {
       if (!root) throw new NotFoundException('Elección no encontrada')
       const assembly = await lockAssembly(tx, root.assembly_id)
       if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus resultados')
+      await assertNoOpenRound(tx, root.assembly_id, 'Agrega a los oficiales cuando cierre la votación abierta')
       const result = await tx.officialResult.findUnique({ where: { roundId: rootRoundId }, select: { registeredAt: true, settledRound: { select: { status: true } } } })
       if (!result?.settledRound) throw new ConflictException('Esta elección no tiene resultado final')
       if (result.settledRound.status !== 'published') throw new ConflictException('El resultado todavía se está preparando')

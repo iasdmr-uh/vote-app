@@ -384,6 +384,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   const jonasOut = page.locator('.out-of-room li', { hasText: 'Jonás Amitai' })
   await expect(jonasOut).toBeVisible()
   await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Presentar oficiales' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Cerrar votación' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
@@ -395,6 +396,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(page.locator('.mesa-person-list li', { hasText: 'Pedro Luna' }).getByRole('button', { name: 'Habilitar' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Nuevo código' })).toBeVisible()
   await expect(jonasOut.getByRole('button', { name: 'Regresar a la sala' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Presentar oficiales' })).toBeVisible()
   await page.getByLabel('Acciones para Luis Mejía').click()
   await expect(luisMenu.getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
   await expect(luisMenu.getByRole('button', { name: 'Inhabilitar' })).toBeVisible()
@@ -1287,6 +1289,32 @@ test('delegado con un QR ya rotado conserva su sesión sin errores', async ({ pa
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(publicStateCalls).toBe(1)
+})
+
+test('durante una votación abierta la mesa ve la limpieza pendiente sin poder reintentarla', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  await page.route(api, async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null, participants: [], participantCount: 0,
+        rounds: [
+          { id: 'annulled-round', title: 'Presidencia', status: 'annulled', options: [{ id: 'a', label: 'A' }], participationCount: 1, secrecyCleanupPending: true },
+          { id: 'open-round', title: 'Presidencia, de nuevo', status: 'open', options: [{ id: 'b', label: 'B' }], participationCount: 0 },
+        ],
+      } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for synthetic UI test' } })
+  })
+
+  await page.goto('/moderator')
+  const panel = page.getByRole('alert').filter({ hasText: 'Limpieza del secreto del voto pendiente' })
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('button', { name: 'Reintentar limpieza' })).toHaveCount(0)
 })
 
 test('moderador ve la limpieza pendiente aunque se actualice el estado y puede reintentarla', async ({ page }) => {
