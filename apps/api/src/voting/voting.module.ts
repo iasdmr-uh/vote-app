@@ -9,7 +9,16 @@ import { OperatorLogService } from './operator-log.service.js'
 
 @Module({
   imports: [PrismaModule, AuthModule, RealtimeModule],
-  controllers: [PublicAssemblyController, ParticipantController, ParticipantLeaveController, ModeratorController],
-  providers: [VotingService, PresentationService, OperatorLogService],
+  controllers: [
+    ModeratorController,
+    ParticipantController,
+    ParticipantLeaveController,
+    PublicAssemblyController,
+  ],
+  providers: [
+    OperatorLogService,
+    PresentationService,
+    VotingService,
+  ],
 })
 export class VotingModule {}

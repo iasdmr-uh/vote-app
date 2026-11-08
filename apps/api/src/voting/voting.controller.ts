@@ -94,7 +94,11 @@ export class ParticipantLeaveController {
 @Controller('moderator')
 @UseGuards(ModeratorGuard)
 export class ModeratorController {
-  constructor(private readonly voting: VotingService, private readonly presentation: PresentationService, private readonly operatorLog: OperatorLogService) {}
+  constructor(
+    private readonly operatorLog: OperatorLogService,
+    private readonly presentation: PresentationService,
+    private readonly voting: VotingService,
+  ) {}
 
   @Get('session')
   session() {
