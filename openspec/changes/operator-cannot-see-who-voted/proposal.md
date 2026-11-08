@@ -5,10 +5,11 @@ Issue #55: delegates must trust that the operator at the laptop cannot use the t
 ## What Changes
 
 - **BREAKING** The moderator assembly state no longer includes a per-person voted flag for participants or for the regional secretary. Only the aggregate count of people who voted and the base remain.
-- The operator console stops showing «Votó/Falta» for the regional secretary and the «falta/faltan» count, which is derived from the per-person flag.
+- The operator console stops showing «Votó/Falta» for the regional secretary. It computes «falta/faltan» from aggregates, as the base minus those who voted minus the disabled.
 - Disabling («Inhabilitar»), re-enabling («Habilitar») and «Retirar de la sala» are refused while a vote is open.
 - The console hides those three actions while a vote is open.
 - `docs/scope.md` sections 9 and 18 and section 8 rule 15 stop describing the operator's list of who voted and these actions during a vote.
+- `docs/principles.md` P2 says the mesa sees how many voted, never who, and drops the matching open question.
 
 Out of scope, owned by other issues:
 - "X de Y conectados" (#84).
@@ -27,7 +28,7 @@ None. `openspec/specs/` is empty.
 
 ## Impact
 
-- API: `VotingService.moderatorAssembly`, `setVotingDisabled`, `takeOutOfRoom` in `apps/api/src/voting/voting.service.ts`.
+- API: `VotingService.moderatorAssembly` in `apps/api/src/voting/voting.service.ts`, and `RoomService.setVotingDisabled` and `changeRoomPresence` in `apps/api/src/voting/room.service.ts`.
 - Web: `apps/web/src/components/ModeratorParticipants.vue`, `apps/web/src/useMesa.ts`, `apps/web/src/types.ts`.
-- Tests that assert the per-person flag change their expected results, because #55 reverses that rule: `apps/api/test/voting.integration.spec.ts`, `committee-ballot.spec.ts`, `regional-secretary.integration.spec.ts`, and matching E2E fixtures.
-- Docs: `docs/scope.md`.
+- Tests that assert the per-person flag change their expected results, because #55 reverses that rule: `apps/api/test/voting.integration.spec.ts`, `committee-ballot.spec.ts`, `regional-secretary.integration.spec.ts`, and matching E2E fixtures. Tests that disabled or took out people mid-vote now do it between votes.
+- Docs: `docs/scope.md`, `docs/principles.md`.

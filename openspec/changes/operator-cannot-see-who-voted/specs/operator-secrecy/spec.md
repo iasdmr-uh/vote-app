@@ -4,7 +4,7 @@
 
 The tool SHALL give the operator no way to see which people have voted in any vote, while it is open or after it closes. The operator SHALL see only the number of people who voted and the base of the vote.
 
-Source: issue #55, owner decision of 8 Nov 2026. This replaces the operator's list of who voted in `docs/scope.md` sections 9 and 18.
+Source: issue #55, owner decision of 8 Nov 2026, principle P2. This replaces the operator's list of who voted in `docs/scope.md` sections 9 and 18.
 
 #### Scenario: Open vote
 
@@ -26,7 +26,7 @@ Source: issue #55, owner decision of 8 Nov 2026. This replaces the operator's li
 
 While a vote is open, the moderator assembly state and the public screen state SHALL NOT include votes per candidate or option.
 
-Source: issue #55, owner decision of 8 Nov 2026.
+Source: issue #55, owner decision of 8 Nov 2026, principle P5.
 
 #### Scenario: Open vote with ballots cast
 
@@ -63,7 +63,7 @@ Source: issue #55 and owner decision of 8 Nov 2026 for disabling and take-out. O
 
 A person SHALL vote at most once in each vote and SHALL NOT change a confirmed vote. Repeating an annulled vote SHALL be a new vote in which each person votes again.
 
-Source: issue #55. `docs/scope.md` section 8 already states no edit of a cast vote.
+Source: issue #55, principle P3. `docs/scope.md` section 8 already states no edit of a cast vote.
 
 #### Scenario: Second ballot in the same vote
 
