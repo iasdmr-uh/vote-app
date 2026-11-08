@@ -21,9 +21,9 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: 'npm run dev --workspace @asdmr/web -- --host 127.0.0.1',
+        command: 'npm run dev --workspace @asdmr/web -- --host 127.0.0.1 --port 5173 --strictPort',
         url: baseURL,
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: false,
         timeout: 30_000,
       },
 })
