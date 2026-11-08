@@ -10,10 +10,10 @@
 
 ## 3. Web
 
-- [ ] 3.1 Write a failing unit test that `approvalText` names «2/3». Implement and verify
-- [ ] 3.2 Add «2/3» to the mesa rule selector, and verify with a mocked E2E test that the request carries `two_thirds`
+- [x] 3.1 Write a failing unit test that `approvalText` names «2/3». Implement and verify
+- [x] 3.2 Add «2/3» to the mesa rule selector, and verify with a mocked E2E test that the request carries `two_thirds`
 - [ ] 3.3 Show the rule and the votes needed on the phone ballot, and verify with a mocked E2E test
-- [ ] 3.4 Verify with mocked E2E tests that the results, projector and acta show «2/3» and the votes needed
+- [x] 3.4 Verify with mocked E2E tests that the results, projector and acta show «2/3» and the votes needed
 
 ## 4. Docs and verification
 

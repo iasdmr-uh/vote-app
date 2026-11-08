@@ -8,6 +8,7 @@ import {
   actaSheetRows,
   actaSummary,
   approvalText,
+  ballotRuleText,
   completedCommittee,
   connectedText,
   countsOf,
@@ -346,6 +347,21 @@ describe('labels', () => {
 
   test('approvalText: names the 3/4 rule and the votes it needs', () => {
     assert.equal(approvalText(decision(), decision().outcome), 'Se aprueba con 3/4 · 29 votos')
+  })
+
+  test('approvalText: names the 2/3 rule and the votes it needs', () => {
+    const amendment = decision({ approvalRule: 'two_thirds', outcome: { ...outcome(19, []), rule: 'two_thirds', approved: false } })
+    assert.equal(approvalText(amendment, amendment.outcome), 'Se aprueba con 2/3 · 19 votos')
+  })
+
+  test('ballotRuleText: a decision on the ballot names its rule and the votes it needs', () => {
+    assert.equal(ballotRuleText({ category: 'decision', approvalRule: 'two_thirds', approvalThreshold: 19 }), 'Se aprueba con 2/3 · 19 votos')
+    assert.equal(ballotRuleText({ category: 'decision', approvalRule: 'simple', approvalThreshold: 1 }), 'Se aprueba con mayoría simple · 1 voto')
+  })
+
+  test('ballotRuleText: an election or a ballot without the votes needed shows nothing', () => {
+    assert.equal(ballotRuleText({ category: 'office' }), '')
+    assert.equal(ballotRuleText({ category: 'decision', approvalRule: 'two_thirds' }), '')
   })
 
   test('approvalText: names the simple majority and uses the singular for one vote', () => {
