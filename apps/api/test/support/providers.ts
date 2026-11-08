@@ -1,5 +1,6 @@
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { OfficialRosterService } from '../../src/voting/official-roster.service.js'
 import { OperatorLogService } from '../../src/voting/operator-log.service.js'
 import { PresentationService } from '../../src/voting/presentation.service.js'
 import { RoomService } from '../../src/voting/room.service.js'
@@ -15,5 +16,6 @@ export function buildProviders(prisma: object, gateway: object = gatewayStub().g
     room: new RoomService(database, realtime, voting),
     presentation: new PresentationService(database, realtime),
     operatorLog: new OperatorLogService(database),
+    roster: new OfficialRosterService(database, realtime),
   }
 }

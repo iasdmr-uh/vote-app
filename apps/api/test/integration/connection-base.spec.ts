@@ -93,7 +93,7 @@ test('the base closes with the vote and with an annulment', { skip }, async () =
     await service.openRound(first.id)
     await service.closeRound(first.id)
     assert.equal(await service.openRoundBase(assemblyId), null)
-    const second = await election(service, assemblyId)
+    const second = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === first.id)!
     await service.openRound(second.id)
     await service.annulRound(second.id, 'Prueba')
     assert.equal(await service.openRoundBase(assemblyId), null)
@@ -109,7 +109,6 @@ test('the regional secretary is in the base only of a vote that adds them', { sk
         await service.castVote(person, vote.id, vote.options.find((option) => option.label === (index % 2 ? 'Jeremías' : 'Isaías'))!.id)
       }
       await service.closeRound(vote.id)
-      await service.publishRound(vote.id)
       vote = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === vote.id)!
     }
     await service.addRegionalSecretary(vote.id, { firstName: 'Ester', lastName: 'Regional' })

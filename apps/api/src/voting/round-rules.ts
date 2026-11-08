@@ -42,3 +42,8 @@ export function runoffSourceOf(countingRule: unknown) {
   const rule = countingRule as { reason?: unknown; sourceRoundId?: unknown } | null
   return rule?.reason === 'runoff' && typeof rule.sourceRoundId === 'string' ? rule.sourceRoundId : null
 }
+
+export function waitsForSourceResult(status: string, countingRule: unknown, statusById: Map<string, string>) {
+  const sourceId = runoffSourceOf(countingRule)
+  return status === 'draft' && sourceId !== null && statusById.get(sourceId) === 'closed'
+}

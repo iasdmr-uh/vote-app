@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { countsOf, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
+import { RESULT_WORDING, countsOf, majorityText, notVotedText, verdictOf, voteLabel } from '../resultados'
 import type { PublicState, RoundRecord } from '../types'
 import ResultsList from './ResultsList.vue'
+import ResultSummary from './ResultSummary.vue'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
+import { computed } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   round: NonNullable<PublicState['currentRound']>
   currentRoundRecord: RoundRecord
 }>()
 
 const { loading, state } = useAssembly()
-const { showNextBallotForm, rootRoundOf, eligibleOf, rankedRows, runoffOf, openRunoff } = useMesa()
+const { showNextBallotForm, rootRoundOf, eligibleOf, rankedRows, runoffOf, openRunoff, registerOfficial } = useMesa()
+
+const election = computed(() => rootRoundOf(props.currentRoundRecord)?.officialResult ?? null)
+const final = computed(() => props.currentRoundRecord.final && election.value ? { elected: election.value.elected, approved: election.value.approved ?? null } : null)
 
 function runoffButtonText(target: RoundRecord) {
   const runoff = runoffOf(target)
@@ -27,6 +32,9 @@ function runoffButtonText(target: RoundRecord) {
     <p class="voters-total"><strong>{{ currentRoundRecord.participationCount ?? state?.recordedCount ?? 0 }} de {{ eligibleOf(currentRoundRecord) }}</strong><span>votaron<template v-if="eligibleOf(currentRoundRecord)"> · {{ notVotedText(currentRoundRecord.participationCount ?? state?.recordedCount ?? 0, eligibleOf(currentRoundRecord)) }}</template></span></p>
   </div>
   <p v-if="verdictOf(currentRoundRecord)" :class="['decision-verdict', { rejected: verdictOf(currentRoundRecord) === 'No aprobada' }]">{{ verdictOf(currentRoundRecord) }}</p>
+  <ResultSummary :final="final" :continuing="currentRoundRecord.continuing" />
+  <p v-if="final && election?.registeredAt" class="status-line">{{ RESULT_WORDING.registered }}</p>
+  <div v-else-if="final" class="action-row"><button class="primary" :disabled="loading" @click="registerOfficial(currentRoundRecord)">{{ RESULT_WORDING.register }}</button></div>
   <ResultsList :rows="rankedRows(countsOf(currentRoundRecord), eligibleOf(currentRoundRecord))" :outcome="currentRoundRecord.outcome" :target="currentRoundRecord" />
   <div class="action-row ballot-actions">
     <button class="link-button" @click="showNextBallotForm = true">Preparar otra papeleta</button>

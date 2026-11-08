@@ -67,12 +67,12 @@ test('la mesa prepara una decisión A favor / En contra con 3/4 y otra con opcio
   })
 })
 
-test('la mesa ve «Aprobada» y la regla en una decisión cerrada, y «No aprobada» en el acta', async ({ page }) => {
+test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No aprobada» en el acta', async ({ page }) => {
   await asModerator(page)
   const approved = {
-    id: 'presupuesto', title: 'Presupuesto 2027', status: 'closed', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false,
+    id: 'presupuesto', title: 'Presupuesto 2027', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false,
     participationCount: 36, eligibleCount: 38, options: budgetOptions,
-    privateResults: [{ optionId: 'favor', label: 'A favor', count: 30 }, { optionId: 'contra', label: 'En contra', count: 6 }],
+    results: [{ optionId: 'favor', label: 'A favor', count: 30 }, { optionId: 'contra', label: 'En contra', count: 6 }],
     outcome: { seats: 1, base: 38, threshold: 29, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved: true }, officialResult: null,
   }
   const rejected = {
@@ -91,7 +91,7 @@ test('la mesa ve «Aprobada» y la regla en una decisión cerrada, y «No aproba
 
   await page.goto('/moderator')
   const ballot = page.locator('.ballot-card')
-  await expect(ballot).toContainText('VOTACIÓN CERRADA')
+  await expect(ballot).toContainText('CONTEO PUBLICADO')
   await expect(ballot.locator('.majority-chip')).toHaveText('Se aprueba con 3/4 · 29 votos')
   await expect(ballot.locator('.decision-verdict')).toHaveText('Aprobada')
   await expect(ballot.locator('.ranked-rows > li').nth(0)).toHaveText(/A favor\s*30 votos\s*79 %/)

@@ -145,7 +145,7 @@ test.describe('diapositivas del proyector', () => {
       } : {}),
     }))
     await page.goto('/projector?code=DEMO-ROOM')
-    await expect(page.locator('.pj-status')).toHaveText(/Votación cerrada/)
+    await expect(page.locator('.pj-status')).toHaveText('Preparando el resultado')
     await expect(page.locator('.slide')).toHaveCount(0)
     status = 'published'
     await refreshByPolling(page)

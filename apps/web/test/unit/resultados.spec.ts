@@ -248,12 +248,6 @@ describe('decisionTie', () => {
     assert.equal(tie?.openSeats, 2)
   })
 
-  test('decisionTie: the mesa sees a tie in the private results before they are published', () => {
-    const target = round({ privateResults: counted([['Elías', 9], ['Eliseo', 9]]).results })
-
-    assert.equal(decisionTie(target)?.count, 9)
-  })
-
   test('decisionTie: there is no tie when one candidate leads', () => {
     assert.equal(decisionTie(round(counted([['Elías', 12], ['Eliseo', 6]]))), null)
   })
@@ -426,10 +420,8 @@ describe('decisions', () => {
 })
 
 describe('counts', () => {
-  test('countsOf: falls back to private results before publishing', () => {
-    const privateResults = counted([['Elías', 3]]).results
-
-    assert.deepEqual(countsOf(round({ privateResults })), privateResults)
+  test('countsOf: a vote whose result is still being prepared has no counts', () => {
+    assert.deepEqual(countsOf(round({ status: 'closed' })), [])
   })
 
   test('voteCountOf: finds an option by id', () => {
