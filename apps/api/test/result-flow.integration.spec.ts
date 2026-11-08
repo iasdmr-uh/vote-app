@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { randomUUID } from 'node:crypto'
+import { ConflictException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
@@ -108,6 +109,30 @@ test('no screen shows a result until the votes are separated, and a retry shows 
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).status, 'published')
     assert.deepEqual(countsOf((await service.publicState(joinCode)).results), [['Isaías', 2], ['Jeremías', 0]])
     assert.equal(emitted.filter((item) => item.name === 'resultsPublished').length, 1)
+  })
+})
+
+test('the next vote of an election stays hidden from the mesa and cannot open until the result is shown', { skip }, async () => {
+  await withAssembly(2, async ({ prisma, service, assemblyId, voters }) => {
+    const round = await service.createRound(assemblyId, { title: 'Presidente', category: 'office', format: 'single_choice', options: [{ label: 'Isaías' }, { label: 'Jeremías' }] })
+    await service.openRound(round.id)
+    await service.castVote(voters[0]!, round.id, round.options[0]!.id)
+    await service.castVote(voters[1]!, round.id, round.options[1]!.id)
+    Object.assign(service, { vacuumAnonymousVotes: async () => { throw new Error('simulated VACUUM failure') } })
+
+    await service.closeRound(round.id)
+
+    const runoff = await prisma.round.findFirstOrThrow({ where: { committeeRootRoundId: round.id, status: 'draft' } })
+    assert.deepEqual((await service.moderatorAssembly(assemblyId)).rounds.map((item) => item.id), [round.id], 'the mesa does not see who goes on before the room')
+    await assert.rejects(service.openRound(runoff.id), ConflictException)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).status, 'draft')
+
+    delete (service as unknown as Record<string, unknown>).vacuumAnonymousVotes
+    await service.retrySecrecyCleanup(assemblyId)
+
+    assert.ok((await service.moderatorAssembly(assemblyId)).rounds.some((item) => item.id === runoff.id))
+    await service.openRound(runoff.id)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).status, 'open')
   })
 })
 

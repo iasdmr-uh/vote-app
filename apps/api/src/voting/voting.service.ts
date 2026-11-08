@@ -483,7 +483,9 @@ export class VotingService implements OnModuleInit {
       chains.set(rootId, [...(chains.get(rootId) ?? []), round])
     }
     const positionOfRound = new Map(assembly.rounds.map((round) => [round.id, round.positionId]))
-    const rounds = await Promise.all(assembly.rounds.map(async (round) => ({
+    const statusById = new Map(assembly.rounds.map((round) => [round.id, round.status]))
+    const shownRounds = assembly.rounds.filter((round) => !waitsForSourceResult(round.status, round.countingRule, statusById))
+    const rounds = await Promise.all(shownRounds.map(async (round) => ({
       id: round.id,
       title: round.title,
       // A runoff fills its root's puesto.
@@ -832,8 +834,8 @@ export class VotingService implements OnModuleInit {
 
   async openRound(roundId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
-      const rounds = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; committee_root_round_id: string | null }>>`
-        SELECT id, assembly_id, status, committee_root_round_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+      const rounds = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; committee_root_round_id: string | null; counting_rule: unknown }>>`
+        SELECT id, assembly_id, status, committee_root_round_id, counting_rule FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
       `
       const round = rounds[0]
       if (!round) throw new NotFoundException('Ronda no encontrada')
@@ -847,6 +849,11 @@ export class VotingService implements OnModuleInit {
       if (otherOpen) throw new ConflictException('Ya hay una papeleta abierta')
       if (await this.pendingElectionOtherThan(tx, round.assembly_id, round.committee_root_round_id ?? round.id)) {
         throw new ConflictException('Otra elección espera su resultado oficial o su anulación')
+      }
+      const sourceId = runoffSourceOf(round.counting_rule)
+      const source = sourceId ? await tx.round.findUnique({ where: { id: sourceId }, select: { id: true, status: true } }) : null
+      if (source && waitsForSourceResult(round.status, round.counting_rule, new Map([[source.id, source.status]]))) {
+        throw new ConflictException('El resultado de la votación anterior todavía se está preparando')
       }
       if (round.committee_root_round_id && await this.openSeatsOf(tx, round.committee_root_round_id) === 0) {
         throw new ConflictException('Todos los puestos de esta elección ya están ocupados')
@@ -1476,4 +1483,9 @@ function voteNumberIn(chain: Array<{ id: string; status: string }>, roundId: str
 function runoffSourceOf(countingRule: unknown) {
   const rule = countingRule as { reason?: unknown; sourceRoundId?: unknown } | null
   return rule?.reason === 'runoff' && typeof rule.sourceRoundId === 'string' ? rule.sourceRoundId : null
+}
+
+function waitsForSourceResult(status: string, countingRule: unknown, statusById: Map<string, string>) {
+  const sourceId = runoffSourceOf(countingRule)
+  return status === 'draft' && sourceId !== null && statusById.get(sourceId) === 'closed'
 }
