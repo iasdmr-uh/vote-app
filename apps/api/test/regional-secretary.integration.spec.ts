@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { ConflictException, ForbiddenException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common'
+import { RealtimeAuthService } from '../src/auth/auth.service.js'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
@@ -10,7 +11,7 @@ import type { RealtimeGateway } from '../src/realtime/realtime.gateway.js'
 const testDatabaseUrl = process.env.TEST_DATABASE_URL
 const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
 
-type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[] }
+type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[]; auth: RealtimeAuthService; replaced: string[] }
 type Ballot = Array<{ id: string; label: string }>
 type Vote = { id: string; options: Ballot }
 
@@ -21,8 +22,12 @@ async function withAssembly(name: string, count: number, body: (context: Context
   process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
   const prisma = new PrismaService()
   await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
+  const replaced: string[] = []
+  const realtime = new Proxy({}, { get: (_target, name: string) => (...args: unknown[]) => {
+    if (name === 'participantSessionReplaced') replaced.push(String(args[0]))
+  } }) as RealtimeGateway
   const service = new VotingService(prisma, realtime)
+  const auth = new RealtimeAuthService(prisma)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
   try {
@@ -35,7 +40,7 @@ async function withAssembly(name: string, count: number, body: (context: Context
       people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
     }
     await service.changeLobby(assemblyId, 'lobby_closed')
-    await body({ service, assemblyId, joinCode, people })
+    await body({ service, assemblyId, joinCode, people, auth, replaced })
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
@@ -189,5 +194,41 @@ test('a tied decision with options takes the regional secretary and a yes or no 
     await voteAndClose(service, yesOrNo, people, ['A favor', 'En contra'])
     const repeated = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === yesOrNo.id)
     assert.equal(repeated, undefined)
+  })
+})
+
+test('adding the regional secretary again retires the previous device', { skip }, async () => {
+  await withAssembly('secretary-readded', 10, async ({ service, assemblyId, people, auth, replaced }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const first = await service.addRegionalSecretary(fourth.id, { firstName: 'Elías', lastName: 'Regional' })
+    const oldToken = (await service.redeemResumeCode(resumeCodeOf(first.resumeUrl))).participantSessionToken
+    const oldIdentity = await auth.authenticate({ audience: 'participant', participantSessionToken: oldToken })
+    assert.equal(oldIdentity.audience === 'participant' && oldIdentity.sessionId, first.participantId)
+    replaced.length = 0
+
+    const second = await service.addRegionalSecretary(fourth.id, { firstName: 'Eliseo', lastName: 'Regional' })
+    assert.equal(second.participantId, first.participantId)
+    assert.deepEqual(replaced, [first.participantId])
+    await assert.rejects(auth.authenticate({ audience: 'participant', participantSessionToken: oldToken }), UnauthorizedException)
+
+    const newToken = (await service.redeemResumeCode(resumeCodeOf(second.resumeUrl))).participantSessionToken
+    const newIdentity = await auth.authenticate({ audience: 'participant', participantSessionToken: newToken })
+    assert.equal(newIdentity.audience === 'participant' && newIdentity.sessionId, first.participantId)
+
+    await service.openRound(fourth.id)
+    await service.castVote(first.participantId, fourth.id, optionId(fourth, 'Ana'))
+  })
+})
+
+test('adding the regional secretary again clears a voting block', { skip }, async () => {
+  await withAssembly('secretary-readded-disabled', 10, async ({ service, assemblyId, people }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const first = await service.addRegionalSecretary(fourth.id, { firstName: 'Elías', lastName: 'Regional' })
+    await service.setVotingDisabled(first.participantId, true)
+    const second = await service.addRegionalSecretary(fourth.id, { firstName: 'Elías', lastName: 'Regional' })
+    await service.redeemResumeCode(resumeCodeOf(second.resumeUrl))
+    await service.openRound(fourth.id)
+    assert.equal((await service.participantState(second.participantId)).votingDisabled, false)
+    await service.castVote(second.participantId, fourth.id, optionId(fourth, 'Ana'))
   })
 })
