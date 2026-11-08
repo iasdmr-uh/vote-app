@@ -7,10 +7,10 @@
 
 ## 2. Base records the regional secretary
 
-- [ ] 2.1 Failing integration tests: freezing the base records whether the secretary is in it, and a secretary who leaves after the vote opens stays in the reported base
-- [ ] 2.2 Migration: nullable `rounds.regional_secretary_in_base`, set by `freezeRoundBase`
-- [ ] 2.3 Failing service tests: the public and mesa states report `baseDelegates` and `baseIncludesSecretary`, with the fallback for rounds frozen before the migration, and the participant state does not
-- [ ] 2.4 Expose the base composition in the public and mesa states
+- [x] 2.1 Failing integration tests: freezing the base records whether the secretary is in it, and a secretary who leaves after the vote opens stays in the reported base
+- [x] 2.2 Migration: nullable `rounds.regional_secretary_in_base`, set by `freezeRoundBase`
+- [x] 2.3 Failing service tests: the public and mesa states report `baseDelegates` and `baseIncludesSecretary`, with the fallback for rounds frozen before the migration, and the participant state does not
+- [x] 2.4 Expose the base composition in the public and mesa states
 
 ## 3. Explanation text
 

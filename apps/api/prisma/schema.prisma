@@ -126,6 +126,7 @@ model Round {
   annulReason    String?         @map("annul_reason")
   /** Percentage base frozen when the ballot stops taking votes, so later arrivals cannot change it. */
   eligibleCount  Int?            @map("eligible_count")
+  regionalSecretaryInBase Boolean? @map("regional_secretary_in_base")
   /** Office only, on the election's first vote: the org-chart box its elected fills. Runoffs inherit it from the root. */
   positionId     String?         @map("position_id") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at")
