@@ -28,5 +28,5 @@ None.
 - Database: a check constraint on `rounds.approval_rule`.
 - API participant state: the votes needed for the open decision.
 - Web: the mesa selector, the phone ballot and the shared rule text.
-- Docs: the 2/3 row in `docs/rules.md` and the decision rules in `docs/scope.md`.
+- Docs: the 2/3 row and decision rules in `docs/rules.md`, the API docs and the data model.
 - Related: #54, #59.

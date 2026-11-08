@@ -41,7 +41,7 @@ The base counts people, never marks. A delegate can mark a candidate only once, 
 | New candidate allowed from the 3rd vote | Offices, committees | Project decision, 2 Nov 2026, explained by the union representatives |
 | Regional secretary joins as one more secret voter, base + 1 | Offices, committees and Opciones decisions, from the 4th vote, after a tie at the cut. Stays for the later votes of that election while in the room | Reglamento 05-09 02: «El representante de la Conferencia General tendrá derecho a voto dirimente, cuando persiste un empate en las votaciones hasta tres votaciones.» 03-06 06 names the Secretario Regional as that representative. Mechanism is a project decision, 6 Nov 2026 |
 | 3/4 of the base, rounded up | Decisions, when the ballot asks for it | **UNCONFIRMED.** No Reglamento article found. #42 (2 Nov 2026) listed it as «a confirmar» and nobody confirmed it. Removal waits on the Board in #88 |
-| 2/3 of the base, rounded up | Decisions, when the ballot asks for it. Not implemented yet | Reglamento 01-02 03: «sólo pueden ser modificados con las 2/3 partes de los votos de la Asamblea». Planned in #87 |
+| 2/3 of the base, rounded up | Decisions, when the ballot asks for it | Reglamento 01-02 03: «sólo pueden ser modificados con las 2/3 partes de los votos de la Asamblea». #87 |
 
 Reglamento 05-12 03 is written for the comisión de nombramiento. The tool applies it to every committee and office.
 
@@ -200,7 +200,7 @@ The tool and the mesa never choose between tied candidates. Only another vote se
 | A favor / En contra | «A favor» reaches the threshold | Not approved, a tie included. Nothing repeats |
 | Opciones | The most voted option reaches the threshold | The vote repeats between the top 2 and anyone tied with the 2nd. From the 4th vote, after a tie, the regional secretary may join |
 
-Each delegate marks one option. The threshold is the majority, or 3/4 of the base rounded up when the ballot asks for it (base 28 → 21).
+Each delegate marks one option. The threshold is the majority, or 2/3 or 3/4 of the base rounded up when the ballot asks for it (base 28 → 19 or 21).
 
 ## Open questions
 
