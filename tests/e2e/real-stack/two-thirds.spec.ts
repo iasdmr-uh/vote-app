@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectPhoneShowsNoResult, openRoom, prepareBallot, runVote, voteAll, type Room } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectPhoneShowsNoResult, expectProjectorFinal, openRoom, prepareBallot, runVote, voteAll, type Room } from './helpers'
 
 test.describe.configure({ timeout: 240_000 })
 
@@ -12,7 +12,7 @@ async function expectVerdict(room: Room, verdict: 'Aprobada' | 'No aprobada') {
   const { mesa, projector, phones } = room
   await expect(mesa.locator('.ballot-card .decision-verdict')).toHaveText(verdict)
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText(rule)
-  await expect(projector.locator('.pj-elected h2')).toHaveText(verdict === 'Aprobada' ? '✓ Aprobada' : 'No aprobada')
+  await expectProjectorFinal(projector, verdict)
   await expect(projector.locator('.pj-subtitle')).toHaveText(rule)
   for (const phone of phones) await expectPhoneShowsNoResult(phone)
 }

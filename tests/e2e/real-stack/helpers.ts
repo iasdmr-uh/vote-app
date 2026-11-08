@@ -212,6 +212,14 @@ export async function expectPhoneShowsNoResult(phone: Phone) {
   await expect(phone.page.locator('.phone-screen')).not.toContainText(/electo|desempate|aprobada|resultado|pasan a/i)
 }
 
+// #115: the projector states a final result once, in its «Resultado final» summary, with no banner below.
+export async function expectProjectorFinal(projector: Page, result: string) {
+  const summary = projector.locator('.pj-result-summary .result-summary:not(.result-so-far)')
+  await expect(summary.locator('.eyebrow')).toHaveText('Resultado final')
+  await expect(summary).toContainText(result)
+  await expect(projector.locator('.pj-elected')).toHaveCount(0)
+}
+
 export function projectorRow(projector: Page, label: string): Locator {
   return projector.locator('.pj-results li').filter({ hasText: label })
 }
