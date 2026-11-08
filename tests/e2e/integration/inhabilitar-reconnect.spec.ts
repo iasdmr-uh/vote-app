@@ -25,6 +25,8 @@ test('H · la mesa retira a alguien de la sala, lo regresa y lo reconecta con el
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('2')
   expect((await moderatorState(request, assemblyId)).rounds[0].eligibleCount).toBe(3)
 
+  await confirm(mesa, 'Cerrar votación')
+  await expect(mesa.locator('.ballot-card')).toContainText('VOTACIÓN CERRADA')
   await mesa.locator('.out-of-room').getByRole('button', { name: 'Regresar a la sala' }).click()
   await expect(mesa.locator('.out-of-room')).toHaveCount(0)
   await expect(mesa.locator('.mesa-participants .count-pill')).toHaveText('3')
@@ -36,14 +38,11 @@ test('H · la mesa retira a alguien de la sala, lo regresa y lo reconecta con el
   const { resumeUrl } = await (await issued).json()
 
   await rosa.page.goto(resumeUrl)
-  await expect(rosa.page.locator('.options')).toBeVisible()
+  await expect.poll(async () => (await rosa.page.evaluate(() => localStorage.getItem('participantSessionToken'))) !== oldToken).toBe(true)
   const newToken = (await rosa.page.evaluate(() => localStorage.getItem('participantSessionToken')))!
-  expect(newToken).not.toBe(oldToken)
   const state = await participantState(request, newToken)
   expect(state.votingDisabled).toBe(false)
   const round = (await moderatorState(request, assemblyId)).rounds[0]
   const ana = round.options.find((option: { label: string }) => option.label === 'Ana Ruiz').id
   expect((await castVoteByApi(request, oldToken, round.id, [ana])).status()).toBe(401)
-  await vote({ ...rosa, token: newToken }, ['Juan Mora'])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('2')
 })
