@@ -11,7 +11,7 @@ import {
 import pg from 'pg'
 import { Prisma } from '../generated/prisma/client.js'
 import { PrismaService } from '../prisma/prisma.service.js'
-import { requireLogDownloadedForDeletion } from './operator-log.service.js'
+import { keepRoundTitlesInLog, requireLogDownloadedForDeletion } from './operator-log.service.js'
 import { hashCredential, newOpaqueCredential } from '../auth/credentials.js'
 import { MODERATOR_ACTOR } from '../auth/auth.service.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
@@ -982,6 +982,7 @@ export class VotingService implements OnModuleInit {
       await tx.officialResultOption.deleteMany({ where: { officialResult: { roundId: rootId }, option: { roundId } } })
       await tx.officialResult.deleteMany({ where: { roundId: rootId, options: { none: {} } } })
       if (pendingRunoffs.length) {
+        await keepRoundTitlesInLog(tx, pendingRunoffs.map((item) => item.id))
         await tx.round.deleteMany({ where: { id: { in: pendingRunoffs.map((item) => item.id) } } })
         await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.runoff_discarded', metadata: { runoffRoundIds: pendingRunoffs.map((item) => item.id) } } })
       }

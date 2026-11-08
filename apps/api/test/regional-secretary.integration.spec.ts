@@ -129,6 +129,17 @@ test('the log names the regional secretary added to a vote', { skip }, async () 
   })
 })
 
+test('the log keeps the vote title of a regional secretary entry after its runoff is discarded', { skip }, async () => {
+  await withAssembly('secretary-runoff-discarded', 4, async ({ service, assemblyId, people, log }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const third = (await service.moderatorAssembly(assemblyId)).rounds.filter((round) => round.status !== 'draft').at(-1)!
+    await service.annulRound(third.id, 'Error de conteo')
+    const { csv } = await log.download(assemblyId, 'review')
+    assert.match(csv, /"Marta Regional agregado como secretario regional: Presidencia"/)
+  })
+})
+
 test('the regional secretary cannot join before the 4th vote', { skip }, async () => {
   await withAssembly('secretary-too-early', 4, async ({ service, assemblyId, people }) => {
     const first = await election(service, assemblyId)

@@ -32,7 +32,7 @@ Rendering at download keeps the wording in one module and testable without a dat
 
 ### Order by a sequence column
 
-A migration adds `audit_events.sequence BIGSERIAL`. The file orders by `occurred_at`, then `sequence`. `round.opened` and the `presentation.changed` it triggers share a timestamp, so time alone does not define their order.
+A migration adds `audit_events.sequence BIGSERIAL`. The file orders by `occurred_at`, then `sequence`. `round.opened` and the `presentation.changed` it triggers share a timestamp, so time alone does not define their order. An entry names its vote through `round_id`. Before annulling a vote deletes its runoff drafts, the drafts' titles are copied into the metadata of their entries, so those entries keep their vote title.
 
 ### Download is a POST that writes, then reads
 

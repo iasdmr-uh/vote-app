@@ -64,7 +64,7 @@ export function logEntryOf(row: LogRow): LogEntry | null {
   const entry = CATALOGUE[row.action]
   if (!entry) return null
   const meta = row.metadata && typeof row.metadata === 'object' ? (row.metadata as Meta) : {}
-  return { time: row.occurredAt, kind: entry.kind, text: entry.describe(meta, text(row.roundTitle)) }
+  return { time: row.occurredAt, kind: entry.kind, text: entry.describe(meta, text(row.roundTitle) || text(meta.roundTitle)) }
 }
 
 export interface NewestLogEntry {

@@ -84,3 +84,8 @@ test('«Borrar datos» needs the newest entry to be a download for it with every
   assert.equal(canEraseWithLog(download('review', 4), 4), false, 'a plain download does not count')
   assert.equal(canEraseWithLog(download('delete', 4), 5), false, 'an entry missing from the downloaded file')
 })
+
+test('an entry whose vote was later deleted keeps the title stored with it', () => {
+  const entry = logEntryOf(row('round.regional_secretary_added', { personName: 'Marta Regional', roundTitle: 'Presidencia' }, { roundTitle: null }))
+  assert.equal(entry?.text, 'Marta Regional agregado como secretario regional: Presidencia')
+})

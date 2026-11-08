@@ -23,6 +23,16 @@ export async function requireLogDownloadedForDeletion(tx: Prisma.TransactionClie
   }
 }
 
+export async function keepRoundTitlesInLog(tx: Prisma.TransactionClient, roundIds: string[]) {
+  const events = await tx.auditEvent.findMany({
+    where: { roundId: { in: roundIds }, action: { in: [...LOGGED_ACTIONS] } }, select: { id: true, metadata: true, round: { select: { title: true } } },
+  })
+  for (const event of events) {
+    const metadata = event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata) ? event.metadata : {}
+    await tx.auditEvent.update({ where: { id: event.id }, data: { metadata: { ...metadata, roundTitle: event.round?.title ?? null } } })
+  }
+}
+
 @Injectable()
 export class OperatorLogService {
   constructor(private readonly prisma: PrismaService) {}
