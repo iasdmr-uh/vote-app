@@ -7,7 +7,7 @@ import { useAssembly } from './useAssembly'
 
 const {
   loading, error, notice, state, code, moderatorToken, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies,
-  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
+  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, request, requestFile, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
@@ -421,21 +421,45 @@ async function printActa() {
   window.print()
 }
 
+function assemblyFileSlug() {
+  return (state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')
+}
+
 function downloadActaSpreadsheet() {
   const rows = actaSheetRows(state.value?.rounds || [], roundStatusLabels)
   const link = document.createElement('a')
   link.href = URL.createObjectURL(xlsxBlob('Acta', rows))
-  link.download = `acta-${(state.value?.assembly?.name || 'asamblea').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-')}.xlsx`
+  link.download = `acta-${assemblyFileSlug()}.xlsx`
   link.click()
   URL.revokeObjectURL(link.href)
 }
 
-function deleteAssemblyData() {
+async function downloadOperatorLog(purpose: 'review' | 'delete' = 'review') {
+  if (!assemblyId.value || loading.value) return false
+  error.value = ''
+  loading.value = true
+  try {
+    const blob = await requestFile(`/moderator/assemblies/${encodeURIComponent(assemblyId.value)}/log`, { purpose }, moderatorToken.value)
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `registro-${assemblyFileSlug()}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    notice.value = purpose === 'delete' ? 'Se descargó el registro para «Borrar datos». Guárdalo antes de borrar.' : 'Se descargó el registro.'
+    return true
+  } catch (e) {
+    error.value = (e as Error).message
+    return false
+  } finally { loading.value = false }
+}
+
+async function deleteAssemblyData() {
   if (!assemblyId.value || assemblyStatus.value !== 'completed') return
   const deletedId = assemblyId.value
+  if (!await downloadOperatorLog('delete')) return
   moderationConfirmation.value = {
     title: '¿Borrar todos los datos de la Asamblea?',
-    consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta.',
+    consequence: 'Se borran nombres, votos, resultados y registros. No se puede deshacer. Hazlo solo después de imprimir o guardar el acta y guardar el registro que se acaba de descargar.',
     label: 'Borrar datos',
     reasonLabel: 'Escribe BORRAR para confirmar',
     typedConfirmation: 'BORRAR',
@@ -563,7 +587,7 @@ export function useMesa() {
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
     annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
     removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
-    openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
+    openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, downloadOperatorLog, deleteAssemblyData,
     createAssembly, editParticipant, createRound, signInModerator,
   }
 }
