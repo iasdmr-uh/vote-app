@@ -7,6 +7,7 @@ import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
 import { buildProviders } from '../support/providers.js'
 import { RESULTS_ENGINE_ACTOR } from '../../src/voting/constants.js'
+import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 
 const delegates = ['Delegado 1', 'Delegado 2', 'Delegado 3']
 const ballot = { title: 'Presidente', format: 'single_choice' as const, countingRule: { kind: 'count_only' as const }, options: [{ label: 'Isaías' }, { label: 'Jeremías' }] }
@@ -156,6 +157,69 @@ test('the last ballot is accepted without waiting for the votes to be separated,
   } finally {
     if (lockHeld) await locker.query('ROLLBACK')
     await locker.end()
+    await cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+test('two last ballots arriving together keep both votes and close the vote once', async () => {
+  const prisma = await connectDatabase()
+  const { gateway, events } = gatewayStub()
+  const { voting: service, room } = buildProviders(prisma, gateway)
+  const { assemblyId, people, cleanup } = await seedAssembly(prisma, room, { label: 'auto-close-together-test', delegates })
+
+  try {
+    const round = await service.createRound(assemblyId, ballot)
+    await service.openRound(round.id)
+    await service.castVote(people['Delegado 1']!.id, round.id, round.options[0]!.id)
+    events.length = 0
+    const accepted = await Promise.all([
+      service.castVote(people['Delegado 2']!.id, round.id, round.options[1]!.id),
+      service.castVote(people['Delegado 3']!.id, round.id, round.options[1]!.id),
+    ])
+    assert.deepEqual(accepted.map((result) => result.accepted), [true, true])
+    assert.equal(await settledStatus(prisma, round.id), 'published')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    const entries = await prisma.auditEvent.findMany({ where: { assemblyId, roundId: round.id, action: { in: closeActions } } })
+    assert.deepEqual(entries.map((entry) => entry.action), ['round.closed_automatically'])
+    assert.equal(events.filter((event) => event.name === 'roundClosed').length, 1)
+    assert.equal(await prisma.participation.count({ where: { roundId: round.id } }), 3)
+    const counts = await prisma.anonymousVote.groupBy({ by: ['optionId'], where: { roundId: round.id }, _count: true })
+    assert.deepEqual(Object.fromEntries(counts.map((row) => [row.optionId, row._count])), { [round.options[0]!.id]: 1, [round.options[1]!.id]: 2 })
+  } finally {
+    await cleanup()
+    await prisma.$disconnect()
+  }
+})
+
+test('a vote that includes the regional secretary waits for the secretary, and one that does not ignores the secretary', async () => {
+  const prisma = await connectDatabase()
+  const { gateway } = gatewayStub()
+  const { voting: service, room } = buildProviders(prisma, gateway)
+  const { assemblyId, people, cleanup } = await seedAssembly(prisma, room, { label: 'auto-close-secretary-test', delegates: ['Delegado 1', 'Delegado 2'] })
+
+  try {
+    const secretary = await prisma.participantSession.create({
+      data: { assemblyId, firstName: 'Débora', lastName: 'Secretaria', isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) },
+    })
+    const withSecretary = await service.createRound(assemblyId, ballot)
+    await prisma.round.update({ where: { id: withSecretary.id }, data: { regionalSecretaryVotes: true } })
+    await service.openRound(withSecretary.id)
+    await service.castVote(people['Delegado 1']!.id, withSecretary.id, withSecretary.options[0]!.id)
+    await service.castVote(people['Delegado 2']!.id, withSecretary.id, withSecretary.options[0]!.id)
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    assert.equal(await statusOf(prisma, withSecretary.id), 'open', 'the secretary is in the base of this vote and has not voted')
+    await service.castVote(secretary.id, withSecretary.id, withSecretary.options[1]!.id)
+    assert.equal(await settledStatus(prisma, withSecretary.id), 'published')
+    await service.annulRound(withSecretary.id, 'Prueba de la base')
+
+    const withoutSecretary = await service.createRound(assemblyId, ballot)
+    await service.openRound(withoutSecretary.id)
+    await service.castVote(people['Delegado 1']!.id, withoutSecretary.id, withoutSecretary.options[0]!.id)
+    await service.castVote(people['Delegado 2']!.id, withoutSecretary.id, withoutSecretary.options[1]!.id)
+    assert.equal(await settledStatus(prisma, withoutSecretary.id), 'published', 'the secretary is not in the base of this vote')
+  } finally {
     await cleanup()
     await prisma.$disconnect()
   }
