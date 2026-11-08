@@ -3,18 +3,15 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { NotFoundException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { OfficialRosterService } from '../../src/voting/official-roster.service.js'
-import { PresentationService } from '../../src/voting/presentation.service.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('«Presentar oficiales»: the mesa moves the slide, it is audited, broadcast and read by the projector and the mesa', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const voting = new VotingService(prisma, gateway)
-  const presentation = new PresentationService(prisma, gateway)
+  const { voting, presentation } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
 
   try {
@@ -55,9 +52,7 @@ test('«Presentar oficiales»: the mesa moves the slide, it is audited, broadcas
 test('opening a vote ends «Presentar oficiales», audits it and tells the projector', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const voting = new VotingService(prisma, gateway)
-  const presentation = new PresentationService(prisma, gateway)
-  const roster = new OfficialRosterService(prisma, gateway)
+  const { voting, presentation, roster } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
 
   try {

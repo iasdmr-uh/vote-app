@@ -6,6 +6,7 @@ import { ModeratorController, ParticipantController, ParticipantLeaveController,
 import { VotingService } from './voting.service.js'
 import { PresentationService } from './presentation.service.js'
 import { ConnectionCountService } from './connection-count.service.js'
+import { RoomService } from './room.service.js'
 import { OperatorLogService } from './operator-log.service.js'
 import { OfficialRosterService } from './official-roster.service.js'
 
@@ -22,6 +23,7 @@ import { OfficialRosterService } from './official-roster.service.js'
     OfficialRosterService,
     OperatorLogService,
     PresentationService,
+    RoomService,
     VotingService,
   ],
 })

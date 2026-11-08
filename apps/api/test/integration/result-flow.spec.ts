@@ -4,10 +4,11 @@ import { randomUUID } from 'node:crypto'
 import { ConflictException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
-import { VotingService } from '../../src/voting/voting.service.js'
+import type { VotingService } from '../../src/voting/voting.service.js'
 import { delegateName } from '../scenarios/session-tools.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub, type GatewayEvent } from '../support/gateway.js'
+import { buildProviders } from '../support/providers.js'
 
 
 async function withAssembly(delegates: number, body: (context: {
@@ -20,7 +21,7 @@ async function withAssembly(delegates: number, body: (context: {
 }) => Promise<void>) {
   const prisma = await connectDatabase()
   const { gateway: realtime, events: emitted } = gatewayStub()
-  const service = new VotingService(prisma, realtime)
+  const { voting: service, room } = buildProviders(prisma, realtime)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
   try {
@@ -29,10 +30,10 @@ async function withAssembly(delegates: number, body: (context: {
     assemblyId = (await prisma.assembly.create({ data: { organizationId, name: 'Result flow', status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
     const voters: string[] = []
     for (let number = 1; number <= delegates; number += 1) {
-      const joined = await service.joinAssembly(joinCode, delegateName(number), 'Asamblea')
+      const joined = await room.joinAssembly(joinCode, delegateName(number), 'Asamblea')
       voters.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
     }
-    await service.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     emitted.length = 0
     await body({ prisma, service, emitted, assemblyId, joinCode, voters })
   } finally {

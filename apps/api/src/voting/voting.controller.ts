@@ -17,6 +17,7 @@ import type { Request, Response } from 'express'
 import { PARTICIPANT_ID } from '../auth/auth.service.js'
 import { ModeratorGuard, ParticipantGuard, ParticipantSessionGuard } from '../auth/auth.guards.js'
 import { VotingService } from './voting.service.js'
+import { RoomService } from './room.service.js'
 import { PresentationService } from './presentation.service.js'
 import { ConnectionCountService } from './connection-count.service.js'
 import { CONNECTION_GRACE_MS } from '../realtime/connection-timing.js'
@@ -52,7 +53,7 @@ function withConnection<T extends object>(state: T, connection: Awaited<ReturnTy
 
 @Controller('assemblies')
 export class PublicAssemblyController {
-  constructor(private readonly voting: VotingService, private readonly connections: ConnectionCountService) {}
+  constructor(private readonly voting: VotingService, private readonly room: RoomService, private readonly connections: ConnectionCountService) {}
 
   @Post('resume')
   async resume(@Body() input: ResumeSessionDto) {
@@ -61,7 +62,7 @@ export class PublicAssemblyController {
 
   @Post(':assemblyCode/join')
   async join(@Param('assemblyCode') assemblyCode: string, @Body() input: JoinAssemblyDto) {
-    return { ...await this.voting.joinAssembly(assemblyCode, input.firstName, input.lastName), connectionGraceMs: CONNECTION_GRACE_MS }
+    return { ...await this.room.joinAssembly(assemblyCode, input.firstName, input.lastName), connectionGraceMs: CONNECTION_GRACE_MS }
   }
 
   @Get(':assemblyCode/public-state')
@@ -104,6 +105,7 @@ export class ParticipantLeaveController {
 export class ModeratorController {
   constructor(
     private readonly voting: VotingService,
+    private readonly room: RoomService,
     private readonly presentation: PresentationService,
     private readonly connections: ConnectionCountService,
     private readonly operatorLog: OperatorLogService,
@@ -133,7 +135,7 @@ export class ModeratorController {
 
   @Post('assemblies/:assemblyId/join-code')
   rotateJoinCode(@Param('assemblyId', ParseUUIDPipe) assemblyId: string) {
-    return this.voting.rotateJoinCode(assemblyId)
+    return this.room.rotateJoinCode(assemblyId)
   }
 
   @Post('presentation')
@@ -160,7 +162,7 @@ export class ModeratorController {
 
   @Patch('assemblies/:assemblyId/lobby')
   lobby(@Param('assemblyId', ParseUUIDPipe) assemblyId: string, @Body() input: LobbyPatchDto) {
-    return this.voting.changeLobby(assemblyId, input.status)
+    return this.room.changeLobby(assemblyId, input.status)
   }
 
   @Post('assemblies/:assemblyId/secrecy-cleanup')
@@ -180,31 +182,31 @@ export class ModeratorController {
 
   @Patch('participants/:participantId')
   participant(@Param('participantId', ParseUUIDPipe) participantId: string, @Body() input: ParticipantPatchDto) {
-    return this.voting.patchParticipant(participantId, input)
+    return this.room.patchParticipant(participantId, input)
   }
 
   @Post('participants/:participantId/disable-voting')
   @HttpCode(200)
   disableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
-    return this.voting.setVotingDisabled(participantId, true)
+    return this.room.setVotingDisabled(participantId, true)
   }
 
   @Post('participants/:participantId/enable-voting')
   @HttpCode(200)
   enableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
-    return this.voting.setVotingDisabled(participantId, false)
+    return this.room.setVotingDisabled(participantId, false)
   }
 
   @Post('participants/:participantId/take-out')
   @HttpCode(200)
   takeOut(@Param('participantId', ParseUUIDPipe) participantId: string) {
-    return this.voting.takeOutOfRoom(participantId)
+    return this.room.takeOutOfRoom(participantId)
   }
 
   @Post('participants/:participantId/return')
   @HttpCode(200)
   returnToRoom(@Param('participantId', ParseUUIDPipe) participantId: string) {
-    return this.voting.returnToRoom(participantId)
+    return this.room.returnToRoom(participantId)
   }
 
   @Post('participants/:participantId/resume-code')

@@ -5,11 +5,11 @@ import test from 'node:test'
 import { UnprocessableEntityException } from '@nestjs/common'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
 import { writeChain, type ChainVote } from '../scenarios/chain-diagram.js'
 import { assertVoteInvariants, candidatesOf, delegateName, expandBallots, seatsOf, seededShuffle, sorted } from '../scenarios/session-tools.js'
 import { fixtures, type Fixture } from '../scenarios/tie-sessions.js'
+import { buildProviders } from '../support/providers.js'
 
 const outputDirectory = process.env.SCENARIOS_OUT ?? fileURLToPath(new URL('../../../../test-results/scenarios/', import.meta.url))
 
@@ -18,9 +18,9 @@ type Mesa = Awaited<ReturnType<VotingService['moderatorAssembly']>>
 
 async function withAssembly(name: string, count: number, body: (context: { service: VotingService; assemblyId: string; people: string[] }) => Promise<void>) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => delegateName(index + 1))
-  const seeded = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const seeded = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, assemblyId: seeded.assemblyId, people: names.map((person) => seeded.people[person]!.id) })
   } finally {

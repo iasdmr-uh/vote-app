@@ -1,26 +1,27 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { AuthService, MODERATOR_ACTOR } from '../../src/auth/auth.service.js'
+import { MODERATOR_ACTOR } from '../../src/auth/actors.js'
+import { AuthService } from '../../src/auth/auth.service.js'
 import { ParticipantLeaveController } from '../../src/voting/voting.controller.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { randomUUID } from 'node:crypto'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 async function setup(label: string, names: string[]) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
-  const seeded = await seedAssembly(prisma, service, { label, delegates: names })
+  const { voting: service, room } = buildProviders(prisma, gateway)
+  const seeded = await seedAssembly(prisma, room, { label, delegates: names })
   const cleanup = async () => {
     await seeded.cleanup()
     await prisma.$disconnect()
   }
-  return { prisma, service, auth: new AuthService(prisma), events, joinCode: seeded.joinCode, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
+  return { prisma, service, room, auth: new AuthService(prisma), events, joinCode: seeded.joinCode, assemblyId: seeded.assemblyId, people: seeded.people, cleanup }
 }
 
 const twoOptions = { format: 'single_choice' as const, countingRule: { kind: 'count_only' as const }, options: [{ label: 'Opción A' }, { label: 'Opción B' }] }
@@ -36,14 +37,14 @@ test('a delegate cannot leave on their own', async () => {
 })
 
 test('the mesa takes someone out during an open vote: that vote keeps them in its base and the next one drops them', async () => {
-  const { prisma, service, auth, events, joinCode, assemblyId, people, cleanup } = await setup('take-out', ['Eliseo', 'Isaías', 'Jeremías'])
+  const { prisma, service, room, auth, events, joinCode, assemblyId, people, cleanup } = await setup('take-out', ['Eliseo', 'Isaías', 'Jeremías'])
   try {
     const first = await service.createRound(assemblyId, { title: 'Primera', ...twoOptions })
     await service.openRound(first.id)
     await service.castVote(people.Eliseo!.id, first.id, first.options[0]!.id)
 
     events.length = 0
-    assert.deepEqual(await service.takeOutOfRoom(people.Isaías!.id), { id: people.Isaías!.id, firstName: 'Isaías', lastName: 'Delegado', status: 'left' })
+    assert.deepEqual(await room.takeOutOfRoom(people.Isaías!.id), { id: people.Isaías!.id, firstName: 'Isaías', lastName: 'Delegado', status: 'left' })
     assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: people.Isaías!.id } })).status, 'left')
     assert.deepEqual(events.find((event) => event.name === 'participantLeft')?.payload, { participantId: people.Isaías!.id, firstName: 'Isaías', lastName: 'Delegado' })
     assert.deepEqual(events.find((event) => event.name === 'lobbyState')?.payload, { status: 'closed', participantCount: 2 })
@@ -58,7 +59,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     await assert.rejects(service.castVote(people.Isaías!.id, first.id, first.options[0]!.id))
 
     events.length = 0
-    await service.takeOutOfRoom(people.Isaías!.id)
+    await room.takeOutOfRoom(people.Isaías!.id)
     assert.equal(events.length, 0)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.taken_out' } }), 1)
 
@@ -80,7 +81,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     assert.equal((await service.publicState(joinCode)).eligibleCount, 2)
 
     events.length = 0
-    await assert.rejects(service.returnToRoom(people.Isaías!.id), ConflictException, 'no return while a vote is open')
+    await assert.rejects(room.returnToRoom(people.Isaías!.id), ConflictException, 'no return while a vote is open')
     assert.equal(events.length, 0)
     assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: people.Isaías!.id } })).status, 'left')
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.returned' } }), 0)
@@ -89,7 +90,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     await service.annulRound(second.id, 'Nadie votó')
 
     events.length = 0
-    const returned = await service.returnToRoom(people.Isaías!.id)
+    const returned = await room.returnToRoom(people.Isaías!.id)
     assert.deepEqual(returned, { id: people.Isaías!.id, firstName: 'Isaías', lastName: 'Delegado', status: 'active' })
     assert.deepEqual(events.find((event) => event.name === 'lobbyState')?.payload, { status: 'closed', participantCount: 3 })
     assert.equal(events.some((event) => event.name === 'participantJoined'), true)
@@ -112,24 +113,24 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
     assert.equal((await service.publicState(joinCode)).eligibleCount, 3, 'counted again from the next vote')
     await service.closeRound(third.id)
 
-    await assert.rejects(service.returnToRoom(people.Isaías!.id), NotFoundException)
-    await assert.rejects(service.takeOutOfRoom(randomUUID()), NotFoundException)
+    await assert.rejects(room.returnToRoom(people.Isaías!.id), NotFoundException)
+    await assert.rejects(room.takeOutOfRoom(randomUUID()), NotFoundException)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.returned' } }), 1)
 
     await service.completeAssembly(assemblyId, true)
-    await assert.rejects(service.takeOutOfRoom(people.Eliseo!.id), ConflictException)
+    await assert.rejects(room.takeOutOfRoom(people.Eliseo!.id), ConflictException)
   } finally { await cleanup() }
 })
 
 test('in an election, someone taken out stops counting from the next vote even if they voted, and one who returns counts again', async () => {
-  const { prisma, service, joinCode, assemblyId, people, cleanup } = await setup('election-exit', ['Oseas', 'Joel', 'Amós'])
+  const { prisma, service, room, joinCode, assemblyId, people, cleanup } = await setup('election-exit', ['Oseas', 'Joel', 'Amós'])
   try {
     const round = await service.createRound(assemblyId, { title: 'Presidencia', ...twoOptions })
     await service.openRound(round.id)
     await service.castVote(people.Oseas!.id, round.id, round.options[0]!.id)
     await service.castVote(people.Amós!.id, round.id, round.options[1]!.id)
-    await service.takeOutOfRoom(people.Oseas!.id)
-    await service.takeOutOfRoom(people.Joel!.id)
+    await room.takeOutOfRoom(people.Oseas!.id)
+    await room.takeOutOfRoom(people.Joel!.id)
     assert.equal((await service.publicState(joinCode)).eligibleCount, 3, 'both still count in the open vote')
     await service.closeRound(round.id)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).eligibleCount, 3)
@@ -139,11 +140,11 @@ test('in an election, someone taken out stops counting from the next vote even i
     await service.openRound(runoff.id)
     assert.equal((await service.publicState(joinCode)).eligibleCount, 1)
 
-    await assert.rejects(service.returnToRoom(people.Joel!.id), ConflictException, 'Joel is not in the open vote base, so he cannot come back and vote in it')
+    await assert.rejects(room.returnToRoom(people.Joel!.id), ConflictException, 'Joel is not in the open vote base, so he cannot come back and vote in it')
     await service.closeRound(runoff.id)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).eligibleCount, 1)
-    await service.returnToRoom(people.Oseas!.id)
-    await service.returnToRoom(people.Joel!.id)
+    await room.returnToRoom(people.Oseas!.id)
+    await room.returnToRoom(people.Joel!.id)
     await service.annulRound(runoff.id, 'Nadie votó')
 
     const next = await service.createRound(assemblyId, { title: 'Otra', ...twoOptions })
@@ -153,15 +154,15 @@ test('in an election, someone taken out stops counting from the next vote even i
 })
 
 test('the regional secretary is taken out by the mesa and never returned through the participant list', async () => {
-  const { prisma, service, assemblyId, cleanup } = await setup('secretary-exit', ['Miqueas'])
+  const { prisma, service, room, assemblyId, cleanup } = await setup('secretary-exit', ['Miqueas'])
   try {
     const secretary = await prisma.participantSession.create({
       data: { assemblyId, firstName: 'Débora', lastName: 'Secretaria', isRegionalSecretary: true, tokenHash: hashCredential(newOpaqueCredential()) },
     })
-    assert.deepEqual(await service.takeOutOfRoom(secretary.id), { id: secretary.id, firstName: 'Débora', lastName: 'Secretaria', status: 'left' })
+    assert.deepEqual(await room.takeOutOfRoom(secretary.id), { id: secretary.id, firstName: 'Débora', lastName: 'Secretaria', status: 'left' })
     assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: secretary.id } })).status, 'left')
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.taken_out' } }), 1)
-    await assert.rejects(service.returnToRoom(secretary.id), ConflictException)
+    await assert.rejects(room.returnToRoom(secretary.id), ConflictException)
     assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: secretary.id } })).status, 'left')
     assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 1, accredited: 1, quorum: 1 })
   } finally { await cleanup() }
@@ -174,14 +175,14 @@ async function addSecretary(prisma: PrismaService, assemblyId: string) {
 }
 
 test('the room numbers follow joins, take-outs and returns', async () => {
-  const { service, assemblyId, people, cleanup } = await setup('room-numbers', ['Abdías', 'Nahúm', 'Sofonías', 'Hageo'])
+  const { service, room, assemblyId, people, cleanup } = await setup('room-numbers', ['Abdías', 'Nahúm', 'Sofonías', 'Hageo'])
   try {
     assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 4, accredited: 4, quorum: 3 })
-    await service.takeOutOfRoom(people.Nahúm!.id)
+    await room.takeOutOfRoom(people.Nahúm!.id)
     assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 3, accredited: 4, quorum: 3 })
-    await service.takeOutOfRoom(people.Hageo!.id)
+    await room.takeOutOfRoom(people.Hageo!.id)
     assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 2, accredited: 4, quorum: 3 })
-    await service.returnToRoom(people.Nahúm!.id)
+    await room.returnToRoom(people.Nahúm!.id)
     assert.deepEqual((await service.moderatorAssembly(assemblyId)).room, { present: 3, accredited: 4, quorum: 3 })
   } finally { await cleanup() }
 })

@@ -3,17 +3,16 @@ import test from 'node:test'
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential } from '../../src/auth/credentials.js'
 import type { PrismaService } from '../../src/prisma/prisma.service.js'
+import { RoomService } from '../../src/voting/room.service.js'
 import { DEFAULT_BOARD_POSITIONS, DEFAULT_DEPARTMENT_POSITIONS, VotingService } from '../../src/voting/voting.service.js'
 import { OfficialRosterService } from '../../src/voting/official-roster.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
+import { buildProviders } from '../support/providers.js'
 
 /** A real Asamblea created by the mesa (so its puestos are seeded), with `count` delegates. */
-async function withAssembly(count: number, body: (ctx: { service: VotingService; roster: OfficialRosterService; prisma: PrismaService; assemblyId: string; joinCode: string; people: string[] }) => Promise<void>) {
+async function withAssembly(count: number, body: (ctx: { service: VotingService; room: RoomService; roster: OfficialRosterService; prisma: PrismaService; assemblyId: string; joinCode: string; people: string[] }) => Promise<void>) {
   const prisma = await connectDatabase()
-  const { gateway } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
-  const roster = new OfficialRosterService(prisma, gateway)
+  const { voting: service, room, roster } = buildProviders(prisma)
   let assemblyId: string | undefined
   try {
     const created = await service.createAssembly('IV Asamblea Reorganizativa 2026', ' 2027–2029 ')
@@ -21,10 +20,10 @@ async function withAssembly(count: number, body: (ctx: { service: VotingService;
     assert.equal(created.period, '2027–2029')
     const people: string[] = []
     for (let index = 0; index < count; index += 1) {
-      const joined = await service.joinAssembly(created.joinCode, `Delegado ${index + 1}`, 'Prueba')
+      const joined = await room.joinAssembly(created.joinCode, `Delegado ${index + 1}`, 'Prueba')
       people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
     }
-    await body({ service, roster, prisma, assemblyId, joinCode: created.joinCode, people })
+    await body({ service, room, roster, prisma, assemblyId, joinCode: created.joinCode, people })
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
@@ -51,7 +50,7 @@ test('creating an Asamblea seeds the junta directiva and the 14 departamentos in
 })
 
 test('the mesa adds a departamento: audited and last; duplicate or empty is 422, a completed Asamblea is 409', async () => {
-  await withAssembly(1, async ({ service, prisma, assemblyId }) => {
+  await withAssembly(1, async ({ service, room, prisma, assemblyId }) => {
     const added = await service.addPosition(assemblyId, '  Comunicación ')
     assert.deepEqual({ group: added.group, label: added.label, custom: added.custom, elected: added.elected }, { group: 'department', label: 'Comunicación', custom: true, elected: null })
     const departments = (await service.moderatorAssembly(assemblyId)).positions.filter((item) => item.group === 'department')
@@ -66,7 +65,7 @@ test('the mesa adds a departamento: audited and last; duplicate or empty is 422,
     await assert.rejects(service.addPosition(assemblyId, 'presidente'), UnprocessableEntityException, 'a junta directiva puesto')
     await assert.rejects(service.addPosition(assemblyId, '   '), UnprocessableEntityException)
 
-    await service.changeLobby(assemblyId, 'lobby_closed')
+    await room.changeLobby(assemblyId, 'lobby_closed')
     await service.completeAssembly(assemblyId, true)
     await assert.rejects(service.addPosition(assemblyId, 'Educación'), ConflictException)
     assert.equal(await prisma.position.count({ where: { assemblyId } }), 22)
@@ -74,8 +73,8 @@ test('the mesa adds a departamento: audited and last; duplicate or empty is 422,
 })
 
 test('a cargo with a puesto takes its name; only a cargo has a puesto and an elected puesto cannot be voted again', async () => {
-  await withAssembly(3, async ({ service, roster, prisma, assemblyId, people }) => {
-    await service.changeLobby(assemblyId, 'lobby_closed')
+  await withAssembly(3, async ({ service, room, roster, prisma, assemblyId, people }) => {
+    await room.changeLobby(assemblyId, 'lobby_closed')
     const treasurer = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Tesorero' } })).id
     await assert.rejects(service.createRound(assemblyId, { title: 'Comisión', category: 'committee', memberCount: 1, format: 'multiple_choice', positionId: treasurer, options: [{ label: 'A' }] }), UnprocessableEntityException)
     await assert.rejects(service.createRound(assemblyId, { category: 'office', format: 'single_choice', options: [{ label: 'A' }, { label: 'B' }] }), UnprocessableEntityException, 'without a puesto the title is required')
@@ -97,8 +96,8 @@ test('a cargo with a puesto takes its name; only a cargo has a puesto and an ele
 })
 
 test('a runoff elects into its root\'s puesto; phones, projector and mesa see it once on the roster', async () => {
-  await withAssembly(4, async ({ service, roster, prisma, assemblyId, joinCode, people }) => {
-    await service.changeLobby(assemblyId, 'lobby_closed')
+  await withAssembly(4, async ({ service, room, roster, prisma, assemblyId, joinCode, people }) => {
+    await room.changeLobby(assemblyId, 'lobby_closed')
     const president = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Presidente' } })).id
     const first = await service.createRound(assemblyId, { category: 'office', format: 'single_choice', positionId: president, options: [{ label: 'Ana Ruiz' }, { label: 'Juan Mora' }, { label: 'Elena Castro' }] })
     await service.openRound(first.id)

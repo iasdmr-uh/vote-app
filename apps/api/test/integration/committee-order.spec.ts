@@ -2,16 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[] }
 
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service, room } = buildProviders(prisma)
   const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
-  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: name, delegates: names })
   try {
     await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id) })
   } finally {

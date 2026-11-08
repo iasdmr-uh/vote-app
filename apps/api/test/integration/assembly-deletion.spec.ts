@@ -1,19 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { OfficialRosterService } from '../../src/voting/official-roster.service.js'
-import { OperatorLogService } from '../../src/voting/operator-log.service.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { seedAssembly } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('after the acta, the mesa erases every record of a completed assembly', async () => {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
-  const roster = new OfficialRosterService(prisma, gateway)
-  const { organizationId, assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: 'deletion-test', delegates: ['Ana', 'Luis', 'Marta'] })
+  const { voting: service, room, operatorLog, roster } = buildProviders(prisma, gateway)
+  const { organizationId, assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, room, { label: 'deletion-test', delegates: ['Ana', 'Luis', 'Marta'] })
   const sessions = ['Ana', 'Luis', 'Marta'].map((name) => people[name]!.id)
 
   try {
@@ -39,7 +36,7 @@ test('after the acta, the mesa erases every record of a completed assembly', asy
     assert.equal(await prisma.participantSession.count({ where: { assemblyId } }), 3, 'nothing is erased before the assembly is completed')
 
     await service.completeAssembly(assemblyId, true)
-    await new OperatorLogService(prisma).download(assemblyId, 'delete')
+    await operatorLog.download(assemblyId, 'delete')
     assert.deepEqual(await service.deleteAssemblyData(assemblyId, true), { assemblyId, deleted: true, vacuumed: true })
     assert.deepEqual(events.filter((event) => event.name === 'assemblyDeleted').map((event) => event.target), [assemblyId], 'live sockets of the assembly are closed')
 

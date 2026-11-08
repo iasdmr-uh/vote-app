@@ -4,15 +4,14 @@ import test from 'node:test'
 import { ServiceUnavailableException } from '@nestjs/common'
 import pg from 'pg'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
-import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 test('closing a round leaves no database-level link between participation receipts and anonymous votes', async () => {
   const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const linkedRows = async (roundId: string) => (await prisma.$queryRaw<Array<{ count: bigint }>>`
     SELECT count(*) AS count FROM participations p
     JOIN anonymous_votes v ON v.xmin = p.xmin AND v.round_id = p.round_id
@@ -53,7 +52,7 @@ test('closing a round leaves no database-level link between participation receip
 test('a failed VACUUM keeps the round closed, and a retry unlinks the votes and shows the result', async () => {
   const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-retry-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {
@@ -96,7 +95,7 @@ test('a failed VACUUM keeps the round closed, and a retry unlinks the votes and 
 test('startup unlinks rounds published before this protection existed, even in completed assemblies', async () => {
   const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-legacy-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {
@@ -147,7 +146,7 @@ test('a lock held on the votes table makes cleanup fail fast and recoverably ins
   const locker = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL })
   await locker.connect()
   const organizationId = randomUUID()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   Object.assign(service, { vacuumLockTimeoutMs: 300 })
   let lockHeld = false
   try {
@@ -191,7 +190,7 @@ test('a lock held on the votes table makes cleanup fail fast and recoverably ins
 test('startup cleanup handles many historical rounds, each in its own transaction', async () => {
   const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-many-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {

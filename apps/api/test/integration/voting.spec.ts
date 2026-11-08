@@ -7,11 +7,12 @@ import { VotingService } from '../../src/voting/voting.service.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization } from '../support/seed.js'
+import { buildProviders } from '../support/providers.js'
 
 async function openBallot(t: TestContext) {
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
-  const service = new VotingService(prisma, gateway)
+  const { voting: service, room } = buildProviders(prisma, gateway)
   const organizationId = randomUUID()
   t.after(async () => {
     await removeOrganization(prisma, organizationId)
@@ -30,10 +31,10 @@ async function openBallot(t: TestContext) {
       openedAt: new Date(),
       options: { create: [{ label: 'Samuel', order: 0 }, { label: 'Natán', order: 1 }] },
     },
-    include: { options: true },
+    include: { options: { orderBy: { order: 'asc' } } },
   })
   const [samuel, natan] = round.options.map((option) => option.id) as [string, string]
-  return { prisma, service, events, joinCode, assemblyId, delegate, roundId: round.id, samuel, natan }
+  return { prisma, service, room, events, joinCode, assemblyId, delegate, roundId: round.id, samuel, natan }
 }
 
 async function publishedBallot(t: TestContext) {
@@ -142,17 +143,17 @@ describe('completing the assembly', () => {
   })
 
   test('completeAssembly: a completed assembly rejects joins, ballots, votes, lobby changes and edits', async (t) => {
-    const { service, joinCode, assemblyId, delegate, roundId, samuel } = await publishedBallot(t)
+    const { service, room, joinCode, assemblyId, delegate, roundId, samuel } = await publishedBallot(t)
 
     await service.completeAssembly(assemblyId, true)
 
-    await assert.rejects(service.joinAssembly(joinCode, 'Delegado', '02'), ConflictException)
+    await assert.rejects(room.joinAssembly(joinCode, 'Delegado', '02'), ConflictException)
     await assert.rejects(service.createRound(assemblyId, {
       title: 'Vocalía', format: 'single_choice', options: [{ label: 'Oseas' }, { label: 'Joel' }], countingRule: { kind: 'count_only' },
     }), ConflictException)
     await assert.rejects(service.castVote(delegate, roundId, samuel), ConflictException)
-    await assert.rejects(service.changeLobby(assemblyId, 'lobby_closed'), ConflictException)
-    await assert.rejects(service.patchParticipant(delegate, { firstName: 'Delegada' }), ConflictException)
+    await assert.rejects(room.changeLobby(assemblyId, 'lobby_closed'), ConflictException)
+    await assert.rejects(room.patchParticipant(delegate, { firstName: 'Delegada' }), ConflictException)
   })
 
   test('completeAssembly: every view reports the completion and keeps the published results', async (t) => {
@@ -197,7 +198,7 @@ type Ballot = { id: string; options: Array<{ id: string; label: string }> }
 
 async function committeeElection(t: TestContext) {
   const prisma = await connectDatabase()
-  const service = new VotingService(prisma, gatewayStub().gateway)
+  const { voting: service } = buildProviders(prisma)
   const organizationId = randomUUID()
   t.after(async () => {
     await removeOrganization(prisma, organizationId)
