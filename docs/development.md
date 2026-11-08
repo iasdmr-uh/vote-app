@@ -88,6 +88,8 @@ La mesa abre, cierra, publica y puede anular; nunca elige ganadores. No existen 
 
 Migraciones: `20261102004200_decision_rounds` (categoría `decision`, `decision_format`, `approval_rule`), `20261102004300_participant_voting_disabled` (`participant_sessions.voting_disabled`) y `20261102004400_ballot_option_is_new` (`ballot_options.is_new`).
 
+E2E simulado: `npm run test:e2e` levanta su propio Vite en 5173 y falla si el puerto está ocupado, por ejemplo por `npm run dev`. Usa `PLAYWRIGHT_WEB_PORT=…` para otro puerto, o `PLAYWRIGHT_BASE_URL=…` para probar contra un servidor que ya levantaste.
+
 E2E real: `npm run test:e2e:integration`; si 3300 o 4174 están ocupados, `E2E_API_PORT=… E2E_WEB_PORT=… npm run test:e2e:integration` ([e2e-real-postgres.md](e2e-real-postgres.md)).
 
 ## Documentos de fundamento
