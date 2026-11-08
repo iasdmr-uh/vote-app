@@ -232,3 +232,97 @@ test('adding the regional secretary again clears a voting block', { skip }, asyn
     await service.castVote(second.participantId, fourth.id, optionId(fourth, 'Ana'))
   })
 })
+
+test('the mesa list shows the regional secretary with whether they voted and never how', { skip }, async () => {
+  await withAssembly('secretary-in-list', 4, async ({ service, assemblyId, people }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    assert.deepEqual(
+      (await service.moderatorAssembly(assemblyId)).regionalSecretary,
+      { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active', voted: false },
+    )
+
+    await service.openRound(fourth.id)
+    await service.castVote(participantId, fourth.id, optionId(fourth, 'Ana'))
+    const mesa = await service.moderatorAssembly(assemblyId)
+    assert.deepEqual(mesa.regionalSecretary, { id: participantId, firstName: 'Marta', lastName: 'Regional', status: 'active', voted: true })
+    assert.equal(mesa.participants.some((person) => person.id === participantId), false)
+    assert.equal(mesa.participantCount, 4)
+  })
+})
+
+test('the mesa takes the regional secretary out and the next vote drops them from the base', { skip }, async () => {
+  await withAssembly('secretary-taken-out', 4, async ({ service, assemblyId, people, auth }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const invitation = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const token = (await service.redeemResumeCode(resumeCodeOf(invitation.resumeUrl))).participantSessionToken
+    await voteAndClose(service, fourth, people, ['Ana', 'Luis'])
+    const fifth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === fourth.id)!
+    assert.equal(fifth.eligibleCount, 5)
+
+    const result = await service.takeOutOfRoom(invitation.participantId)
+    assert.equal(result.status, 'left')
+
+    const mesa = await service.moderatorAssembly(assemblyId)
+    assert.equal(mesa.regionalSecretary?.status, 'left')
+    assert.equal(mesa.participantCount, 4)
+    const draft = mesa.rounds.find((round) => round.id === fifth.id)!
+    assert.equal(draft.eligibleCount, 4)
+    assert.equal(draft.regionalSecretaryVotes, false)
+    assert.equal(mesa.rounds.find((round) => round.id === fourth.id)!.eligibleCount, 5)
+    await assert.rejects(auth.authenticate({ audience: 'participant', participantSessionToken: token }), UnauthorizedException)
+
+    await service.openRound(fifth.id)
+    await assert.rejects(service.castVote(invitation.participantId, fifth.id, optionId(fifth, 'Ana')))
+    assert.equal((await roundOnMesa(service, assemblyId, fifth.id)).eligibleCount, 4)
+  })
+})
+
+test('a vote already open keeps the regional secretary in its base after they are taken out', { skip }, async () => {
+  await withAssembly('secretary-taken-out-open', 4, async ({ service, assemblyId, people }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    await service.openRound(fourth.id)
+    await service.takeOutOfRoom(participantId)
+    assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
+    for (const [index, person] of people.entries()) await service.castVote(person, fourth.id, optionId(fourth, index % 2 ? 'Luis' : 'Ana'))
+    await service.closeRound(fourth.id)
+    await service.publishRound(fourth.id)
+    assert.equal((await roundOnMesa(service, assemblyId, fourth.id)).eligibleCount, 5)
+
+    const fifth = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === fourth.id)!
+    assert.equal(fifth.eligibleCount, 4)
+  })
+})
+
+test('the regional secretary cannot be returned to the room', { skip }, async () => {
+  await withAssembly('secretary-no-return', 4, async ({ service, assemblyId, people }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const { participantId } = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    await service.takeOutOfRoom(participantId)
+    await assert.rejects(service.returnToRoom(participantId), conflict(/secretaría regional/i))
+    assert.equal((await service.moderatorAssembly(assemblyId)).regionalSecretary?.status, 'left')
+  })
+})
+
+test('adding the regional secretary after a take-out brings them back with a new device', { skip }, async () => {
+  await withAssembly('secretary-readded-after-take-out', 4, async ({ service, assemblyId, people, auth }) => {
+    const fourth = await tiedVotes(service, assemblyId, await election(service, assemblyId), people, 3)
+    const first = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    const oldToken = (await service.redeemResumeCode(resumeCodeOf(first.resumeUrl))).participantSessionToken
+    await service.takeOutOfRoom(first.participantId)
+
+    const second = await service.addRegionalSecretary(fourth.id, REGIONAL_SECRETARY)
+    assert.equal(second.participantId, first.participantId)
+    const mesa = await service.moderatorAssembly(assemblyId)
+    assert.equal(mesa.regionalSecretary?.status, 'active')
+    assert.equal(mesa.rounds.find((round) => round.id === fourth.id)!.eligibleCount, 5)
+    await assert.rejects(auth.authenticate({ audience: 'participant', participantSessionToken: oldToken }), UnauthorizedException)
+
+    const newToken = (await service.redeemResumeCode(resumeCodeOf(second.resumeUrl))).participantSessionToken
+    const identity = await auth.authenticate({ audience: 'participant', participantSessionToken: newToken })
+    assert.equal(identity.audience === 'participant' && identity.sessionId, first.participantId)
+    await service.openRound(fourth.id)
+    await service.castVote(first.participantId, fourth.id, optionId(fourth, 'Ana'))
+  })
+})

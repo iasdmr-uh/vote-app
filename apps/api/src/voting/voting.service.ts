@@ -274,10 +274,11 @@ export class VotingService implements OnModuleInit {
       await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${identity.assemblyId}::uuid FOR UPDATE`
       const assembly = await tx.assembly.findUniqueOrThrow({ where: { id: identity.assemblyId }, select: { status: true } })
       if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
-      const current = await tx.participantSession.findFirst({
-        where: { id: participantId, isRegionalSecretary: false },
-        select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true },
+      const current = await tx.participantSession.findUnique({
+        where: { id: participantId },
+        select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true, isRegionalSecretary: true },
       })
+      if (current?.isRegionalSecretary && target === 'active') throw new ConflictException('La secretaría regional no regresa a la sala; se agrega de nuevo desde la votación que corresponde')
       const from = target === 'left' ? 'active' : 'left'
       if (!current || (current.status !== from && !(target === 'left' && current.status === 'left'))) throw new NotFoundException('Participante no encontrado')
       if (current.status === target) return { ...current, changed: false }
@@ -290,6 +291,7 @@ export class VotingService implements OnModuleInit {
           ? { status: 'left', resumeCodeHash: null, resumeExpiresAt: null }
           : { status: 'active', tokenHash: hashCredential(newOpaqueCredential()) },
       })
+      if (current.isRegionalSecretary) await tx.round.updateMany({ where: { assemblyId: current.assemblyId, status: 'draft' }, data: { regionalSecretaryVotes: false } })
       await tx.auditEvent.create({
         data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: target === 'left' ? 'participant.taken_out' : 'participant.returned', metadata: { participantId } },
       })
@@ -473,7 +475,7 @@ export class VotingService implements OnModuleInit {
     const [eligibleCounts, leftParticipants, regionalSecretary, accredited] = await Promise.all([
       this.eligibleCounts(assemblyId),
       this.prisma.participantSession.findMany({ where: { assemblyId, status: 'left', isRegionalSecretary: false }, orderBy: { joinedAt: 'asc' }, select: { id: true, firstName: true, lastName: true } }),
-      this.prisma.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { id: true, firstName: true, lastName: true } }),
+      this.prisma.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { id: true, firstName: true, lastName: true, status: true } }),
       this.prisma.participantSession.count({ where: { assemblyId, status: { in: ['active', 'left'] }, isRegionalSecretary: false } }),
     ])
     const chains = new Map<string, Array<{ id: string; status: string }>>()
@@ -1344,18 +1346,9 @@ export class VotingService implements OnModuleInit {
   private async liveEligibleCounts(client: Prisma.TransactionClient, assemblyId: string) {
     // Sequential: an interactive transaction runs on one connection.
     const active = await client.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })
-    const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true, regionalSecretaryVotes: true } })
-    const secretary = await client.participantSession.findFirst({
-      where: { assemblyId, isRegionalSecretary: true },
-      select: { status: true, participations: { select: { roundId: true } } },
-    })
-    const chainOf = new Map(rounds.map((round) => [round.id, round.committeeRootRoundId ?? round.id]))
-    const secretaryChains = new Set(secretary?.participations.map((item) => chainOf.get(item.roundId)))
-    return new Map(rounds.map((round) => {
-      const chain = chainOf.get(round.id)
-      const secretaryCounts = round.regionalSecretaryVotes && (secretary?.status === 'active' || secretaryChains.has(chain))
-      return [round.id, active + (secretaryCounts ? 1 : 0)]
-    }))
+    const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, regionalSecretaryVotes: true } })
+    const secretary = await client.participantSession.findFirst({ where: { assemblyId, isRegionalSecretary: true }, select: { status: true } })
+    return new Map(rounds.map((round) => [round.id, active + (round.regionalSecretaryVotes && secretary?.status === 'active' ? 1 : 0)]))
   }
 
   private async eligibleCount(assemblyId: string, roundId: string) {

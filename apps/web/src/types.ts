@@ -26,7 +26,7 @@ export type PublicState = {
   status?: string
   lobbyStatus?: string
   participants?: Array<{ id?: string; firstName: string; lastName: string; voted?: boolean; votingDisabled?: boolean }>
-  regionalSecretary?: { id: string; firstName: string; lastName: string; voted?: boolean } | null
+  regionalSecretary?: { id: string; firstName: string; lastName: string; status?: string; voted?: boolean } | null
   attendanceRound?: { roundId: string; status: string; votedCount: number; eligibleCount?: number } | null
   leftParticipants?: Array<{ id: string; firstName: string; lastName: string }>
   participantCount?: number

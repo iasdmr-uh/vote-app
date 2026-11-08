@@ -160,3 +160,35 @@ test('the record marks each vote with who that vote elected and lists the whole 
   await expect(votes.nth(1).locator('.committee-members')).toHaveText('Comisión completa, en orden de elección: Ana Ruiz, Carla Mora, Bruno Díaz')
   await expect(votes.nth(0).locator('.committee-members')).toHaveCount(0)
 })
+
+test('the mesa sees the regional secretary in the list and takes them out without a way back', async ({ page }) => {
+  const takeOuts: string[] = []
+  let secretary: Record<string, unknown> = { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active', voted: false }
+  await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path) => {
+    if (method !== 'POST' || !path.endsWith('/moderator/participants/rs/take-out')) return null
+    takeOuts.push(path)
+    secretary = { ...secretary, status: 'left' }
+    return { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'left' }
+  }, () => ({
+    participants: [{ id: 'p1', firstName: 'Abdías', lastName: 'Safat', votingDisabled: false }],
+    regionalSecretary: secretary,
+    leftParticipants: secretary.status === 'left' ? [{ id: 'p9', firstName: 'Nahúm', lastName: 'Safat' }] : [],
+  }))
+
+  const row = page.locator('.regional-secretary-row')
+  await expect(row).toContainText('Marta Regional')
+  await expect(row).toContainText('Secretario regional')
+  await expect(row.getByRole('button', { name: 'Inhabilitar' })).toHaveCount(0)
+  await expect(row.getByRole('button', { name: 'Regresar a la sala' })).toHaveCount(0)
+
+  await row.getByRole('button', { name: 'Retirar de la sala' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Retirar de la sala', exact: true }).click()
+  await expect.poll(() => takeOuts).toEqual(['/moderator/participants/rs/take-out'])
+
+  await expect(page.locator('.regional-secretary-row')).toHaveCount(0)
+  const out = page.locator('.out-of-room')
+  await expect(out).toContainText('Marta Regional')
+  await expect(out).toContainText('Secretario regional')
+  await expect(out.locator('li', { hasText: 'Marta Regional' }).getByRole('button')).toHaveCount(0)
+  await expect(out.locator('li', { hasText: 'Nahúm Safat' }).getByRole('button', { name: 'Regresar a la sala' })).toBeVisible()
+})

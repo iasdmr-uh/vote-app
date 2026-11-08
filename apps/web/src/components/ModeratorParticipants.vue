@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useAssembly } from '../useAssembly'
 import { useMesa } from '../useMesa'
 
 const {
   origin, loading, state, code, qrImage, assemblyStatus, lobbyStatus, assemblyId, round, formatDateTime,
 } = useAssembly()
-const { attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr, regionalSecretaryInBallot } = useMesa()
+const { attendance, roomLine, roomWarning, setVotingDisabled, removeFromRoom, returnToRoom, editParticipant, moderatorAction, issueResumeCode, rotateJoinCode, resumeQr } = useMesa()
+const secretaryOut = computed(() => state.value?.regionalSecretary?.status === 'left')
 
 function closePersonMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
@@ -34,15 +36,16 @@ function closePersonMenu(event: Event) {
           </div>
         </details>
       </li>
-      <li v-if="!state?.participants?.length" class="empty">Sin participantes</li>
+      <li v-if="state?.regionalSecretary && !secretaryOut" class="regional-secretary-row"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretario regional</span></span><span v-if="round?.status === 'open'" class="muted">{{ state.regionalSecretary.voted ? 'Votó' : 'Falta' }}</span><button type="button" class="link-button" :disabled="loading" @click="issueResumeCode(state!.regionalSecretary!)">Reconectar dispositivo</button><button v-if="assemblyStatus === 'in_progress' || assemblyStatus === 'lobby_closed'" type="button" class="link-button remove-link" :disabled="loading" @click="removeFromRoom(state!.regionalSecretary!)">Retirar de la sala</button></li>
+      <li v-if="!state?.participants?.length && !state?.regionalSecretary" class="empty">Sin participantes</li>
     </ul>
-    <div v-if="state?.leftParticipants?.length" class="out-of-room">
+    <div v-if="state?.leftParticipants?.length || secretaryOut" class="out-of-room">
       <h3>Fuera de la sala</h3>
       <ul class="mesa-person-list">
-        <li v-for="person in state.leftParticipants" :key="person.id"><span class="person-name">{{ person.firstName }} {{ person.lastName }}</span><button v-if="assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="returnToRoom(person.id)">Regresar a la sala</button></li>
+        <li v-if="secretaryOut && state?.regionalSecretary"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretario regional</span></span></li>
+        <li v-for="person in state?.leftParticipants || []" :key="person.id"><span class="person-name">{{ person.firstName }} {{ person.lastName }}</span><button v-if="assemblyStatus !== 'completed'" class="link-button" :disabled="loading" @click="returnToRoom(person.id)">Regresar a la sala</button></li>
       </ul>
     </div>
-    <p v-if="regionalSecretaryInBallot && state?.regionalSecretary" class="regional-secretary-row"><span class="person-name">{{ state.regionalSecretary.firstName }} {{ state.regionalSecretary.lastName }}<span class="badge badge-info">Secretaría regional</span></span><span v-if="round?.status === 'open'" class="muted">{{ state.regionalSecretary.voted ? 'Votó' : 'Falta' }}</span><button type="button" class="link-button" :disabled="loading" @click="issueResumeCode(state!.regionalSecretary!)">Reconectar dispositivo</button></p>
     <div class="action-row lobby-actions"><button v-if="lobbyStatus === 'lobby_open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_closed' })">Cerrar ingreso</button><button v-else-if="round?.status !== 'open'" class="secondary" :disabled="loading" @click="moderatorAction(`/moderator/assemblies/${assemblyId}/lobby`, 'PATCH', { status: 'lobby_open' })">Reabrir ingreso</button><a v-if="code" class="text-link" :href="`/?join=${encodeURIComponent(code)}`">Código: {{ code }}</a><span v-else class="status-line">El código de ingreso no está disponible en este dispositivo.</span><button class="link-button" :disabled="loading" @click="rotateJoinCode">Nuevo código</button></div>
     <div v-if="resumeQr" class="qr-panel" role="dialog" aria-label="QR de reconexión"><img :src="resumeQr.image" :alt="`Código QR de reconexión para ${resumeQr.name}`" /><div><strong>{{ resumeQr.heading || `Reconexión de ${resumeQr.name}` }}</strong><p>Un solo uso · vence {{ formatDateTime(resumeQr.expiresAt) }}</p><button class="secondary" @click="resumeQr = null">Ocultar QR</button></div></div>
     <div v-if="qrImage && lobbyStatus === 'lobby_open'" class="qr-panel"><img :src="qrImage" alt="Código QR para unirse a la Asamblea" /><div><a :href="`/?code=${encodeURIComponent(code)}`">{{ origin }}/?code={{ code }}</a></div></div>
@@ -50,5 +53,5 @@ function closePersonMenu(event: Event) {
 </template>
 
 <style scoped>
-.regional-secretary-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0; }
+.regional-secretary-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 </style>
