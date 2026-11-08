@@ -176,3 +176,15 @@ test('la mesa muestra solo el conteo de conectados, sin marcar a nadie', async (
   await expect(page.locator('.ballot-card').getByText('2 de 3 conectados')).toBeVisible()
   await expect(page.getByText(/conectad/i)).toHaveCount(1)
 })
+
+test('el proyector recupera el conteo actual al reconectarse, sin esperar otro cambio', async ({ page }) => {
+  let connected = 47
+  const link = await mockSocket(page)
+  await page.route(api, (route) => route.fulfill({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'open' }, { roundId: 'v1', connected, base: 50 }) }))
+  await page.goto('/projector?code=synthetic')
+  await expect(page.getByText('47 de 50 conectados')).toBeVisible()
+
+  connected = 45
+  await link.current!.close()
+  await expect(page.getByText('45 de 50 conectados')).toBeVisible({ timeout: 5_000 })
+})
