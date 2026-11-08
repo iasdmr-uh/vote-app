@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { decisionVerdict, displayOrder, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, winnerText } from '../resultados'
+import { decisionVerdict, displayOrder, explanationText, isTied as tiedAt, majorityText, notVotedText, outcomeTag, percentOf, winnerText } from '../resultados'
 import { useAssembly } from '../useAssembly'
 
 defineProps<{
@@ -16,6 +16,7 @@ const isCommittee = computed(() => round.value?.category === 'committee')
 const results = computed(() => displayOrder(round.value, state.value?.results || []))
 const outcome = computed(() => state.value?.outcome)
 const majority = computed(() => round.value ? majorityText(round.value, outcome.value) : '')
+const explanation = computed(() => round.value ? explanationText(round.value, outcome.value, state.value?.explanation, state.value?.results) : '')
 const booleanDecision = computed(() => round.value?.category === 'decision' && round.value.decisionFormat === 'boolean')
 const verdict = computed(() => booleanDecision.value && round.value ? decisionVerdict(round.value, outcome.value) : '')
 
@@ -55,6 +56,7 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
       <h1 class="pj-title">{{ round?.title }}</h1>
       <p v-if="majority" class="pj-subtitle">{{ majority }}</p>
       <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
+      <p v-if="explanation" class="pj-explanation">{{ explanation }}</p>
     </div>
     <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
   </header>
@@ -73,6 +75,7 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
 <style scoped>
 .pj-card { border-radius: calc(var(--u) * 22); background: #fff; }
 .pj-title { color: var(--ink); font-size: calc(var(--u) * 96); text-wrap: balance; font-weight: 800; letter-spacing: -.02em; line-height: 1.08; }
+.pj .pj-explanation { margin-top: calc(var(--u) * 10); color: var(--muted); font-size: calc(var(--u) * 28); font-weight: 500; line-height: 1.35; }
 .pj .pj-subtitle { margin-top: calc(var(--u) * 8); color: var(--muted); font-size: calc(var(--u) * 38); font-weight: 500; }
 .pj .pj-status { display: flex; align-items: center; gap: calc(var(--u) * 14); margin-bottom: calc(var(--u) * 12); color: var(--blue); font-size: calc(var(--u) * 26); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .pj-results-head { display: flex; align-items: flex-start; justify-content: space-between; gap: calc(var(--u) * 40); }

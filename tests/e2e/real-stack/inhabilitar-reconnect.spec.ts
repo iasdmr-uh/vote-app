@@ -18,9 +18,7 @@ test('H · la mesa retira a alguien de la sala entre votaciones, lo regresa y lo
   await vote(maria, ['Ana Ruiz'])
   await expect(rosa.page.getByRole('button', { name: 'Salir' })).toHaveCount(0)
 
-  await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
-  await expect(person(mesa, 'Rosa Díaz').getByRole('button', { name: 'Retirar de la sala' })).toHaveCount(0)
-  await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
+  await expect(person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz')).toHaveCount(0)
 
   await confirm(mesa, 'Cerrar votación')
   await expect(mesa.locator('.ballot-card')).toContainText('CONTEO PUBLICADO')

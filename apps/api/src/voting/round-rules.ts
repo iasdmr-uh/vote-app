@@ -1,4 +1,4 @@
-import { decisionOutcome, electionOutcome, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
+import { decisionOutcome, decisionReasons, electionOutcome, electionReasons, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
 
 export const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
 
@@ -11,11 +11,26 @@ export type OutcomeRound = {
   options: Array<{ id: string }>
 }
 
-export function outcomeOf(round: OutcomeRound, counts: Array<{ optionId: string; count: number }>, base: number): ElectionOutcome | DecisionOutcome {
+function talliesOf(round: OutcomeRound, counts: Array<{ optionId: string; count: number }>) {
   const countOf = new Map(counts.map((row) => [row.optionId, row.count]))
-  const tallies = round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 }))
+  return round.options.map((option) => ({ optionId: option.id, count: countOf.get(option.id) ?? 0 }))
+}
+
+export function outcomeOf(round: OutcomeRound, counts: Array<{ optionId: string; count: number }>, base: number): ElectionOutcome | DecisionOutcome {
+  const tallies = talliesOf(round, counts)
   if (round.category === 'decision') return decisionOutcome(tallies, round.decisionFormat as DecisionFormat, base, round.approvalRule as ThresholdRule)
   return electionOutcome(tallies, seatsOf(round), base)
+}
+
+export type ExplanationRound = OutcomeRound & { regionalSecretaryVotes: boolean; regionalSecretaryInBase: boolean | null }
+
+export function explanationOf(round: ExplanationRound, counts: Array<{ optionId: string; count: number }>, base: number) {
+  const tallies = talliesOf(round, counts)
+  const decision = round.category === 'decision'
+  const rule: ThresholdRule = decision ? round.approvalRule as ThresholdRule : 'simple'
+  const reasons = decision ? decisionReasons(tallies, round.decisionFormat as DecisionFormat, base, rule) : electionReasons(tallies, seatsOf(round), base, rule)
+  const baseIncludesSecretary = (round.regionalSecretaryInBase ?? round.regionalSecretaryVotes) && base > 0
+  return { rule, reasons, baseDelegates: baseIncludesSecretary ? base - 1 : base, baseIncludesSecretary }
 }
 
 export const BOOLEAN_DECISION_LABELS = ['A favor', 'En contra'] as const

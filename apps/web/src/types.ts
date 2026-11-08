@@ -6,6 +6,8 @@ export type ApprovalRule = 'simple' | 'three_quarters' | 'two_thirds'
 
 /** Computed by the API's results engine; ids are the round's ballot options. Decisions add `rule` and `approved`. */
 export type Outcome = { seats: number; base: number; threshold: number; elected: string[]; runoff: string[]; openSeats: number; rule?: ApprovalRule; approved?: boolean }
+export type OptionReason = 'elected' | 'tied_at_cut' | 'no_majority' | 'added_for_choice' | 'out'
+export type Explanation = { rule: ApprovalRule; reasons: Record<string, OptionReason>; baseDelegates: number; baseIncludesSecretary: boolean }
 
 export type PositionGroup = 'board' | 'department'
 export type Position = { id: string; group: PositionGroup; label: string; sortOrder: number; custom: boolean; elected: { label: string; roundId: string } | null }
@@ -41,6 +43,7 @@ export type PublicState = {
   currentRound?: { id: string; title: string; status: string; positionId?: string | null; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; electionSeats?: number | null; voteNumber?: number; runoff?: boolean; regionalSecretaryVotes?: boolean; options?: Array<{ id: string; label: string }>; participationCount?: number; recordedCount?: number; eligibleCount?: number; annulReason?: string | null }
   results?: Array<{ optionId?: string; label: string; count: number }>
   outcome?: Outcome
+  explanation?: Explanation
   officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredAt: string }
   final?: { elected: Array<{ optionId: string; label: string }>; approved: boolean | null }
   continuing?: Array<{ optionId: string; label: string }>
@@ -50,6 +53,7 @@ export type PublicState = {
     id: string; title: string; status: string; positionId?: string | null; format?: string; category?: RoundCategory; decisionFormat?: DecisionFormat | null; approvalRule?: ApprovalRule | null; memberCount?: number | null; committeeRootRoundId?: string | null; electionSeats?: number | null; regionalSecretaryVotes?: boolean; voteNumber?: number; runoff?: boolean; runoffSourceRoundId?: string | null; annulledAt?: string | null; annulReason?: string | null; participationCount?: number; recordedCount?: number; eligibleCount?: number; options: Array<{ id: string; label: string; isNew?: boolean }>
     results?: Array<{ optionId: string; label: string; count: number }>
     outcome?: Outcome
+    explanation?: Explanation
     officialResult?: { elected: Array<{ optionId: string; label: string }>; note: string | null; declaredBy: string; declaredAt: string; publishedAt: string | null; settledRoundId?: string | null; approved?: boolean | null; registeredAt?: string | null } | null
     final?: boolean
     continuing?: Array<{ optionId: string; label: string }>

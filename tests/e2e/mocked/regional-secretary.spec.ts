@@ -75,7 +75,7 @@ test('the mesa adds the regional secretary to a tied 4th vote, sees the larger b
   await expect(ballot.locator('.regional-secretary')).toContainText('Marta Regional vota en esta ronda')
   await expect(ballot.locator('.regional-secretary')).toContainText('11')
   await expect(page.locator('.regional-secretary-row')).toContainText('Marta Regional')
-  await expect(page.locator('.regional-secretary-row').getByRole('button', { name: 'Reconectar dispositivo' })).toBeVisible()
+  await expect(page.locator('.regional-secretary-row').getByRole('button', { name: 'Reconectar dispositivo' })).toHaveCount(0)
 
   await ballot.getByRole('button', { name: 'Quitar a la secretaría regional' }).click()
   await expect(ballot.getByRole('button', { name: 'Agregar a Marta Regional' })).toBeVisible()

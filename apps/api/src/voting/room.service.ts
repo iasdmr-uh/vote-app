@@ -4,7 +4,7 @@ import { hashCredential, newOpaqueCredential } from '../auth/credentials.js'
 import { RealtimeGateway } from '../realtime/realtime.gateway.js'
 import type { AssemblyStatus } from '../generated/prisma/enums.js'
 import { appUrl } from './app-url.js'
-import { assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
+import { assertNoOpenRound, assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
 import { countInRoom } from './base-count.js'
 import { VotingService } from './voting.service.js'
 
@@ -22,6 +22,7 @@ export class RoomService {
       `
       const assembly = assemblies[0]
       if (!assembly) throw new NotFoundException('Asamblea no encontrada')
+      await assertNoOpenRound(tx, assembly.id, 'Hay una votación en curso. Espera a que termine para ingresar.')
       if (assembly.status !== 'lobby_open') throw new ConflictException('El ingreso a la sala está cerrado')
       const participant = await tx.participantSession.create({
         data: {
@@ -112,6 +113,7 @@ export class RoomService {
       const assembly = await lockAssembly(tx, assemblyId)
       if (!assembly) throw new NotFoundException('Asamblea no encontrada')
       assertNotCompleted(assembly.status)
+      await assertNoOpenRound(tx, assemblyId, 'Cambia el código de ingreso cuando cierre la votación abierta')
       await tx.assembly.update({ where: { id: assemblyId }, data: { joinCodeHash: hashCredential(joinCode) } })
       await recordAudit(tx, { assemblyId, action: 'assembly.join_code_rotated' })
     })
