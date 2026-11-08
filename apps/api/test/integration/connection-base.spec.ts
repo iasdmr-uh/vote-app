@@ -93,7 +93,7 @@ test('the base closes with the vote and with an annulment', { skip }, async () =
     await service.openRound(first.id)
     await service.closeRound(first.id)
     assert.equal(await service.openRoundBase(assemblyId), null)
-    const second = await election(service, assemblyId)
+    const second = (await service.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === first.id)!
     await service.openRound(second.id)
     await service.annulRound(second.id, 'Prueba')
     assert.equal(await service.openRoundBase(assemblyId), null)
