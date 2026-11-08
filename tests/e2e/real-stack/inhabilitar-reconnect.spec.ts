@@ -23,7 +23,7 @@ test('H · la mesa retira a alguien de la sala entre votaciones, lo regresa y lo
   await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
 
   await confirm(mesa, 'Cerrar votación')
-  await expect(mesa.locator('.ballot-card')).toContainText('VOTACIÓN CERRADA')
+  await expect(mesa.locator('.ballot-card')).toContainText('CONTEO PUBLICADO')
   await person(mesa, 'Rosa Díaz').getByLabel('Acciones para Rosa Díaz').click()
   await person(mesa, 'Rosa Díaz').getByRole('button', { name: 'Retirar de la sala' }).click()
   await mesa.getByRole('dialog').getByRole('button', { name: 'Retirar de la sala', exact: true }).click()

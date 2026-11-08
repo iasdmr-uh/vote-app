@@ -342,8 +342,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
         participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', votingDisabled: anaDisabled }, { id: 'p2', firstName: 'Luis', lastName: 'Mejía' }, { id: 'p3', firstName: 'Rosa', lastName: 'Paz' }, { id: 'p4', firstName: 'Pedro', lastName: 'Luna', votingDisabled: true }],
         regionalSecretary: { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' },
         participantCount: 4, attendanceRound: { roundId: 'r1', status, votedCount: 2, eligibleCount: 4 },
-        rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null,
-          ...(status === 'closed' ? { privateResults: [{ optionId: 'a', label: 'Alfa', count: 2 }, { optionId: 'b', label: 'Beta', count: 0 }] } : {}) }],
+        rounds: [{ id: 'r1', title: 'Presidencia', status, format: 'single_choice', category: 'office', participationCount: 2, options: [{ id: 'a', label: 'Alfa' }, { id: 'b', label: 'Beta' }], officialResult: null }],
       } })
       return
     }
@@ -598,8 +597,7 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
         eligibleCount: 4,
         recordedCount: 4,
         currentRound: { id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }] },
-        rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }],
-          ...(closed ? { privateResults: [{ optionId: 'b', label: 'Opción Beta (prueba)', count: 3 }, { optionId: 'a', label: 'Opción Alfa (prueba)', count: 1 }] } : {}) }],
+        rounds: [{ id: 'synthetic-round', title: 'Elección de prueba', status: closed ? 'closed' : 'open', options: [{ id: 'a', label: 'Opción Alfa (prueba)' }, { id: 'b', label: 'Opción Beta (prueba)' }] }],
       } })
       return
     }
@@ -619,17 +617,15 @@ test('moderador ejecuta el cierre de una papeleta mediante acción confirmada', 
   await expect(page.getByRole('dialog')).toContainText('Dejará de aceptar votos.')
   await page.getByRole('dialog').getByRole('button', { name: 'Cerrar votación' }).click()
   await expect(page.getByText('Acción registrada.')).toBeVisible()
-  const privateCounts = page.locator('.ballot-card')
-  await expect(privateCounts.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
-  await expect(privateCounts.getByText('Solo la mesa', { exact: true })).toBeVisible()
-  await expect(privateCounts).toContainText(/4 de 4\s*votaron/)
-  await expect(privateCounts.locator('.ranked-rows > li').first()).toHaveText(/^1\s*Opción Beta \(prueba\)\s*3 votos\s*75 %/)
-  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
-  // As on main, the mesa can move on to the next cargo without publishing this count.
+  const closedCard = page.locator('.ballot-card')
+  await expect(closedCard.getByText('VOTACIÓN CERRADA', { exact: true })).toBeVisible()
+  await expect(closedCard).toContainText('Preparando el resultado')
+  await expect(closedCard.locator('.ranked-rows > li')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Publicar/ })).toHaveCount(0)
   await page.getByRole('button', { name: 'Preparar otra papeleta' }).click()
   await expect(page.getByText('NUEVA PAPELETA', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Volver al conteo' }).click()
-  await expect(page.getByRole('button', { name: 'Publicar conteo' })).toBeVisible()
+  await expect(closedCard).toContainText('Preparando el resultado')
 })
 
 test('la mesa ve el resultado calculado de una comisión y abre el desempate por los puestos que faltan (M21)', async ({ page }) => {

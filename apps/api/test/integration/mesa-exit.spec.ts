@@ -46,6 +46,7 @@ test('the mesa takes someone out between votes: the closed vote keeps them in it
     await service.castVote(people.Jeremías!.id, first.id, first.options[1]!.id)
     await service.closeRound(first.id)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: first.id } })).eligibleCount, 3)
+    await service.annulRound(first.id, 'Empate sin desempate')
 
     events.length = 0
     assert.deepEqual(await room.takeOutOfRoom(people.Isaías!.id), { id: people.Isaías!.id, firstName: 'Isaías', lastName: 'Delegado', status: 'left' })
@@ -85,6 +86,7 @@ test('the mesa takes someone out between votes: the closed vote keeps them in it
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.returned' } }), 0)
     await service.closeRound(second.id)
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: second.id } })).eligibleCount, 2)
+    await service.annulRound(second.id, 'Nadie votó')
 
     events.length = 0
     const returned = await room.returnToRoom(people.Isaías!.id)
@@ -141,6 +143,7 @@ test('in an election, someone taken out after a vote stops counting from the nex
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).eligibleCount, 1)
     await room.returnToRoom(people.Oseas!.id)
     await room.returnToRoom(people.Joel!.id)
+    await service.annulRound(runoff.id, 'Nadie votó')
 
     const next = await service.createRound(assemblyId, { title: 'Otra', ...twoOptions })
     await service.openRound(next.id)

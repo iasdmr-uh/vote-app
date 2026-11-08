@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { closeAndPublish, confirm, expectBadge, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
 
 /**
  * Simulates a whole Asamblea against the real API and PostgreSQL: nine delegate phones, the projector
@@ -56,7 +56,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await snap(phones[0].page, 'telefono-desempate-T02')
   await voteAll(phones, phones.map((_, index) => [index < 6 ? 'María López' : 'Carlos Gómez']))
   await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
-  await closeAndPublish(room)
+  await closeAndShow(room)
   await expectBadge(mesaRow(mesa, 'María López'), 'Electo/a')
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ María López')
   await expect(phones[3].page.locator('.official-card strong')).toHaveText('María López')
@@ -64,6 +64,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await snap(phones[3].page, 'telefono-presidencia-electa')
   note(`Presidente (1.ª votación + desempate): ${Math.round((Date.now() - started) / 1000)} s`)
 
+  await addToOfficials(mesa)
   // 3. Secretario: annulled with a reason while open, then prepared again with a third candidate.
   started = Date.now()
   await prepareBallot(mesa, { kind: 'office', title: 'Secretario', candidates: ['Ana Ruiz', 'Juan Mora'] })
@@ -84,6 +85,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await expect(projector.locator('.pj-elected h2')).toHaveText('✓ Ana Ruiz')
   note(`Secretario (anulada + nueva papeleta): ${Math.round((Date.now() - started) / 1000)} s`)
 
+  await addToOfficials(mesa)
   // 4. Comisión de Nombramiento: 5 integrantes among 7 typed names; each delegate marks exactly 5.
   started = Date.now()
   const nominees = ['Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez', 'Juan Mora', 'Rosa Díaz', 'Carlos Gómez']
@@ -103,7 +105,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
     }
   }
   await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
-  await closeAndPublish(room)
+  await closeAndShow(room)
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('5 integrantes · Mayoría: 5')
   for (const name of ['Elena Castro', 'Sofía Méndez']) await expectBadge(mesaRow(mesa, name), 'Electo/a')
   for (const name of ['Pedro Vargas', 'Luis Pérez', 'Juan Mora']) await expectBadge(mesaRow(mesa, name), 'Electo/a')
@@ -119,6 +121,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await snap(projector, 'proyector-nombramiento-P20')
   note(`Comisión de Nombramiento: ${Math.round((Date.now() - started) / 1000)} s`)
 
+  await addToOfficials(mesa)
   // 5. Comisión de Finanzas: 3 integrantes among 4 typed names.
   started = Date.now()
   await prepareBallot(mesa, { kind: 'committee', title: 'Comisión de Finanzas', seats: 3, candidates: ['Ana Ruiz', 'María López', 'Pedro Vargas', 'Rosa Díaz'] })

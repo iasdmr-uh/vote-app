@@ -22,6 +22,7 @@ import { PresentationService } from './presentation.service.js'
 import { ConnectionCountService } from './connection-count.service.js'
 import { CONNECTION_GRACE_MS } from '../realtime/connection-timing.js'
 import { OperatorLogService } from './operator-log.service.js'
+import { OfficialRosterService } from './official-roster.service.js'
 import {
   AddPositionDto,
   AnnulRoundDto,
@@ -108,6 +109,7 @@ export class ModeratorController {
     private readonly presentation: PresentationService,
     private readonly connections: ConnectionCountService,
     private readonly operatorLog: OperatorLogService,
+    private readonly roster: OfficialRosterService,
   ) {}
 
   @Get('session')
@@ -227,9 +229,9 @@ export class ModeratorController {
     return this.voting.closeRound(roundId)
   }
 
-  @Post('rounds/:roundId/publish')
-  publishRound(@Param('roundId', ParseUUIDPipe) roundId: string) {
-    return this.voting.publishRound(roundId)
+  @Post('elections/:rootRoundId/register')
+  registerOfficialResult(@Param('rootRoundId', ParseUUIDPipe) rootRoundId: string) {
+    return this.roster.register(rootRoundId)
   }
 
   @Post('rounds/:roundId/annul')

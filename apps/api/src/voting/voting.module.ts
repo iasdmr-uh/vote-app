@@ -8,6 +8,7 @@ import { PresentationService } from './presentation.service.js'
 import { ConnectionCountService } from './connection-count.service.js'
 import { RoomService } from './room.service.js'
 import { OperatorLogService } from './operator-log.service.js'
+import { OfficialRosterService } from './official-roster.service.js'
 
 @Module({
   imports: [PrismaModule, AuthModule, RealtimeModule],
@@ -19,6 +20,7 @@ import { OperatorLogService } from './operator-log.service.js'
   ],
   providers: [
     ConnectionCountService,
+    OfficialRosterService,
     OperatorLogService,
     PresentationService,
     RoomService,

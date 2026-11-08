@@ -23,7 +23,6 @@ test('the published count gives "no votaron" as the majority base minus votes ca
     await service.castVote(people.Marta!, round.id, round.options[0]!.id)
     await service.castVote(people.Rosa!, round.id, round.options[1]!.id)
     await service.closeRound(round.id)
-    await service.publishRound(round.id)
 
     const mesa = (await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.id === round.id)!
     assert.equal(mesa.eligibleCount, 5)

@@ -98,6 +98,7 @@ export interface RealtimeServerToClientEvents {
   'participation.count': (payload: ParticipationCountEvent) => void
   'connection.count': (payload: ConnectionCountEvent) => void
   'results.published': (payload: PublishedResultsEvent) => void
+  'results.registered': (payload: { roundId: string }) => void
   'presentation.state': (payload: PresentationStateEvent) => void
 }
 

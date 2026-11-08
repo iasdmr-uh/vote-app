@@ -23,7 +23,7 @@ import { appUrl } from './app-url.js'
 import { assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
 import { baseOf, basePeople, countInRoom, freezeRoundBase, roundBase, roundBases } from './base-count.js'
 import { ORGANIZATION_ID, RESULTS_ENGINE_ACTOR, RESUME_CODE_TTL_MS, SECRECY_CLEANUP_PENDING, VACUUM_LOCK_TIMEOUT_MS } from './constants.js'
-import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn } from './round-rules.js'
+import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn, waitsForSourceResult } from './round-rules.js'
 
 /** The Unión Hondureña org chart, seeded in this order on every new Asamblea (Asamblea, Nov 2026). */
 export const DEFAULT_BOARD_POSITIONS = ['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3'] as const
@@ -47,6 +47,7 @@ export class VotingService implements OnModuleInit {
   async onModuleInit() {
     try {
       await this.ensureVotesUnlinked()
+      await this.showSeparatedResults(undefined, false)
     } catch (error) {
       const message = `Vote unlinking at startup did not complete: ${(error as Error).message}`
       if (process.env.ALLOW_START_WITH_PENDING_VOTE_CLEANUP !== 'true') {
@@ -58,6 +59,7 @@ export class VotingService implements OnModuleInit {
 
   async retrySecrecyCleanup(assemblyId: string) {
     await this.ensureVotesUnlinkedOrFail(assemblyId)
+    await this.showSeparatedResults(assemblyId)
     return { assemblyId, secrecyCleanupPending: false }
   }
 
@@ -116,12 +118,7 @@ export class VotingService implements OnModuleInit {
     return { id: position.id, group: position.group, label: position.label, sortOrder: position.sortOrder, custom: position.custom, elected: null }
   }
 
-  /**
-   * The org chart with whoever each puesto elected. The elected live on the official result of the
-   * election's first vote, the round that carries the puesto, even when a runoff elected them. The mesa
-   * sees a closed vote's elected; phones and projector only what was published.
-   */
-  private async positionsOf(assemblyId: string, electedStatuses: readonly RoundStatus[]) {
+  private async positionsOf(assemblyId: string) {
     const positions = await this.prisma.position.findMany({
       where: { assemblyId },
       orderBy: [{ group: 'asc' }, { sortOrder: 'asc' }],
@@ -129,14 +126,13 @@ export class VotingService implements OnModuleInit {
         rounds: {
           where: { category: 'office', committeeRootRoundId: null },
           orderBy: { createdAt: 'asc' },
-          select: { officialResult: { select: { options: { select: { option: { select: { label: true, roundId: true, round: { select: { status: true } } } } } } } } },
+          select: { officialResult: { select: { registeredAt: true, options: { select: { option: { select: { label: true, roundId: true } } } } } } },
         },
       },
     })
     return positions.map((position) => {
       const elected = position.rounds
-        .flatMap((round) => round.officialResult?.options ?? [])
-        .filter(({ option }) => electedStatuses.includes(option.round.status))
+        .flatMap((round) => (round.officialResult?.registeredAt ? round.officialResult.options : []))
         .at(-1)
       return {
         id: position.id, group: position.group, label: position.label, sortOrder: position.sortOrder, custom: position.custom,
@@ -240,6 +236,7 @@ export class VotingService implements OnModuleInit {
       ...(results ? { results } : {}),
       ...(recordedCount !== undefined && eligibleCounts && round ? { recordedCount, eligibleCount: eligibleCounts.get(round.id) ?? 0 } : {}),
       ...(outcome ? { outcome } : {}),
+      ...(outcome && round ? await this.resultSummary(round.id, outcome.runoff) : {}),
       ...(officialResult ? { officialResult } : {}),
     }
   }
@@ -327,7 +324,7 @@ export class VotingService implements OnModuleInit {
       ? await Promise.all([this.chainPosition(round), this.prisma.ballotOption.findMany({ where: { roundId: round.id }, orderBy: { order: 'asc' }, select: { id: true } })])
       : [null, []]
     const outcome = result && round ? outcomeOf({ ...round, options: ballot }, result, eligibleCounts.get(round.id) ?? participantCount) : undefined
-    const positions = await this.positionsOf(assembly.id, ['published'])
+    const positions = await this.positionsOf(assembly.id)
     return {
       assembly: { id: assembly.id, name: assembly.name, status: assembly.status, completedAt: assembly.completedAt?.toISOString() ?? null },
       assemblyName: assembly.name,
@@ -341,6 +338,7 @@ export class VotingService implements OnModuleInit {
       round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, regionalSecretaryVotes: round.regionalSecretaryVotes, positionId: await this.positionIdOf(round), ...decisionFields(round), ...chain } : null,
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
+      ...(outcome && round ? await this.resultSummary(round.id, outcome.runoff) : {}),
       ...(officialResult ? { officialResult } : {}),
       presentation: presentationOf(assembly),
     }
@@ -371,7 +369,9 @@ export class VotingService implements OnModuleInit {
       chains.set(rootId, [...(chains.get(rootId) ?? []), round])
     }
     const positionOfRound = new Map(assembly.rounds.map((round) => [round.id, round.positionId]))
-    const rounds = await Promise.all(assembly.rounds.map(async (round) => ({
+    const statusById = new Map(assembly.rounds.map((round) => [round.id, round.status]))
+    const shownRounds = assembly.rounds.filter((round) => !waitsForSourceResult(round.status, round.countingRule, statusById))
+    const rounds = await Promise.all(shownRounds.map(async (round) => ({
       id: round.id,
       title: round.title,
       // A runoff fills its root's puesto.
@@ -392,10 +392,8 @@ export class VotingService implements OnModuleInit {
       eligibleCount: eligibleCounts.get(round.id) ?? assembly.participants.length,
       secrecyCleanupPending: (SETTLED_ROUND_STATUSES as readonly string[]).includes(round.status) && !round.votesUnlinkedAt,
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
-      // Only the mesa sees a closed ballot's counts, so it can review them before deciding to publish.
-      ...(round.status === 'closed' ? { privateResults: await this.rankedCounts(round.id) } : {}),
-      ...(round.status === 'closed' || round.status === 'published'
-        ? { outcome: outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length) }
+      ...(round.status === 'published'
+        ? await this.moderatorSummary(round.id, outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length))
         : {}),
       voteNumber: voteNumberIn(chains.get(round.committeeRootRoundId ?? round.id) ?? [], round.id),
       runoff: isRunoff(round.countingRule),
@@ -412,7 +410,7 @@ export class VotingService implements OnModuleInit {
       id: assembly.id,
       name: assembly.name,
       period: assembly.period,
-      positions: await this.positionsOf(assemblyId, ['closed', 'published']),
+      positions: await this.positionsOf(assemblyId),
       status: assembly.status,
       completedAt: assembly.completedAt?.toISOString() ?? null,
       participants: assembly.participants,
@@ -588,8 +586,8 @@ export class VotingService implements OnModuleInit {
 
   async openRound(roundId: string) {
     const result = await this.prisma.$transaction(async (tx) => {
-      const rounds = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; committee_root_round_id: string | null }>>`
-        SELECT id, assembly_id, status, committee_root_round_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
+      const rounds = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string; committee_root_round_id: string | null; counting_rule: unknown }>>`
+        SELECT id, assembly_id, status, committee_root_round_id, counting_rule FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
       `
       const round = rounds[0]
       if (!round) throw new NotFoundException('Ronda no encontrada')
@@ -601,6 +599,14 @@ export class VotingService implements OnModuleInit {
       if (!assembly || !['lobby_closed', 'in_progress'].includes(assembly.status)) throw new ConflictException('El ingreso debe estar cerrado antes de abrir una papeleta')
       const otherOpen = await tx.round.findFirst({ where: { assemblyId: round.assembly_id, status: 'open' }, select: { id: true } })
       if (otherOpen) throw new ConflictException('Ya hay una papeleta abierta')
+      if (await this.pendingElectionOtherThan(tx, round.assembly_id, round.committee_root_round_id ?? round.id)) {
+        throw new ConflictException('Otra elección espera su resultado oficial o su anulación')
+      }
+      const sourceId = runoffSourceOf(round.counting_rule)
+      const source = sourceId ? await tx.round.findUnique({ where: { id: sourceId }, select: { id: true, status: true } }) : null
+      if (source && waitsForSourceResult(round.status, round.counting_rule, new Map([[source.id, source.status]]))) {
+        throw new ConflictException('El resultado de la votación anterior todavía se está preparando')
+      }
       if (round.committee_root_round_id && await this.openSeatsOf(tx, round.committee_root_round_id) === 0) {
         throw new ConflictException('Todos los puestos de esta elección ya están ocupados')
       }
@@ -625,6 +631,20 @@ export class VotingService implements OnModuleInit {
       if (result.presentationEnded) this.realtime.presentationState(result.assemblyId, presentationOf({ presentationActive: false, presentationSlide: result.presentationSlide }))
     }
     return payload
+  }
+
+  private async pendingElectionOtherThan(tx: Prisma.TransactionClient, assemblyId: string, rootId: string) {
+    const votes = await tx.round.findMany({
+      where: { assemblyId, status: { not: 'draft' } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, status: true, committeeRootRoundId: true },
+    })
+    const latestByElection = new Map(votes.map((vote) => [vote.committeeRootRoundId ?? vote.id, vote.status]))
+    latestByElection.delete(rootId)
+    const unsettled = [...latestByElection].filter(([, status]) => status === 'closed' || status === 'published').map(([root]) => root)
+    if (!unsettled.length) return false
+    const registered = await tx.officialResult.count({ where: { roundId: { in: unsettled }, registeredAt: { not: null } } })
+    return registered < unsettled.length
   }
 
   async closeRound(roundId: string) {
@@ -664,46 +684,41 @@ export class VotingService implements OnModuleInit {
       this.realtime.roundState(round.assemblyId, payload)
       if (round.status === 'closed') this.realtime.roundClosed(round.assemblyId, roundId)
       this.realtime.participationCount(round.assemblyId, { roundId, recorded, eligible })
-      if (round.runoffRoundId) await this.announceRound(round.runoffRoundId)
     }
+    if (!secrecyCleanupPending) await this.showSeparatedResults(round.assemblyId)
+    if (round.changed && round.runoffRoundId) await this.announceRound(round.runoffRoundId)
+    const status = (await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true } })).status
     return {
-      roundId, status: round.status, participation: { recorded, eligible },
+      roundId, status, participation: { recorded, eligible },
       ...(secrecyCleanupPending ? { secrecyCleanupPending: true } : {}),
     }
   }
 
-  async publishRound(roundId: string) {
-    const current = await this.prisma.round.findUnique({ where: { id: roundId }, select: { id: true, assemblyId: true, status: true, title: true, committeeRootRoundId: true } })
-    if (!current) throw new NotFoundException('Ronda no encontrada')
-    if (current.status !== 'closed' && current.status !== 'published') throw new ConflictException('Cierra la papeleta antes de publicar resultados')
-    let publishedNow = false
-    if (current.status === 'closed') {
-      await this.ensureVotesUnlinkedOrFail(current.assemblyId)
-      await this.prisma.$transaction(async (tx) => {
-        const roundRows = await tx.$queryRaw<Array<{ assembly_id: string }>>`SELECT assembly_id FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE`
-        if (!roundRows[0]) throw new NotFoundException('Ronda no encontrada')
-        await lockAssembly(tx, roundRows[0].assembly_id)
-        const assembly = await tx.assembly.findUnique({ where: { id: roundRows[0].assembly_id }, select: { status: true } })
-        if (assembly?.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se pueden modificar sus resultados')
-        const latest = await tx.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true, votesUnlinkedAt: true } })
-        if (latest.status === 'published') return
-        if (latest.status !== 'closed') throw new ConflictException('La papeleta debe estar cerrada para publicar')
-        const stillLinked = await tx.round.count({ where: { assemblyId: current.assemblyId, status: { in: [...SETTLED_ROUND_STATUSES] }, votesUnlinkedAt: null } })
-        if (stillLinked) throw new ServiceUnavailableException(SECRECY_CLEANUP_PENDING)
+  private async showSeparatedResults(assemblyId?: string, notify = true) {
+    const ready = await this.prisma.round.findMany({
+      where: { ...(assemblyId ? { assemblyId } : {}), status: 'closed', votesUnlinkedAt: { not: null }, assembly: { status: { not: 'completed' } } },
+      orderBy: { closedAt: 'asc' },
+      select: { id: true },
+    })
+    for (const { id } of ready) {
+      const shown = await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<Array<{ assembly_id: string }>>`SELECT assembly_id FROM rounds WHERE id = ${id}::uuid FOR UPDATE`
+        if (!rows[0]) return null
+        await lockAssembly(tx, rows[0].assembly_id)
+        const round = await tx.round.findUniqueOrThrow({ where: { id }, select: { assemblyId: true, status: true, title: true, votesUnlinkedAt: true, committeeRootRoundId: true, assembly: { select: { status: true } } } })
+        if (round.status !== 'closed' || !round.votesUnlinkedAt || round.assembly.status === 'completed') return null
+        const stillLinked = await tx.round.count({ where: { assemblyId: round.assemblyId, status: { in: [...SETTLED_ROUND_STATUSES] }, votesUnlinkedAt: null } })
+        if (stillLinked) return null
         const publishedAt = new Date()
-        await tx.round.update({ where: { id: roundId }, data: { status: 'published', publishedAt } })
-        // Phones and projector show the elected of every published vote of the chain.
-        await tx.officialResult.updateMany({ where: { roundId: current.committeeRootRoundId ?? roundId }, data: { publishedAt } })
-        await recordAudit(tx, { assemblyId: current.assemblyId, roundId, action: 'round.results_published' })
-        publishedNow = true
+        await tx.round.update({ where: { id }, data: { status: 'published', publishedAt } })
+        await tx.officialResult.updateMany({ where: { roundId: round.committeeRootRoundId ?? id }, data: { publishedAt } })
+        await recordAudit(tx, { assemblyId: round.assemblyId, roundId: id, actorRef: RESULTS_ENGINE_ACTOR, action: 'round.results_published' })
+        return round
       })
+      if (!shown || !notify) continue
+      this.realtime.roundState(shown.assemblyId, { roundId: id, status: 'published', title: shown.title })
+      this.realtime.resultsPublished(shown.assemblyId, { roundId: id, options: await this.publishedResults(id) })
     }
-    const results = await this.publishedResults(roundId)
-    if (!publishedNow) return { roundId, status: 'published', results }
-    const payload = { roundId, options: results }
-    this.realtime.roundState(current.assemblyId, { roundId, status: 'published', title: current.title })
-    this.realtime.resultsPublished(current.assemblyId, payload)
-    return { roundId, status: 'published', results }
   }
 
   /**
@@ -724,6 +739,9 @@ export class VotingService implements OnModuleInit {
       if (round.status === 'annulled') return { assemblyId: round.assembly_id, title: round.title, previousStatus: round.status, changed: false }
       // Only the latest vote of an election can be annulled: a later vote was prepared from its result.
       const rootId = round.committee_root_round_id ?? round.id
+      if ((await tx.officialResult.findUnique({ where: { roundId: rootId }, select: { registeredAt: true } }))?.registeredAt) {
+        throw new ConflictException('El resultado ya está registrado como oficial')
+      }
       const chain = await tx.round.findMany({ where: { OR: [{ id: rootId }, { committeeRootRoundId: rootId }] }, orderBy: { createdAt: 'asc' }, select: { id: true, status: true, countingRule: true } })
       const later = chain.slice(chain.findIndex((item) => item.id === roundId) + 1)
       const pendingRunoffs = later.filter((item) => item.status === 'draft' && runoffSourceOf(item.countingRule) === roundId)
@@ -732,6 +750,7 @@ export class VotingService implements OnModuleInit {
       }
       // Whoever this vote elected leaves the official result, and the runoff it prepared is discarded.
       await tx.officialResultOption.deleteMany({ where: { officialResult: { roundId: rootId }, option: { roundId } } })
+      await tx.officialResult.updateMany({ where: { roundId: rootId, settledRoundId: roundId }, data: { settledRoundId: null, approved: null } })
       await tx.officialResult.deleteMany({ where: { roundId: rootId, options: { none: {} } } })
       if (pendingRunoffs.length) {
         await keepRoundTitlesInLog(tx, pendingRunoffs.map((item) => item.id))
@@ -935,13 +954,15 @@ export class VotingService implements OnModuleInit {
     const rootId = round.committeeRootRoundId ?? round.id
     const labelOf = new Map(round.options.map((option) => [option.id, option.label]))
     const now = new Date()
-    if (outcome.elected.length) {
+    const settles = outcome.openSeats === 0
+    if (outcome.elected.length || settles) {
       const seatsTaken = await tx.officialResultOption.count({ where: { officialResult: { roundId: rootId } } })
       const seats = outcome.elected.map((optionId, index) => ({ optionId, seatOrder: seatsTaken + index }))
+      const settlement = settles ? { settledRoundId: roundId, approved: 'approved' in outcome ? outcome.approved : null } : {}
       await tx.officialResult.upsert({
         where: { roundId: rootId },
-        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: seats } },
-        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, options: { create: seats } },
+        create: { roundId: rootId, actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, ...settlement, options: { create: seats } },
+        update: { actorRef: RESULTS_ENGINE_ACTOR, declaredAt: now, ...settlement, options: { create: seats } },
       })
     }
     const rootTitle = round.committeeRootRoundId ? (await tx.round.findUniqueOrThrow({ where: { id: rootId }, select: { title: true } })).title : round.title
@@ -999,14 +1020,40 @@ export class VotingService implements OnModuleInit {
     }
   }
 
-  private async moderatorOfficialResult(roundId: string) {
+  private async resultSummary(roundId: string, runoff: string[]): Promise<{
+    final?: { elected: Array<{ optionId: string; label: string }>; approved: boolean | null }
+    continuing?: Array<{ optionId: string; label: string }>
+  }> {
+    const round = await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { committeeRootRoundId: true, options: { select: { id: true, label: true }, orderBy: { order: 'asc' } } } })
     const result = await this.prisma.officialResult.findUnique({
-      where: { roundId }, include: { options: { orderBy: { seatOrder: 'asc' }, include: { option: { select: { label: true, roundId: true } } } } },
+      where: { roundId: round.committeeRootRoundId ?? roundId },
+      select: { settledRoundId: true, approved: true, options: { orderBy: { seatOrder: 'asc' }, select: { optionId: true, option: { select: { label: true } } } } },
     })
-    return result ? this.serializeOfficialResult(result) : null
+    if (result?.settledRoundId === roundId) {
+      return { final: { elected: result.options.map(({ optionId, option }) => ({ optionId, label: option.label })), approved: result.approved } }
+    }
+    return { continuing: round.options.filter((option) => runoff.includes(option.id)).map((option) => ({ optionId: option.id, label: option.label })) }
   }
 
-  /** The elected of every published vote of the election; a closed, unpublished vote stays with the mesa. */
+  private async moderatorSummary<T extends { runoff: string[] }>(roundId: string, outcome: T) {
+    const summary = await this.resultSummary(roundId, outcome.runoff)
+    return { outcome, final: Boolean(summary.final), ...(summary.continuing ? { continuing: summary.continuing } : {}) }
+  }
+
+  private async moderatorOfficialResult(roundId: string) {
+    const result = await this.prisma.officialResult.findUnique({
+      where: { roundId }, include: { settledRound: { select: { status: true } }, options: { where: { option: { round: { status: 'published' } } }, orderBy: { seatOrder: 'asc' }, include: { option: { select: { label: true, roundId: true } } } } },
+    })
+    const settled = result?.settledRound?.status === 'published'
+    if (!result || (!result.options.length && !settled)) return null
+    return {
+      ...this.serializeOfficialResult(result),
+      settledRoundId: settled ? result.settledRoundId : null,
+      approved: settled ? result.approved : null,
+      registeredAt: result.registeredAt?.toISOString() ?? null,
+    }
+  }
+
   private async publishedOfficialResult(roundId: string) {
     const result = await this.prisma.officialResult.findUnique({
       where: { roundId },

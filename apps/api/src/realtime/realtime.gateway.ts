@@ -133,6 +133,7 @@ export class RealtimeGateway implements OnGatewayConnection<RealtimeSocket>, OnG
   participationCount(assemblyId: string, payload: Parameters<RealtimePublisher['participationCount']>[1]): void { this.publisher().participationCount(assemblyId, payload) }
   connectionCount(assemblyId: string, payload: Parameters<RealtimePublisher['connectionCount']>[1]): void { this.publisher().connectionCount(assemblyId, payload) }
   resultsPublished(assemblyId: string, payload: Parameters<RealtimePublisher['resultsPublished']>[1]): void { this.publisher().resultsPublished(assemblyId, payload) }
+  resultsRegistered(assemblyId: string, payload: Parameters<RealtimePublisher['resultsRegistered']>[1]): void { this.publisher().resultsRegistered(assemblyId, payload) }
   presentationState(assemblyId: string, payload: Parameters<RealtimePublisher['presentationState']>[1]): void { this.publisher().presentationState(assemblyId, payload) }
 }
 
@@ -292,6 +293,10 @@ export class RealtimePublisher {
     }
     this.server.to([publicRoom(assemblyId), participantBroadcastRoom(assemblyId)]).emit('results.published', sanitized)
     this.server.to(moderatorRoom(assemblyId)).emit('results.published', sanitized)
+  }
+
+  resultsRegistered(assemblyId: string, payload: { roundId: string }): void {
+    this.server.to([publicRoom(assemblyId), participantBroadcastRoom(assemblyId), moderatorRoom(assemblyId)]).emit('results.registered', { roundId: payload.roundId })
   }
 
   /** «Presentar oficiales»: the projector follows the mesa's slide; other mesa tabs stay in sync. */
