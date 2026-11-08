@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { es } from '../locale/es'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { baseSumText, decisionVerdict, explanationText, majorityText, marksCheckText, marksPerBallot, notVotedRow, notVotedText, outcomeTag, resultRows, winnerText } from '../resultados'
 import { useAssembly } from '../useAssembly'
@@ -52,17 +53,17 @@ onUnmounted(() => window.removeEventListener('resize', fitResults))
       <p class="pj-status">{{ statusLabel }}</p>
       <h1 class="pj-title">{{ round?.title }}</h1>
       <p v-if="majority" class="pj-subtitle">{{ majority }}</p>
-      <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">Se eligen {{ round?.electionSeats ?? round?.memberCount }} integrantes</p>
+      <p v-else-if="isCommittee && (round?.electionSeats ?? round?.memberCount)" class="pj-subtitle">{{ es.projector.seatsToElect((round?.electionSeats ?? round?.memberCount)!) }}</p>
       <p v-if="explanation" class="pj-explanation">{{ explanation }}</p>
     </div>
-    <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>de {{ eligible }}</span><small>votaron<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
+    <p class="pj-card pj-turnout"><strong>{{ recorded }}</strong> <span>{{ es.projector.outOf(eligible) }}</span><small>{{ es.common.votedLabel }}<template v-if="eligible"> · {{ notVotedText(recorded, eligible) }}</template></small></p>
   </header>
-  <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === 'No aprobada' }"><h2><span v-if="verdict === 'Aprobada'" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
+  <div v-if="verdict && !state?.final" class="pj-elected" :class="{ 'pj-rejected': verdict === es.results.notApproved }"><h2><span v-if="verdict === es.results.approved" class="pj-check" aria-hidden="true">✓</span> {{ verdict }}</h2></div>
   <ol ref="resultsList" class="pj-results" :style="{ '--k': density, '--cols': columns, '--rows': rowsPerColumn }">
     <li v-for="row in results" :key="row.key" class="pj-card" :class="{ 'pj-not-voted': row.key === 'not-voted' }">
-      <span class="pj-name"><span class="pj-label">{{ row.label }}</span><em v-if="tagOf(row) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, row.label) : '' }}</em><em v-else-if="tagOf(row) === 'runoff'" class="pj-tie">Desempate</em></span>
-      <strong class="pj-votes">{{ row.count }} {{ row.count === 1 ? 'voto' : 'votos' }}</strong>
-      <span class="pj-percent">{{ row.percent }} %</span>
+      <span class="pj-name"><span class="pj-label">{{ row.label }}</span><em v-if="tagOf(row) === 'elected'" class="pj-elected-tag">✓ {{ round ? winnerText(round, row.label) : '' }}</em><em v-else-if="tagOf(row) === 'runoff'" class="pj-tie">{{ es.results.runoffTag }}</em></span>
+      <strong class="pj-votes">{{ es.common.votes(row.count) }}</strong>
+      <span class="pj-percent">{{ es.common.percent(row.percent) }}</span>
       <span class="pj-bar" aria-hidden="true"><span :style="{ width: `${Math.min(100, row.percent)}%` }"></span></span>
     </li>
   </ol>

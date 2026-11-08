@@ -1,12 +1,12 @@
 import { computed } from 'vue'
-import { SLIDE_NAMES } from './diapositivas'
+import { es } from './locale/es'
 import type { PresentationSlide } from './types'
 import { useAssembly } from './useAssembly'
 
 const { loading, error, state, assemblyId, moderatorToken, request, refresh } = useAssembly()
 
 const presentation = computed(() => state.value?.presentation ?? { active: false, slide: 0 as PresentationSlide })
-const slideName = computed(() => SLIDE_NAMES[presentation.value.slide])
+const slideName = computed(() => es.projector.slideNames[presentation.value.slide])
 
 /** «Presentar oficiales» (#48): display only, so it applies at once like Inhabilitar, without a confirmation. */
 async function setPresentation(active: boolean, slide: PresentationSlide) {

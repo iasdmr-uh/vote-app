@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { ConflictException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
 import { lockAssembly } from '../../src/voting/assembly-tx.js'
+import { trackAutoClose } from '../support/auto-close.js'
 import { connectDatabase } from '../support/database.js'
 import { gatewayStub } from '../support/gateway.js'
 import { removeOrganization, seedAssembly } from '../support/seed.js'
@@ -112,6 +113,7 @@ test('the mesa cannot prepare anything while a vote is open, and can once it end
   const prisma = await connectDatabase()
   const { gateway, events } = gatewayStub()
   const { voting, room } = buildProviders(prisma, gateway)
+  const settled = trackAutoClose(voting)
   const seeded = await seedAssembly(prisma, room, { label: 'prepare-open-vote', delegates: ['Amós', 'Joel'] })
   const { assemblyId, people } = seeded
   const refused = (error: unknown) => error instanceof ConflictException && /votación abierta/.test(error.message)
@@ -127,6 +129,7 @@ test('the mesa cannot prepare anything while a vote is open, and can once it end
       await voting.castVote(people.Amós!.id, current.id, current.options.find((option) => option.label === 'Elías')!.id)
       await voting.castVote(people.Joel!.id, current.id, current.options.find((option) => option.label === 'Eliseo')!.id)
       await voting.closeRound(current.id)
+      await settled()
       const next = (await voting.moderatorAssembly(assemblyId)).rounds.find((round) => round.runoffSourceRoundId === current.id && round.status === 'draft')
       assert.ok(next, `the tie in vote ${vote} prepares the next one`)
       current = next

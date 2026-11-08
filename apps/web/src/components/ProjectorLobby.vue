@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { es } from '../locale/es'
 import { useAssembly } from '../useAssembly'
 
 defineProps<{ assemblyName: string }>()
@@ -18,16 +19,16 @@ const lobbyMore = computed(() => lobbyTotal.value > LOBBY_SLOTS ? lobbyTotal.val
 
 <template>
   <h1 class="pj-title pj-title-lobby">{{ assemblyName }}</h1>
-  <div class="pj-lobby" aria-label="Ingreso abierto">
+  <div class="pj-lobby" :aria-label="es.projector.lobbyLabel">
     <div class="pj-card pj-join">
-      <img v-if="qrImage" class="pj-qr projector-qr" :src="qrImage" alt="Código QR para unirse a la Asamblea" />
+      <img v-if="qrImage" class="pj-qr projector-qr" :src="qrImage" :alt="es.common.joinQrAlt" />
       <strong v-if="projectorJoinHost" class="pj-host">{{ projectorJoinHost }}</strong>
     </div>
     <div class="pj-card pj-room">
-      <div class="pj-room-head"><h2>En la sala</h2><strong>{{ lobbyTotal }}</strong></div>
-      <ul class="pj-names" aria-label="Personas en la sala">
+      <div class="pj-room-head"><h2>{{ es.projector.inTheRoom }}</h2><strong>{{ lobbyTotal }}</strong></div>
+      <ul class="pj-names" :aria-label="es.projector.peopleInRoom">
         <li v-for="(person, index) in lobbyNames" :key="`${person.firstName}-${person.lastName}-${index}`">{{ person.firstName }} {{ person.lastName }}</li>
-        <li v-if="lobbyMore" class="pj-more">+ {{ lobbyMore }} más</li>
+        <li v-if="lobbyMore" class="pj-more">{{ es.projector.more(lobbyMore) }}</li>
       </ul>
     </div>
   </div>

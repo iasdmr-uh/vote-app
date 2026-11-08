@@ -9,15 +9,17 @@ import type { OfficialRosterService } from '../../src/voting/official-roster.ser
 import { OperatorLogService } from '../../src/voting/operator-log.service.js'
 import { delegateName } from '../scenarios/session-tools.js'
 import { connectDatabase } from '../support/database.js'
+import { trackAutoClose } from '../support/auto-close.js'
 import { gatewayStub, type GatewayEvent } from '../support/gateway.js'
 import { buildProviders } from '../support/providers.js'
 
-type Context = { prisma: PrismaService; service: VotingService; roster: OfficialRosterService; emitted: GatewayEvent[]; assemblyId: string; voters: string[] }
+type Context = { prisma: PrismaService; service: VotingService; roster: OfficialRosterService; emitted: GatewayEvent[]; assemblyId: string; voters: string[]; settled: () => Promise<void> }
 
 async function withAssembly(delegates: number, body: (context: Context) => Promise<void>) {
   const prisma = await connectDatabase()
   const { gateway: realtime, events: emitted } = gatewayStub()
   const { voting: service, room, roster } = buildProviders(prisma, realtime)
+  const settled = trackAutoClose(service)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
   try {
@@ -31,7 +33,7 @@ async function withAssembly(delegates: number, body: (context: Context) => Promi
     }
     await room.changeLobby(assemblyId, 'lobby_closed')
     emitted.length = 0
-    await body({ prisma, service, roster, emitted, assemblyId, voters })
+    await body({ prisma, service, roster, emitted, assemblyId, voters, settled })
   } finally {
     if (assemblyId) {
       await prisma.round.deleteMany({ where: { assemblyId } })
@@ -46,20 +48,22 @@ async function withAssembly(delegates: number, body: (context: Context) => Promi
 
 const idOf = (options: Array<{ id: string; label: string }>, label: string) => options.find((option) => option.label === label)!.id
 
-async function committeeAfterFirstVote({ service, assemblyId, voters }: Context) {
+async function committeeAfterFirstVote({ service, assemblyId, voters, settled }: Context) {
   const first = await service.createRound(assemblyId, { title: 'Comisión de Finanzas', category: 'committee', memberCount: 3, format: 'multiple_choice', options: ['Isaías', 'Jeremías', 'Ezequiel', 'Daniel', 'Oseas'].map((label) => ({ label })) })
   await service.openRound(first.id)
   const ballots = [['Isaías', 'Jeremías', 'Ezequiel'], ['Isaías', 'Daniel', 'Oseas'], ['Isaías', 'Jeremías', 'Daniel'], ['Isaías', 'Ezequiel', 'Oseas']]
   for (const [index, voter] of voters.entries()) await service.castVote(voter, first.id, ballots[index]!.map((label) => idOf(first.options, label)))
   await service.closeRound(first.id)
+  await settled()
   const runoff = (await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.runoffSourceRoundId === first.id)!
   return { first, runoff }
 }
 
-async function settleRunoff({ service, voters }: Context, runoff: { id: string; options: Array<{ id: string; label: string }> }) {
+async function settleRunoff({ service, voters, settled }: Context, runoff: { id: string; options: Array<{ id: string; label: string }> }) {
   await service.openRound(runoff.id)
   for (const voter of voters) await service.castVote(voter, runoff.id, [idOf(runoff.options, 'Jeremías'), idOf(runoff.options, 'Ezequiel')])
   await service.closeRound(runoff.id)
+  await settled()
 }
 
 test('the operator adds a committee to the roster in one action, with everyone elected across its votes', async () => {
