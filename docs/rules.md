@@ -38,8 +38,8 @@ The base counts people, never marks. A delegate can mark a candidate only once, 
 | Candidates above the line without a majority go to the next vote | Offices, committees | Project decision, 2 Nov 2026 |
 | Add the next candidate when the next vote offers no choice | Offices, committees | Project decision, 2 Nov 2026 |
 | Each delegate marks exactly the open seats | Committees and their later votes | Project decision, 2 Nov 2026 |
-| New candidate allowed from the 3rd vote | Offices, committees | Project decision, explained by the union representatives |
-| Regional secretary joins as one more secret voter, base + 1 | From the 4th vote, after a tie at the cut | Reglamento 05-09 02 and 03-06 06. Mechanism is a project decision, 6 Nov 2026 |
+| New candidate allowed from the 3rd vote | Offices, committees | Project decision, 2 Nov 2026, explained by the union representatives |
+| Regional secretary joins as one more secret voter, base + 1 | Offices, committees and Opciones decisions, from the 4th vote, after a tie at the cut. Stays for the later votes of that election while in the room | Reglamento 05-09 02: «El representante de la Conferencia General tendrá derecho a voto dirimente, cuando persiste un empate en las votaciones hasta tres votaciones.» 03-06 06 names the Secretario Regional as that representative. Mechanism is a project decision, 6 Nov 2026 |
 | 3/4 of the base, rounded up | Decisions, when the ballot asks for it | **UNCONFIRMED.** No Reglamento article found. #42 (2 Nov 2026) listed it as «a confirmar» and nobody confirmed it. Removal waits on the Board in #88 |
 | 2/3 of the base, rounded up | Decisions, when the ballot asks for it. Not implemented yet | Reglamento 01-02 03: «sólo pueden ser modificados con las 2/3 partes de los votos de la Asamblea». Planned in #87 |
 
@@ -134,6 +134,37 @@ place  name       votes  majority  result
 
 Only a tie at the cut changes the result. The tie above the line and the tie below it change nothing.
 
+### Tie at the cut and a tie above it
+
+Committee of 3, 84 marks.
+
+```
+place  name       votes  majority  result
+  1    Isaías       22   yes       elected
+  2    Jeremías     22   yes       elected
+  3    Ezequiel     18   yes       next vote   ← last seat, cut value 18
+──────────────────────────────────────── line
+  4    Daniel       18   yes       next vote
+  5    Oseas        11             out
+  6    Joel         11             out
+```
+
+- The tie between Isaías and Jeremías is above the cut, so both are elected.
+- Ezequiel and Daniel are tied at the cut, so they go to the next vote for the 1 open seat. Two candidates for one seat is a real choice, so nobody is added.
+- The tie between Oseas and Joel is below the line and changes nothing.
+
+### Fewer candidates than seats
+
+Committee of 3 with 2 candidates. Each delegate marks 2 names.
+
+```
+place  name       votes  majority  result
+  1    Isaías       20   yes       elected
+  2    Jeremías     16   yes       elected
+```
+
+Both are elected. The third seat stays open with no candidate for a next vote. No rule yet says how to fill it.
+
 ### Office with no majority
 
 Office, 1 seat. Each delegate marks 1 name.
@@ -150,7 +181,7 @@ Isaías alone would offer no choice, so the next vote is between the top 2, plus
 
 ### Nobody voted
 
-Every candidate has 0, which is the cut value. All of them are tied at the cut and go to the next vote. No special case.
+Every candidate has 0, so nobody has a majority and every candidate goes to the next vote. No special case.
 
 ## Later votes
 
@@ -158,7 +189,7 @@ Every candidate has 0, which is the cut value. All of them are tied at the cut a
 |---|---|
 | 2nd | Only the candidates from rule step 5. Exactly the open seats. Majority needed again |
 | 3rd and later | The mesa may add a new candidate |
-| 4th and later, after a tie at the cut | The mesa may add the regional secretary as one more secret voter. The base grows by 1 |
+| 4th and later, after a tie at the cut | The mesa may add the regional secretary as one more secret voter. The base grows by 1. The secretary stays for the later votes of that election while in the room |
 
 The tool and the mesa never choose between tied candidates. Only another vote separates them. No rule yet ends a chain that keeps tying.
 
@@ -167,7 +198,7 @@ The tool and the mesa never choose between tied candidates. Only another vote se
 | Format | Approved when | Otherwise |
 |---|---|---|
 | A favor / En contra | «A favor» reaches the threshold | Not approved, a tie included. Nothing repeats |
-| Opciones | The most voted option reaches the threshold | The vote repeats between the top 2 and anyone tied with the 2nd |
+| Opciones | The most voted option reaches the threshold | The vote repeats between the top 2 and anyone tied with the 2nd. From the 4th vote, after a tie, the regional secretary may join |
 
 Each delegate marks one option. The threshold is the majority, or 3/4 of the base rounded up when the ballot asks for it (base 28 → 21).
 
@@ -176,5 +207,6 @@ Each delegate marks one option. The threshold is the majority, or 3/4 of the bas
 - Is 3/4 needed, and what is its source? The Board answers in #88.
 - Must all three earlier votes have tied before the regional secretary joins, or only the previous one?
 - What ends a chain that keeps tying after the regional secretary joins?
+- How is a seat filled when a committee has fewer candidates than seats?
 - Confirm exact marks per ballot, including when marks equal candidates.
 - Confirm that candidates above the line without a majority join the next vote, since the Reglamento covers only ties.
