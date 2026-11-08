@@ -3,29 +3,20 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { ForbiddenException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { removeOrganization } from '../support/seed.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('decisions: A favor / En contra with 3/4 or mayoría simple, and options that repeat between the top 2 until one reaches the rule', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
+test('decisions: A favor / En contra with 3/4 or mayoría simple, and options that repeat between the top 2 until one reaches the rule', async () => {
+  const prisma = await connectDatabase()
+  const service = new VotingService(prisma, gatewayStub().gateway)
   const organizationId = randomUUID()
   const joinCode = newOpaqueCredential()
-  let assemblyId: string | undefined
 
   try {
     const organization = await prisma.organization.create({ data: { id: organizationId, name: `decision-test-${organizationId}`, type: 'union' } })
     const activeAssemblyId = (await prisma.assembly.create({ data: { organizationId: organization.id, name: 'Decision integration', status: 'lobby_closed', joinCodeHash: hashCredential(joinCode) } })).id
-    assemblyId = activeAssemblyId
     const delegates: Array<{ id: string }> = []
     for (let index = 0; index < 8; index += 1) delegates.push(await prisma.participantSession.create({ data: {
       assemblyId: activeAssemblyId, firstName: `Delegate${index}`, lastName: 'Person', tokenHash: hashCredential(newOpaqueCredential()), joinedAt: new Date(Date.now() + index),
@@ -120,11 +111,7 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     assert.deepEqual(final.rounds.find((item) => item.id === venue.id)?.officialResult?.elected.map((option) => option.label), ['San Pedro Sula'])
     assert.deepEqual((await service.publicState(joinCode)).officialResult?.elected.map((option) => option.label), ['San Pedro Sula'])
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    }
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })

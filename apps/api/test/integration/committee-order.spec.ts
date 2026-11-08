@@ -1,42 +1,21 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
-
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { seedAssembly } from '../support/seed.js'
 
 type Context = { service: VotingService; assemblyId: string; joinCode: string; people: string[] }
 
 async function withAssembly(name: string, count: number, body: (context: Context) => Promise<void>) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  const organizationId = randomUUID()
-  let assemblyId: string | undefined
+  const prisma = await connectDatabase()
+  const service = new VotingService(prisma, gatewayStub().gateway)
+  const names = Array.from({ length: count }, (_, index) => `Delegado ${index + 1}`)
+  const { assemblyId, joinCode, people, cleanup } = await seedAssembly(prisma, service, { label: name, delegates: names })
   try {
-    await prisma.organization.create({ data: { id: organizationId, name: `${name}-${organizationId}`, type: 'union' } })
-    const joinCode = newOpaqueCredential()
-    assemblyId = (await prisma.assembly.create({ data: { organizationId, name, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-    const people: string[] = []
-    for (let index = 0; index < count; index += 1) {
-      const joined = await service.joinAssembly(joinCode, `Delegado ${index + 1}`, 'Prueba')
-      people.push((await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })).id)
-    }
-    await service.changeLobby(assemblyId, 'lobby_closed')
-    await body({ service, assemblyId, joinCode, people })
+    await body({ service, assemblyId, joinCode, people: names.map((person) => people[person]!.id) })
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.delete({ where: { id: assemblyId } }).catch(() => undefined)
-    }
-    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await cleanup()
     await prisma.$disconnect()
   }
 }
@@ -50,7 +29,7 @@ async function electedOnMesa(service: VotingService, assemblyId: string, rootId:
   return namesOf(mesa.rounds.find((round) => round.id === rootId)?.officialResult?.elected)
 }
 
-test('a vote that fills several seats lists them from most voted to least voted', { skip }, async () => {
+test('a vote that fills several seats lists them from most voted to least voted', async () => {
   await withAssembly('order-one-vote', 10, async ({ service, assemblyId, joinCode, people }) => {
     const candidates = ['Diego', 'Carla', 'Bruno', 'Ana', 'Elsa']
     const round = await service.createRound(assemblyId, { title: 'Comisión', category: 'committee', memberCount: 4, format: 'multiple_choice', options: candidates.map((label) => ({ label })) })
@@ -68,7 +47,7 @@ test('a vote that fills several seats lists them from most voted to least voted'
   })
 })
 
-test('a member elected in an earlier vote stays ahead of a later vote with more votes', { skip }, async () => {
+test('a member elected in an earlier vote stays ahead of a later vote with more votes', async () => {
   await withAssembly('order-chain', 5, async ({ service, assemblyId, people }) => {
     const first = await service.createRound(assemblyId, { title: 'Comisión', category: 'committee', memberCount: 2, format: 'multiple_choice', options: ['Zoe', 'Ana', 'Luis'].map((label) => ({ label })) })
     await service.openRound(first.id)

@@ -4,22 +4,15 @@ import test from 'node:test'
 import { ServiceUnavailableException } from '@nestjs/common'
 import pg from 'pg'
 import { hashCredential, newOpaqueCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
 import { VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
+import { removeOrganization } from '../support/seed.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-
-test('closing a round leaves no database-level link between participation receipts and anonymous votes', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  const prisma = new PrismaService()
-  await prisma.$connect()
+test('closing a round leaves no database-level link between participation receipts and anonymous votes', async () => {
+  const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
+  const service = new VotingService(prisma, gatewayStub().gateway)
   const linkedRows = async (roundId: string) => (await prisma.$queryRaw<Array<{ count: bigint }>>`
     SELECT count(*) AS count FROM participations p
     JOIN anonymous_votes v ON v.xmin = p.xmin AND v.round_id = p.round_id
@@ -31,7 +24,6 @@ test('closing a round leaves no database-level link between participation receip
     const assembly = await prisma.assembly.create({ data: {
       organizationId, name: 'Secrecy test', status: 'lobby_closed', joinCodeHash: hashCredential(newOpaqueCredential()),
     } })
-    assemblyId = assembly.id
     const voters = await Promise.all(Array.from({ length: 4 }, (_, index) => prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: `Voter${index}`, lastName: 'Test', tokenHash: hashCredential(newOpaqueCredential()),
     } })))
@@ -53,32 +45,20 @@ test('closing a round leaves no database-level link between participation receip
     const byLabel = Object.fromEntries(round.options.map((option) => [option.label, counts.find((row) => row.optionId === option.id)?._count._all ?? 0]))
     assert.deepEqual(byLabel, { A: 1, B: 1, C: 2 }, 'unlinking must not change the tally')
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })
 
-test('a failed VACUUM keeps the round closed, blocks publication, and is retried', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  const prisma = new PrismaService()
-  await prisma.$connect()
+test('a failed VACUUM keeps the round closed, blocks publication, and is retried', async () => {
+  const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
+  const service = new VotingService(prisma, gatewayStub().gateway)
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-retry-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {
       organizationId, name: 'Secrecy retry test', status: 'lobby_closed', joinCodeHash: hashCredential(newOpaqueCredential()),
     } })
-    assemblyId = assembly.id
     const voter = await prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: 'Voter', lastName: 'Retry', tokenHash: hashCredential(newOpaqueCredential()),
     } })
@@ -109,32 +89,20 @@ test('a failed VACUUM keeps the round closed, blocks publication, and is retried
     assert.equal(published.status, 'published')
     assert.equal(published.results.find((option) => option.label === 'A')?.count, 1)
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })
 
-test('startup unlinks rounds published before this protection existed, even in completed assemblies', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  const prisma = new PrismaService()
-  await prisma.$connect()
+test('startup unlinks rounds published before this protection existed, even in completed assemblies', async () => {
+  const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
+  const service = new VotingService(prisma, gatewayStub().gateway)
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-legacy-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {
       organizationId, name: 'Legacy assembly', status: 'lobby_closed', joinCodeHash: hashCredential(newOpaqueCredential()),
     } })
-    assemblyId = assembly.id
     const voter = await prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: 'Legacy', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
     } })
@@ -170,36 +138,24 @@ test('startup unlinks rounds published before this protection existed, even in c
     assert.ok((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).votesUnlinkedAt)
     assert.equal(await prisma.anonymousVote.count({ where: { roundId: round.id, optionId: round.options[1]!.id } }), 1)
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })
 
-test('a lock held on the votes table makes cleanup fail fast and recoverably instead of waiting forever', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const locker = new pg.Client({ connectionString: testDatabaseUrl })
+test('a lock held on the votes table makes cleanup fail fast and recoverably instead of waiting forever', async () => {
+  const prisma = await connectDatabase()
+  const locker = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL })
   await locker.connect()
   const organizationId = randomUUID()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
+  const service = new VotingService(prisma, gatewayStub().gateway)
   Object.assign(service, { vacuumLockTimeoutMs: 300 })
-  let assemblyId: string | undefined
   let lockHeld = false
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-lock-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {
       organizationId, name: 'Lock test', status: 'lobby_closed', joinCodeHash: hashCredential(newOpaqueCredential()),
     } })
-    assemblyId = assembly.id
     const voter = await prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: 'Voter', lastName: 'Lock', tokenHash: hashCredential(newOpaqueCredential()),
     } })
@@ -228,32 +184,20 @@ test('a lock held on the votes table makes cleanup fail fast and recoverably ins
   } finally {
     if (lockHeld) await locker.query('ROLLBACK')
     await locker.end()
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.participantSession.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })
 
-test('startup cleanup handles many historical rounds, each in its own transaction', {
-  skip: !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false,
-}, async () => {
-  process.env.DATABASE_URL = testDatabaseUrl
-  const prisma = new PrismaService()
-  await prisma.$connect()
+test('startup cleanup handles many historical rounds, each in its own transaction', async () => {
+  const prisma = await connectDatabase()
   const organizationId = randomUUID()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
-  let assemblyId: string | undefined
+  const service = new VotingService(prisma, gatewayStub().gateway)
   try {
     await prisma.organization.create({ data: { id: organizationId, name: `secrecy-many-${organizationId}`, type: 'union' } })
     const assembly = await prisma.assembly.create({ data: {
       organizationId, name: 'Many rounds', status: 'completed', completedAt: new Date(), joinCodeHash: hashCredential(newOpaqueCredential()),
     } })
-    assemblyId = assembly.id
     const roundCount = 120
     for (let index = 0; index < roundCount; index += 1) {
       await prisma.round.create({ data: {
@@ -269,11 +213,7 @@ test('startup cleanup handles many historical rounds, each in its own transactio
     assert.equal(await prisma.round.count({ where: { assemblyId: assembly.id, votesUnlinkedAt: null } }), 0)
     assert.equal(await prisma.anonymousVote.count({ where: { round: { assemblyId: assembly.id } } }), roundCount * 2 * 5)
   } finally {
-    if (assemblyId) {
-      await prisma.round.deleteMany({ where: { assemblyId } })
-      await prisma.assembly.deleteMany({ where: { id: assemblyId } })
-    }
-    await prisma.organization.deleteMany({ where: { id: organizationId } })
+    await removeOrganization(prisma, organizationId)
     await prisma.$disconnect()
   }
 })

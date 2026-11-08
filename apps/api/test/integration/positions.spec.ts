@@ -2,21 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common'
 import { hashCredential } from '../../src/auth/credentials.js'
-import { PrismaService } from '../../src/prisma/prisma.service.js'
+import type { PrismaService } from '../../src/prisma/prisma.service.js'
 import { DEFAULT_BOARD_POSITIONS, DEFAULT_DEPARTMENT_POSITIONS, VotingService } from '../../src/voting/voting.service.js'
-import type { RealtimeGateway } from '../../src/realtime/realtime.gateway.js'
-
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
-const skip = !testDatabaseUrl ? 'Define TEST_DATABASE_URL pointing to a disposable PostgreSQL database' : false
+import { connectDatabase } from '../support/database.js'
+import { gatewayStub } from '../support/gateway.js'
 
 /** A real Asamblea created by the mesa (so its puestos are seeded), with `count` delegates. */
 async function withAssembly(count: number, body: (ctx: { service: VotingService; prisma: PrismaService; assemblyId: string; joinCode: string; people: string[] }) => Promise<void>) {
-  process.env.DATABASE_URL = testDatabaseUrl
-  process.env.PUBLIC_APP_URL ??= 'http://localhost:5173'
-  const prisma = new PrismaService()
-  await prisma.$connect()
-  const realtime = new Proxy({}, { get: () => () => undefined }) as RealtimeGateway
-  const service = new VotingService(prisma, realtime)
+  const prisma = await connectDatabase()
+  const service = new VotingService(prisma, gatewayStub().gateway)
   let assemblyId: string | undefined
   try {
     const created = await service.createAssembly('IV Asamblea Reorganizativa 2026', ' 2027–2029 ')
@@ -38,7 +32,7 @@ async function withAssembly(count: number, body: (ctx: { service: VotingService;
   }
 }
 
-test('creating an Asamblea seeds the junta directiva and the 14 departamentos in order, with its period', { skip }, async () => {
+test('creating an Asamblea seeds the junta directiva and the 14 departamentos in order, with its period', async () => {
   await withAssembly(0, async ({ service, assemblyId, joinCode }) => {
     const state = await service.moderatorAssembly(assemblyId)
     assert.equal(state.period, '2027–2029')
@@ -53,7 +47,7 @@ test('creating an Asamblea seeds the junta directiva and the 14 departamentos in
   })
 })
 
-test('the mesa adds a departamento: audited and last; duplicate or empty is 422, a completed Asamblea is 409', { skip }, async () => {
+test('the mesa adds a departamento: audited and last; duplicate or empty is 422, a completed Asamblea is 409', async () => {
   await withAssembly(1, async ({ service, prisma, assemblyId }) => {
     const added = await service.addPosition(assemblyId, '  Comunicación ')
     assert.deepEqual({ group: added.group, label: added.label, custom: added.custom, elected: added.elected }, { group: 'department', label: 'Comunicación', custom: true, elected: null })
@@ -76,7 +70,7 @@ test('the mesa adds a departamento: audited and last; duplicate or empty is 422,
   })
 })
 
-test('a cargo with a puesto takes its name; only a cargo has a puesto and an elected puesto cannot be voted again', { skip }, async () => {
+test('a cargo with a puesto takes its name; only a cargo has a puesto and an elected puesto cannot be voted again', async () => {
   await withAssembly(3, async ({ service, prisma, assemblyId, people }) => {
     await service.changeLobby(assemblyId, 'lobby_closed')
     const treasurer = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Tesorero' } })).id
@@ -97,7 +91,7 @@ test('a cargo with a puesto takes its name; only a cargo has a puesto and an ele
   })
 })
 
-test('a runoff elects into its root\'s puesto; phones and projector see it only once published', { skip }, async () => {
+test('a runoff elects into its root\'s puesto; phones and projector see it only once published', async () => {
   await withAssembly(4, async ({ service, prisma, assemblyId, joinCode, people }) => {
     await service.changeLobby(assemblyId, 'lobby_closed')
     const president = (await prisma.position.findFirstOrThrow({ where: { assemblyId, label: 'Presidente' } })).id
