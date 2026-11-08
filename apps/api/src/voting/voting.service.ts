@@ -1341,21 +1341,16 @@ export class VotingService implements OnModuleInit {
     // Sequential: an interactive transaction runs on one connection.
     const active = await client.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })
     const rounds = await client.round.findMany({ where: { assemblyId }, select: { id: true, committeeRootRoundId: true, regionalSecretaryVotes: true } })
-    const inactiveVoters = await client.participantSession.findMany({
-      where: { assemblyId, status: { not: 'active' }, isRegionalSecretary: false, participations: { some: {} } },
-      select: { participations: { select: { roundId: true } } },
-    })
     const secretary = await client.participantSession.findFirst({
       where: { assemblyId, isRegionalSecretary: true },
       select: { status: true, participations: { select: { roundId: true } } },
     })
     const chainOf = new Map(rounds.map((round) => [round.id, round.committeeRootRoundId ?? round.id]))
-    const votedChains = inactiveVoters.map((person) => new Set(person.participations.map((item) => chainOf.get(item.roundId))))
     const secretaryChains = new Set(secretary?.participations.map((item) => chainOf.get(item.roundId)))
     return new Map(rounds.map((round) => {
       const chain = chainOf.get(round.id)
       const secretaryCounts = round.regionalSecretaryVotes && (secretary?.status === 'active' || secretaryChains.has(chain))
-      return [round.id, active + votedChains.filter((chains) => chains.has(chain)).length + (secretaryCounts ? 1 : 0)]
+      return [round.id, active + (secretaryCounts ? 1 : 0)]
     }))
   }
 

@@ -322,7 +322,7 @@ function removeFromRoom(person: { id?: string; firstName: string; lastName: stri
   if (!person.id) return
   moderationConfirmation.value = {
     title: `¿Retirar a ${person.firstName} ${person.lastName} de la sala?`,
-    consequence: 'La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta, salvo en una elección en la que ya votó. Puedes regresarlo a la sala después.',
+    consequence: 'La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta. Puedes regresarlo a la sala después.',
     label: 'Retirar de la sala',
     path: `/moderator/participants/${encodeURIComponent(person.id)}/take-out`,
     method: 'POST',

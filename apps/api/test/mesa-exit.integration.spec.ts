@@ -138,7 +138,7 @@ test('the mesa takes someone out during an open vote: that vote keeps them in it
   } finally { await cleanup() }
 })
 
-test('in an election, someone who voted and was taken out keeps counting in the later votes, and one who returns counts from the next vote', { skip }, async () => {
+test('in an election, someone taken out stops counting from the next vote even if they voted, and one who returns counts again', { skip }, async () => {
   const { prisma, service, joinCode, assemblyId, people, cleanup } = await setup('election-exit', ['Oseas', 'Joel', 'Amós'])
   try {
     const round = await service.createRound(assemblyId, { title: 'Presidencia', ...twoOptions })
@@ -152,13 +152,13 @@ test('in an election, someone who voted and was taken out keeps counting in the 
     assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: round.id } })).eligibleCount, 3)
 
     const runoff = await prisma.round.findFirstOrThrow({ where: { committeeRootRoundId: round.id, status: 'draft' } })
-    assert.equal((await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.id === runoff.id)?.eligibleCount, 2, 'Amós in the room plus Oseas, who voted in the chain; Joel never voted')
+    assert.equal((await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.id === runoff.id)?.eligibleCount, 1, 'only Amós is in the room')
     await service.openRound(runoff.id)
-    assert.equal((await service.publicState(joinCode)).eligibleCount, 2)
+    assert.equal((await service.publicState(joinCode)).eligibleCount, 1)
 
     await assert.rejects(service.returnToRoom(people.Joel!.id), ConflictException, 'Joel is not in the open vote base, so he cannot come back and vote in it')
     await service.closeRound(runoff.id)
-    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).eligibleCount, 2)
+    assert.equal((await prisma.round.findUniqueOrThrow({ where: { id: runoff.id } })).eligibleCount, 1)
     await service.returnToRoom(people.Oseas!.id)
     await service.returnToRoom(people.Joel!.id)
 
