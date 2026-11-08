@@ -24,7 +24,6 @@ const RESUME_CODE_TTL_MS = 10 * 60_000
 const VACUUM_LOCK_TIMEOUT_MS = 5_000
 /** Rounds whose votes are at rest and must be unlinked from their participation receipts. */
 const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
-const PARTICIPANT_ACTOR = 'participant_session'
 /** The official result is computed, never declared by hand (Asamblea, Nov 2026). */
 const RESULTS_ENGINE_ACTOR = 'results_engine'
 /** The Unión Hondureña org chart, seeded in this order on every new Asamblea (Asamblea, Nov 2026). */
@@ -249,34 +248,57 @@ export class VotingService implements OnModuleInit {
     }
   }
 
-  /**
-   * The delegate's own "Salir": the session stops authenticating and leaves the room count, while the
-   * ballots they already voted in keep them in their percentage base. Repeating it changes nothing.
-   */
-  async leaveAssembly(participantId: string) {
-    const left = await this.prisma.$transaction(async (tx) => {
-      const identity = await tx.participantSession.findUnique({ where: { id: participantId }, select: { assemblyId: true } })
-      if (!identity) throw new NotFoundException('Sesión no encontrada')
+  async takeOutOfRoom(participantId: string) {
+    const result = await this.changeRoomPresence(participantId, 'left')
+    if (result.changed) {
+      this.realtime.participantLeft(result.assemblyId, { participantId: result.id, firstName: result.firstName, lastName: result.lastName })
+      await this.announceRoomCount(result.assemblyId)
+    }
+    return { id: result.id, firstName: result.firstName, lastName: result.lastName, status: 'left' as const }
+  }
+
+  async returnToRoom(participantId: string) {
+    const result = await this.changeRoomPresence(participantId, 'active')
+    if (result.changed) {
+      this.realtime.participantJoined(result.assemblyId, { participantId: result.id, firstName: result.firstName, lastName: result.lastName })
+      await this.announceRoomCount(result.assemblyId)
+    }
+    return { id: result.id, firstName: result.firstName, lastName: result.lastName, status: 'active' as const }
+  }
+
+  private async changeRoomPresence(participantId: string, target: 'left' | 'active') {
+    const identity = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { assemblyId: true } })
+    if (!identity) throw new NotFoundException('Participante no encontrado')
+    return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM assemblies WHERE id = ${identity.assemblyId}::uuid FOR UPDATE`
-      const current = await tx.participantSession.findUniqueOrThrow({
-        where: { id: participantId }, select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true },
+      const assembly = await tx.assembly.findUniqueOrThrow({ where: { id: identity.assemblyId }, select: { status: true } })
+      if (assembly.status === 'completed') throw new ConflictException('La Asamblea ya finalizó; no se permiten cambios operativos')
+      const current = await tx.participantSession.findFirst({
+        where: { id: participantId, isRegionalSecretary: false },
+        select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true },
       })
-      if (current.status !== 'active') return { ...current, changed: false }
-      await tx.participantSession.update({ where: { id: participantId }, data: { status: 'left', resumeCodeHash: null, resumeExpiresAt: null } })
-      await tx.auditEvent.create({ data: { assemblyId: current.assemblyId, actorRef: PARTICIPANT_ACTOR, action: 'participant.left', metadata: { participantId } } })
+      const from = target === 'left' ? 'active' : 'left'
+      if (!current || (current.status !== from && !(target === 'left' && current.status === 'left'))) throw new NotFoundException('Participante no encontrado')
+      if (current.status === target) return { ...current, changed: false }
+      await tx.participantSession.update({
+        where: { id: participantId },
+        data: target === 'left'
+          ? { status: 'left', resumeCodeHash: null, resumeExpiresAt: null }
+          : { status: 'active', tokenHash: hashCredential(newOpaqueCredential()) },
+      })
+      await tx.auditEvent.create({
+        data: { assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR, action: target === 'left' ? 'participant.taken_out' : 'participant.returned', metadata: { participantId } },
+      })
       return { ...current, changed: true }
     })
-    if (left.changed) {
-      this.realtime.participantLeft(left.assemblyId, { participantId: left.id, firstName: left.firstName, lastName: left.lastName })
-      const [count, assembly, openRound] = await Promise.all([
-        this.prisma.participantSession.count({ where: { assemblyId: left.assemblyId, status: 'active', isRegionalSecretary: false } }),
-        this.prisma.assembly.findUniqueOrThrow({ where: { id: left.assemblyId }, select: { status: true } }),
-        this.prisma.round.findFirst({ where: { assemblyId: left.assemblyId, status: 'open' }, select: { id: true } }),
-      ])
-      this.realtime.lobbyState(left.assemblyId, { status: assembly.status === 'lobby_open' ? 'open' : 'closed', participantCount: count })
-      if (openRound) await this.announceParticipationCount(left.assemblyId, openRound.id)
-    }
-    return { left: true as const }
+  }
+
+  private async announceRoomCount(assemblyId: string) {
+    const [count, assembly] = await Promise.all([
+      this.prisma.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } }),
+      this.prisma.assembly.findUniqueOrThrow({ where: { id: assemblyId }, select: { status: true } }),
+    ])
+    this.realtime.lobbyState(assemblyId, { status: assembly.status === 'lobby_open' ? 'open' : 'closed', participantCount: count })
   }
 
   async participantState(participantId: string) {
@@ -691,12 +713,6 @@ export class VotingService implements OnModuleInit {
     return { id: updated.id, firstName: updated.firstName, lastName: updated.lastName, status: updated.status }
   }
 
-  /**
-   * Inhabilitar / Habilitar (Nov 2026): an inhabilitado stays in the room, the list and the majority base,
-   * but receives no ballots and the server rejects their vote. A vote already cast is kept. Someone who
-   * tapped "Salir" can be inhabilitado too, which brings them back to the list; their old token stays
-   * revoked, so the mesa issues a reconnection code if they are habilitados and return.
-   */
   async setVotingDisabled(participantId: string, disabled: boolean) {
     const identity = await this.prisma.participantSession.findUnique({ where: { id: participantId }, select: { assemblyId: true } })
     if (!identity) throw new NotFoundException('Participante no encontrado')
@@ -707,35 +723,21 @@ export class VotingService implements OnModuleInit {
       const current = await tx.participantSession.findUniqueOrThrow({
         where: { id: participantId }, select: { id: true, assemblyId: true, firstName: true, lastName: true, status: true, votingDisabled: true },
       })
-      const rejoining = disabled && current.status === 'left'
-      if (current.status !== 'active' && !rejoining) throw new NotFoundException('Participante no encontrado')
-      if (current.votingDisabled === disabled && !rejoining) return { ...current, changed: false, rejoined: false }
-      await tx.participantSession.update({
-        where: { id: participantId },
-        data: { votingDisabled: disabled, ...(rejoining ? { status: 'active' as const, tokenHash: hashCredential(newOpaqueCredential()) } : {}) },
-      })
+      if (current.status !== 'active') throw new NotFoundException('Participante no encontrado')
+      if (current.votingDisabled === disabled) return { ...current, changed: false }
+      await tx.participantSession.update({ where: { id: participantId }, data: { votingDisabled: disabled } })
       await tx.auditEvent.create({
         data: {
           assemblyId: current.assemblyId, actorRef: MODERATOR_ACTOR,
           action: disabled ? 'participant.voting_disabled' : 'participant.voting_enabled',
-          metadata: { participantId, ...(rejoining ? { previousStatus: 'left' } : {}) },
+          metadata: { participantId },
         },
       })
-      return { ...current, changed: true, rejoined: rejoining }
+      return { ...current, changed: true }
     })
     if (result.changed) {
       this.realtime.participantVoting(result.assemblyId, { participantId: result.id, votingDisabled: disabled })
-      if (!result.rejoined) this.realtime.participantState(result.id, await this.participantState(result.id))
-      if (result.rejoined) {
-        const [count, assembly, openRound] = await Promise.all([
-          this.prisma.participantSession.count({ where: { assemblyId: result.assemblyId, status: 'active', isRegionalSecretary: false } }),
-          this.prisma.assembly.findUniqueOrThrow({ where: { id: result.assemblyId }, select: { status: true } }),
-          this.prisma.round.findFirst({ where: { assemblyId: result.assemblyId, status: 'open' }, select: { id: true } }),
-        ])
-        this.realtime.lobbyState(result.assemblyId, { status: assembly.status === 'lobby_open' ? 'open' : 'closed', participantCount: count })
-        // Back in the room, they count in the base again even if they had not voted.
-        if (openRound) await this.announceParticipationCount(result.assemblyId, openRound.id)
-      }
+      this.realtime.participantState(result.id, await this.participantState(result.id))
     }
     return { id: result.id, firstName: result.firstName, lastName: result.lastName, status: 'active' as const, votingDisabled: disabled }
   }
@@ -841,6 +843,7 @@ export class VotingService implements OnModuleInit {
         throw new ConflictException('Todos los puestos de esta elección ya están ocupados')
       }
       const updated = await tx.round.update({ where: { id: round.id }, data: { status: 'open', openedAt: new Date() }, select: { id: true, assemblyId: true, title: true } })
+      await this.freezeEligibleCount(tx, round.assembly_id, round.id)
       if (assembly.status === 'lobby_closed') await tx.assembly.update({ where: { id: round.assembly_id }, data: { status: 'in_progress' } })
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId: round.id, actorRef: MODERATOR_ACTOR, action: 'round.opened' } })
       // A forgotten «Presentar oficiales» never covers a live vote: opening one ends it.
@@ -876,7 +879,6 @@ export class VotingService implements OnModuleInit {
       if (current.status !== 'open') throw new ConflictException('Solo se puede cerrar una papeleta abierta')
       const updated = await tx.round.update({ where: { id: roundId }, data: { status: 'closed', closedAt: new Date() }, select: { id: true, assemblyId: true, status: true } })
       await tx.auditEvent.create({ data: { assemblyId: current.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.closed' } })
-      await this.freezeEligibleCount(tx, current.assembly_id, roundId)
       await this.unlinkRoundVotes(tx, roundId)
       // Closing computes the result: the elected join the official result and open seats get a runoff draft.
       const runoffRoundId = await this.settleElection(tx, roundId)
@@ -978,7 +980,6 @@ export class VotingService implements OnModuleInit {
         data: { status: 'annulled', annulledAt: new Date(), annulReason: reason.trim(), votesUnlinkedAt: null },
       })
       await tx.anonymousVote.deleteMany({ where: { roundId } })
-      if (round.status === 'open') await this.freezeEligibleCount(tx, round.assembly_id, roundId)
       await tx.auditEvent.create({ data: { assemblyId: round.assembly_id, roundId, actorRef: MODERATOR_ACTOR, action: 'round.annulled', metadata: { previousStatus: round.status, reason: reason.trim() } } })
       return { assemblyId: round.assembly_id, title: round.title, previousStatus: round.status, changed: true }
     })
@@ -1321,16 +1322,11 @@ export class VotingService implements OnModuleInit {
     }
   }
 
-  /**
-   * The percentage base of every round: the people in the room plus those no longer active who voted in
-   * that ballot or in another vote of its chain (the original and its repetitions). Leaving after voting
-   * must not shrink the base; someone expelled before voting never enters it.
-   */
   private async eligibleCounts(assemblyId: string) {
     const [live, frozen] = await Promise.all([
       this.liveEligibleCounts(this.prisma, assemblyId),
       this.prisma.round.findMany({
-        where: { assemblyId, status: { in: [...SETTLED_ROUND_STATUSES] }, eligibleCount: { not: null } },
+        where: { assemblyId, eligibleCount: { not: null } },
         select: { id: true, eligibleCount: true },
       }),
     ])
@@ -1338,7 +1334,6 @@ export class VotingService implements OnModuleInit {
     return live
   }
 
-  /** Counted from who is in the room now; a settled ballot uses the value frozen when it closed instead. */
   private async liveEligibleCounts(client: Prisma.TransactionClient, assemblyId: string) {
     // Sequential: an interactive transaction runs on one connection.
     const active = await client.participantSession.count({ where: { assemblyId, status: 'active', isRegionalSecretary: false } })

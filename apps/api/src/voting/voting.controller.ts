@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -82,8 +83,8 @@ export class ParticipantLeaveController {
 
   @Post('leave')
   @HttpCode(200)
-  leave(@Req() request: SessionRequest) {
-    return this.voting.leaveAssembly(sessionId(request))
+  leave() {
+    throw new ForbiddenException('Solo la mesa puede retirar a una persona de la sala')
   }
 }
 
@@ -164,6 +165,18 @@ export class ModeratorController {
   @HttpCode(200)
   enableVoting(@Param('participantId', ParseUUIDPipe) participantId: string) {
     return this.voting.setVotingDisabled(participantId, false)
+  }
+
+  @Post('participants/:participantId/take-out')
+  @HttpCode(200)
+  takeOut(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.takeOutOfRoom(participantId)
+  }
+
+  @Post('participants/:participantId/return')
+  @HttpCode(200)
+  returnToRoom(@Param('participantId', ParseUUIDPipe) participantId: string) {
+    return this.voting.returnToRoom(participantId)
   }
 
   @Post('participants/:participantId/resume-code')

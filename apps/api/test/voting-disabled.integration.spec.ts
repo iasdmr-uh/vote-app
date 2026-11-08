@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { AuthService } from '../src/auth/auth.service.js'
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { hashCredential, newOpaqueCredential } from '../src/auth/credentials.js'
 import { PrismaService } from '../src/prisma/prisma.service.js'
 import { VotingService } from '../src/voting/voting.service.js'
@@ -22,7 +21,6 @@ test('inhabilitar during an open vote rejects the vote, keeps the base and a vot
     events.push({ name, target: args[0], payload: args[1] })
   } }) as RealtimeGateway
   const service = new VotingService(prisma, realtime)
-  const auth = new AuthService(prisma)
   const organizationId = randomUUID()
   let assemblyId: string | undefined
 
@@ -86,23 +84,9 @@ test('inhabilitar during an open vote rejects the vote, keeps the base and a vot
     await service.castVote(people.Luis!.id, round.id, round.options[1]!.id)
     assert.equal(await prisma.auditEvent.count({ where: { assemblyId, action: 'participant.voting_enabled' } }), 1)
 
-    // Someone who tapped "Salir" can be inhabilitado from the notice: back in the list and in the base,
-    // while their old token stays revoked.
-    await service.leaveAssembly(people.Pedro!.id)
-    assert.equal((await service.publicState(joinCode)).eligibleCount, 3, 'Pedro left without voting')
-    events.length = 0
-    await service.setVotingDisabled(people.Pedro!.id, true)
-    const pedro = await prisma.participantSession.findUniqueOrThrow({ where: { id: people.Pedro!.id } })
-    assert.equal(pedro.status, 'active')
-    assert.equal(pedro.votingDisabled, true)
-    await assert.rejects(auth.participantForToken(people.Pedro!.token), UnauthorizedException)
-    assert.deepEqual(events.find((event) => event.name === 'lobbyState')?.payload, { status: 'closed', participantCount: 4 })
-    assert.deepEqual(events.find((event) => event.name === 'participationCount')?.payload, { roundId: round.id, recorded: 2, eligible: 4 })
-    mesa = await service.moderatorAssembly(assemblyId)
-    assert.deepEqual(mesa.leftParticipants, [])
-    assert.equal(mesa.participants.find((person) => person.id === people.Pedro!.id)?.votingDisabled, true)
-    const audit = await prisma.auditEvent.findFirstOrThrow({ where: { assemblyId, action: 'participant.voting_disabled', metadata: { path: ['participantId'], equals: people.Pedro!.id } } })
-    assert.deepEqual(audit.metadata, { participantId: people.Pedro!.id, previousStatus: 'left' })
+    await service.takeOutOfRoom(people.Pedro!.id)
+    await assert.rejects(service.setVotingDisabled(people.Pedro!.id, true), NotFoundException)
+    assert.equal((await prisma.participantSession.findUniqueOrThrow({ where: { id: people.Pedro!.id } })).status, 'left')
 
     // An unknown session cannot be inhabilitada.
     await assert.rejects(service.setVotingDisabled(randomUUID(), true), NotFoundException)

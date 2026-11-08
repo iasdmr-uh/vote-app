@@ -60,8 +60,7 @@ test('the published count gives "no votaron" as the majority base minus votes ca
     assert.equal(phone.recordedCount, 3)
     assert.equal(phone.eligibleCount, 5)
 
-    // Leaving after the close does not change the frozen base.
-    await service.leaveAssembly(people.Pedro!)
+    await service.takeOutOfRoom(people.Pedro!)
     assert.equal((await service.publicState(joinCode)).eligibleCount, 5)
   } finally {
     if (assemblyId) {
