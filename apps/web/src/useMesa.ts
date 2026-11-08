@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import QRCode from 'qrcode'
 import { xlsxBlob } from './xlsx'
 import { actaSheetRows, decisionTie, isTied, percentOf } from './resultados'
@@ -7,11 +7,11 @@ import { useAssembly } from './useAssembly'
 
 const {
   loading, error, notice, state, code, moderatorToken, moderatorAuthState, assemblyId, qrImage, printingActa, completedAssemblies,
-  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, participantLeft, participantLeftId, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
+  liveAssembly, assemblyStatus, lobbyStatus, round, eligibleVotes, request, isUnauthorized, refresh, setBrowsingActas, selectAssembly,
   recoverActiveAssembly, rememberJoinCode,
 } = useAssembly()
 
-const moderationConfirmation = ref<{ title: string; consequence: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
+const moderationConfirmation = ref<{ title: string; consequence: string; warning?: string; label: string; path: string; method: string; body?: unknown; reasonLabel?: string; reasonPlaceholder?: string; typedConfirmation?: string; onSuccess?: (result: any) => void | Promise<void> } | null>(null)
 const moderationReason = ref('')
 const moderatorCredential = ref('')
 const assemblyName = ref('Asamblea de Delegados')
@@ -54,6 +54,14 @@ const attendance = computed(() => {
   const pending = participants.filter((person) => !person.voted && !person.votingDisabled).length
   const disabled = participants.filter((person) => person.votingDisabled && !person.voted).length
   return { ...record, pending, disabled }
+})
+const roomWarning = computed(() => {
+  const room = state.value?.room
+  return room && room.present < room.quorum ? 'Sin quórum' : ''
+})
+const roomLine = computed(() => {
+  const room = state.value?.room
+  return room ? `En sala ${room.present} de ${room.accredited} · quórum ${room.quorum}` : ''
 })
 const moderatorWorkflow = ['Ingreso', 'Papeleta', 'Votación', 'Conteo', 'Resultado']
 const currentRoundRecord = computed(() => state.value?.rounds?.find((item) => item.id === round.value?.id))
@@ -99,7 +107,6 @@ const moderatorWorkflowStep = computed(() => {
   if (round.value?.status === 'draft') return 1
   return lobbyStatus.value === 'lobby_open' ? 0 : 1
 })
-watch(assemblyId, () => { participantLeft.value = ''; participantLeftId.value = '' })
 
 function eligibleOf(target: RoundRecord) {
   const own = (target as RoundRecord & { eligibleCount?: number }).eligibleCount
@@ -253,7 +260,7 @@ async function moderatorAction(path: string, method = 'POST', body?: unknown, on
     : path.endsWith('/rounds')
       ? { title: '¿Preparar esta papeleta?', consequence: 'Revisa el cargo y las opciones. No se podrán editar después de abrir la votación.', label: 'Preparar papeleta' }
       : path.endsWith('/open')
-        ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación' }
+        ? { title: '¿Abrir la votación?', consequence: 'La papeleta aparecerá en los teléfonos y sus opciones quedarán fijas.', label: 'Abrir votación', ...(roomWarning.value ? { warning: `${roomWarning.value}. Hay menos personas en la sala que el quórum. Puedes abrir la votación de todos modos.` } : {}) }
         : path.endsWith('/close')
           ? { title: '¿Cerrar la votación?', consequence: 'Dejará de aceptar votos.', label: 'Cerrar votación' }
           : path.endsWith('/repeat')
@@ -319,6 +326,30 @@ function issueResumeCode(person: { id?: string; firstName: string; lastName: str
   }
 }
 
+function removeFromRoom(person: { id?: string; firstName: string; lastName: string }) {
+  if (!person.id) return
+  moderationConfirmation.value = {
+    title: `¿Retirar a ${person.firstName} ${person.lastName} de la sala?`,
+    consequence: 'La votación abierta lo sigue contando. Desde la siguiente votación ya no cuenta. Puedes regresarlo a la sala después.',
+    label: 'Retirar de la sala',
+    path: `/moderator/participants/${encodeURIComponent(person.id)}/take-out`,
+    method: 'POST',
+  }
+}
+
+async function returnToRoom(participantId: string | undefined) {
+  if (!participantId || loading.value) return
+  error.value = ''
+  loading.value = true
+  let succeeded = false
+  try {
+    await request(`/moderator/participants/${encodeURIComponent(participantId)}/return`, { method: 'POST' }, moderatorToken.value)
+    succeeded = true
+  } catch (e) { error.value = (e as Error).message }
+  finally { loading.value = false }
+  if (succeeded) await refresh(true)
+}
+
 /** Inhabilitar / Habilitar is reversible and audited, so it applies at once without a confirmation step. */
 async function setVotingDisabled(participantId: string | undefined, disabled: boolean) {
   if (!participantId || loading.value) return
@@ -331,7 +362,6 @@ async function setVotingDisabled(participantId: string | undefined, disabled: bo
   } catch (e) { error.value = (e as Error).message }
   finally { loading.value = false }
   if (!succeeded) return
-  if (participantId === participantLeftId.value) { participantLeft.value = ''; participantLeftId.value = '' }
   await refresh(true)
 }
 
@@ -528,11 +558,11 @@ export function useMesa() {
     moderationConfirmation, moderationReason, moderatorCredential, assemblyName, assemblyPeriod, roundTitle,
     roundPositionId, positionMenuOpen, newDepartment, positionGroups, selectedPosition, choosePosition, addDepartment, roundCategory, committeeMemberCount, decisionFormat, approvalRule,
     showNextBallotForm, resumeQr, regionalSecretaryFirstName, regionalSecretaryLastName, regionalSecretaryInBallot, acceptsNewCandidates, acceptsRegionalSecretary, addRegionalSecretary, removeRegionalSecretary, ballotCandidates, newBallotCandidate, preparedRunoff, newRunoffCandidate,
-    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, moderatorWorkflow, currentRoundRecord,
+    secrecyCleanupPendingRounds, assemblyStatusLabels, roundStatusLabels, attendance, roomLine, roomWarning, moderatorWorkflow, currentRoundRecord,
     moderatorWorkflowStep, otherPendingActas,
     roundChain, voteNumber, rootRoundOf, eligibleOf, rankedRows, electionComplete, runoffOf,
     annulRound, repeatAllOptions, openRunoff, addBallotCandidate, addRunoffCandidate, removeRunoffCandidate,
-    removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, openCompletedAssembly,
+    removeBallotCandidate, chooseRoundCategory, moderatorAction, confirmModeratorAction, rotateJoinCode, issueResumeCode, setVotingDisabled, removeFromRoom, returnToRoom, openCompletedAssembly,
     openLiveAssembly, showPendingActas, retrySecrecyCleanup, completeAssembly, printActa, downloadActaSpreadsheet, deleteAssemblyData,
     createAssembly, editParticipant, createRound, signInModerator,
   }

@@ -367,7 +367,7 @@ test('la mesa ve cuántos votaron y faltan, sin marcar a cada persona, también 
   await expect(summary).toContainText('1 falta')
 })
 
-test('delegado conserva la sesión al recargar y puede salir limpiando el estado local', async ({ page }) => {
+test('delegado conserva la sesión al recargar y no tiene botón Salir', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-session-token')
     localStorage.setItem('participantAssemblyId', 'assembly-a')
@@ -382,10 +382,6 @@ test('delegado conserva la sesión al recargar y puede salir limpiando el estado
       await route.fulfill({ json: { assembly: { id: 'assembly-a', name: 'Asamblea A' } } })
       return
     }
-    if (route.request().method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
-      await route.fulfill({ json: { left: true } })
-      return
-    }
     await route.fulfill({ status: 404, json: { message: 'No mock route for participant session test' } })
   })
 
@@ -393,11 +389,8 @@ test('delegado conserva la sesión al recargar y puede salir limpiando el estado
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
-  await page.getByRole('button', { name: 'Salir', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
-  await expect(page.getByLabel('Código de sala')).toHaveValue('CODE-A')
-  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
-  expect(await page.evaluate(() => localStorage.getItem('participantAssemblyId'))).toBeNull()
+  await expect(page.getByRole('button', { name: 'Salir' })).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('synthetic-session-token')
 })
 
 test('un 401 Unauthorized limpia la sesión y devuelve al ingreso del delegado', async ({ page }) => {
@@ -456,10 +449,6 @@ test('delegado debe confirmar el cambio cuando abre un QR de otra Asamblea', asy
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/assemblies/CODE-B/join')) {
       await route.fulfill({ json: { participantSessionToken: 'new-session-token', ...participantState(), assembly: { id: 'assembly-b', name: 'Asamblea B', status: 'in_progress' } } })
-      return
-    }
-    if (request.method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
-      await route.fulfill({ json: { left: true } })
       return
     }
     await route.fulfill({ status: 404, json: { message: 'No mock route for QR switch test' } })
@@ -1261,18 +1250,18 @@ test('un cargo con mayoría queda electo sin intervención de la mesa y la elecc
   await expect(page.locator('.workflow-steps li.complete')).toHaveCount(5)
 })
 
-test('Salir avisa a la mesa con POST /participant/leave y limpia la sesión del teléfono', async ({ page }) => {
+test('el teléfono del delegado no ofrece Salir ni avisa al servidor', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('participantSessionToken', 'leaving-session-token')
+    localStorage.setItem('participantSessionToken', 'session-token')
     localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
   })
-  const leaveCalls: Array<{ method: string; authorization?: string }> = []
+  const leaveCalls: string[] = []
   await page.route(api, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (url.pathname.endsWith('/participant/leave')) {
-      leaveCalls.push({ method: request.method(), authorization: request.headers().authorization })
-      await route.fulfill({ status: 201, json: { status: 'left' } })
+      leaveCalls.push(request.method())
+      await route.fulfill({ status: 403, json: { message: 'Solo la mesa puede retirar a una persona de la sala' } })
       return
     }
     if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
@@ -1284,58 +1273,103 @@ test('Salir avisa a la mesa con POST /participant/leave y limpia la sesión del 
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
-  await page.getByRole('button', { name: 'Salir', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
-  expect(leaveCalls).toEqual([{ method: 'POST', authorization: 'Bearer leaving-session-token' }])
-  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
-  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Salir' })).toHaveCount(0)
+  await expect(page.getByText('Salir', { exact: true })).toHaveCount(0)
+  expect(leaveCalls).toEqual([])
 })
 
-test('la mesa muestra «<Nombre> salió de la sala» al recibir participant.left', async ({ page }) => {
+test('la mesa retira a alguien de la sala, lo ve en Fuera de la sala y lo regresa', async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  let leftAlready = false
+  let out = false
+  const calls: string[] = []
   await page.route(api, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }, ...(leftAlready ? [] : [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }])]
+      const people = [{ id: 'p1', firstName: 'Elías', lastName: 'Tisbita' }, ...(out ? [] : [{ id: 'p2', firstName: 'Eliseo', lastName: 'Safat' }])]
       await route.fulfill({ json: {
-        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'lobby_open', completedAt: null,
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
         participants: people, participantCount: people.length, rounds: [],
+        leftParticipants: out ? [{ id: 'p2', firstName: 'Eliseo', lastName: 'Safat' }] : [],
       } })
       return
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for participant.left test' } })
-  })
-  let connectAuth: Record<string, string> | undefined
-  let markConnected: (() => void) | undefined
-  const connected = new Promise<void>((resolve) => { markConnected = resolve })
-  let server: { send: (message: string) => void } | undefined
-  await page.routeWebSocket(/\/socket\.io\//, (ws) => {
-    server = ws
-    ws.send(`0${JSON.stringify({ sid: 'synthetic-engine', upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1000000 })}`)
-    ws.onMessage((message) => {
-      const packet = String(message)
-      if (!packet.startsWith('40/events,')) return
-      connectAuth = JSON.parse(packet.slice('40/events,'.length))
-      ws.send('40/events,{"sid":"synthetic-socket"}')
-      markConnected?.()
-    })
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/participants/p2/take-out')) {
+      calls.push('take-out')
+      out = true
+      await route.fulfill({ json: { id: 'p2', firstName: 'Eliseo', lastName: 'Safat', status: 'left' } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/participants/p2/return')) {
+      calls.push('return')
+      out = false
+      await route.fulfill({ json: { id: 'p2', firstName: 'Eliseo', lastName: 'Safat', status: 'active' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for room exit test' } })
   })
 
   await page.goto('/moderator')
-  await expect(page.getByText('Pedro Vargas')).toBeVisible()
-  await connected
-  expect(connectAuth).toMatchObject({ audience: 'moderator', assemblyId: 'synthetic-assembly' })
-  await expect(page.getByText(/salió de la sala/)).toHaveCount(0)
-  leftAlready = true
-  server!.send('42/events,["participant.left",{"participantId":"p2","firstName":"Pedro","lastName":"Vargas"}]')
-  await expect(page.getByRole('status').filter({ hasText: 'Pedro Vargas salió de la sala' })).toBeVisible()
-  await expect(page.locator('.mesa-person-list')).not.toContainText('Pedro Vargas')
-  await expect(page.locator('.mesa-person-list')).toContainText('Ana Reyes')
+  await expect(page.getByText('Fuera de la sala')).toHaveCount(0)
+  await page.getByLabel('Acciones para Eliseo Safat').click()
+  await page.getByRole('button', { name: 'Retirar de la sala' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Retirar de la sala', exact: true }).click()
+  await expect(page.locator('.out-of-room')).toContainText('Eliseo Safat')
+  await expect(page.locator('.mesa-person-list').first()).not.toContainText('Eliseo Safat')
+  await page.locator('.out-of-room').getByRole('button', { name: 'Regresar a la sala' }).click()
+  await expect(page.locator('.mesa-person-list').first()).toContainText('Eliseo Safat')
+  await expect(page.getByText('Fuera de la sala')).toHaveCount(0)
+  expect(calls).toEqual(['take-out', 'return'])
+})
+
+test('la mesa ve la línea de quórum, en rojo sin quórum, y el aviso al abrir una votación', async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+  })
+  let room = { present: 3, accredited: 4, quorum: 3 }
+  let opened = ''
+  const draft = { id: 'r1', title: 'Presidencia', status: 'draft', category: 'position', format: 'single_choice', options: [{ id: 'o1', label: 'Isaías' }, { id: 'o2', label: 'Jeremías' }], voteNumber: 1, runoff: false, officialResult: null }
+  await page.route(api, async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      await route.fulfill({ json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
+        participants: [{ id: 'p1', firstName: 'Elías', lastName: 'Tisbita' }], participantCount: room.present, room,
+        rounds: [draft], currentRound: draft,
+      } })
+      return
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/open')) {
+      opened = url.pathname
+      await route.fulfill({ status: 201, json: { roundId: 'r1', status: 'open' } })
+      return
+    }
+    await route.fulfill({ status: 404, json: { message: 'No mock route for quorum test' } })
+  })
+
+  await page.goto('/moderator')
+  const line = page.locator('.room-line')
+  await expect(line).toHaveText('En sala 3 de 4 · quórum 3')
+  await expect(line).not.toHaveClass(/quorum-warning/)
+  await page.getByRole('button', { name: 'Abrir votación' }).click()
+  await expect(page.getByRole('dialog')).not.toContainText('Sin quórum')
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
+
+  room = { present: 2, accredited: 4, quorum: 3 }
+  await page.reload()
+  await expect(line).toContainText('En sala 2 de 4 · quórum 3')
+  await expect(line).toContainText('Sin quórum')
+  await expect(line).toHaveClass(/quorum-warning/)
+  await expect(line).toHaveCSS('color', 'rgb(156, 51, 41)')
+  await page.getByRole('button', { name: 'Abrir votación' }).click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Sin quórum')
+  await page.getByRole('dialog').getByRole('button', { name: 'Abrir votación' }).click()
+  await expect.poll(() => opened).toContain('/moderator/rounds/r1/open')
 })
 
 test('el proyector nunca muestra un estado crudo como «lobby_open»', async ({ page }) => {
@@ -1450,69 +1484,6 @@ for (const roundStatus of ['published', 'closed'] as const) {
     await expect(page.getByText('Votación cerrada')).toHaveCount(0)
   })
 }
-
-test('si el servidor no confirma la salida, el teléfono avisa y conserva la sesión para reintentar', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem('participantSessionToken', 'leaving-session-token')
-    localStorage.setItem('participantAssemblyId', 'synthetic-assembly')
-  })
-  let leaveStatus = 503
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (url.pathname.endsWith('/participant/leave')) {
-      await route.fulfill({ status: leaveStatus, json: leaveStatus === 503 ? { message: 'Servicio no disponible' } : { left: true } })
-      return
-    }
-    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: participantState() })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for failed leave test' } })
-  })
-
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
-  await page.getByRole('button', { name: 'Salir', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('No se pudo salir')
-  await expect(page.getByRole('heading', { name: 'Elección de prueba' })).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('leaving-session-token')
-
-  leaveStatus = 200
-  await page.getByRole('button', { name: 'Salir', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Bienvenido' })).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBeNull()
-})
-
-test('si no se confirma la salida de la Asamblea anterior, el QR de otra Asamblea no cambia la sesión', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem('participantSessionToken', 'old-session-token')
-    localStorage.setItem('participantAssemblyId', 'assembly-a')
-  })
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: { ...participantState(), assembly: { id: 'assembly-a', name: 'Asamblea A', status: 'in_progress' } } })
-      return
-    }
-    if (request.method() === 'GET' && url.pathname.endsWith('/assemblies/CODE-B/public-state')) {
-      await route.fulfill({ json: { assembly: { id: 'assembly-b', name: 'Asamblea B' } } })
-      return
-    }
-    if (request.method() === 'POST' && url.pathname.endsWith('/participant/leave')) {
-      await route.fulfill({ status: 503, json: { message: 'Servicio no disponible' } })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for failed switch test' } })
-  })
-
-  await page.goto('/?join=CODE-B')
-  await page.getByRole('button', { name: 'Cerrar sesión y cambiar a la Asamblea del QR' }).click()
-  await expect(page.getByRole('alert').filter({ hasText: 'No se pudo salir' })).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('participantSessionToken'))).toBe('old-session-token')
-  await expect(page.getByRole('button', { name: 'Entrar a la sala' })).toHaveCount(0)
-})
 
 test('el proyector marca Electo/a y Desempate en una comisión publicada, con la mayoría bajo el título (P20)', async ({ page }) => {
   const labels = ['Ana Ruiz', 'Juan Mora', 'Elena Castro', 'Pedro Vargas', 'Sofía Méndez', 'Luis Pérez']
@@ -1631,62 +1602,6 @@ test('la mesa inhabilita y habilita: badge gris, «N inhabilitados» y «faltan�
   await expect(summary).toContainText('1 falta')
   await expect(summary).toContainText('1 inhabilitado')
   await expect(summary).not.toContainText('2 inhabilitados')
-})
-
-test('la mesa inhabilita desde el aviso «salió de la sala» y la persona vuelve a la lista', async ({ page }) => {
-  await page.addInitScript(() => {
-    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
-    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
-  })
-  let pedro: 'active' | 'left' | 'disabled' = 'active'
-  const calls: string[] = []
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      const people = [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes', voted: false, votingDisabled: false }, ...(pedro === 'left' ? [] : [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas', voted: false, votingDisabled: pedro === 'disabled' }])]
-      await route.fulfill({ json: {
-        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', completedAt: null,
-        participants: people, participantCount: people.length, attendanceRound: { roundId: 'r1', status: 'open', votedCount: 0, eligibleCount: people.length },
-        rounds: [{ id: 'r1', title: 'Presidencia', status: 'open', format: 'single_choice', category: 'office', participationCount: 0, options: [{ id: 'a', label: 'Alfa' }], officialResult: null }],
-      } })
-      return
-    }
-    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/participants/p2/disable-voting')) {
-      calls.push('p2:disable')
-      pedro = 'disabled'
-      await route.fulfill({ json: { id: 'p2', votingDisabled: true } })
-      return
-    }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for inhabilitar notice test' } })
-  })
-  let markConnected: (() => void) | undefined
-  const connected = new Promise<void>((resolve) => { markConnected = resolve })
-  let server: { send: (message: string) => void } | undefined
-  await page.routeWebSocket(/\/socket\.io\//, (ws) => {
-    server = ws
-    ws.send(`0${JSON.stringify({ sid: 'synthetic-engine', upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1000000 })}`)
-    ws.onMessage((message) => {
-      if (!String(message).startsWith('40/events,')) return
-      ws.send('40/events,{"sid":"synthetic-socket"}')
-      markConnected?.()
-    })
-  })
-
-  await page.goto('/moderator')
-  await expect(page.locator('.mesa-person-list')).toContainText('Pedro Vargas')
-  await connected
-  pedro = 'left'
-  server!.send('42/events,["participant.left",{"participantId":"p2","firstName":"Pedro","lastName":"Vargas"}]')
-  const notice = page.getByRole('status').filter({ hasText: 'Pedro Vargas salió de la sala' })
-  await expect(notice).toBeVisible()
-  await expect(page.locator('.mesa-person-list')).not.toContainText('Pedro Vargas')
-  await notice.getByRole('button', { name: 'Inhabilitar' }).click()
-  await expect(notice).toHaveCount(0)
-  const row = page.locator('.mesa-person-list li', { hasText: 'Pedro Vargas' })
-  await expect(row.getByText('Inhabilitado', { exact: true })).toBeVisible()
-  await expect(page.locator('.attendance-summary')).toContainText('1 inhabilitado')
-  expect(calls).toEqual(['p2:disable'])
 })
 
 test('el teléfono de un delegado inhabilitado muestra «Voto inhabilitado» sin opciones ni botón', async ({ page }) => {

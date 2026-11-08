@@ -34,8 +34,6 @@ const printingActa = ref(false)
 const completedAssemblies = ref<Array<{ id: string; name: string; completedAt: string | null }>>([])
 const liveAssembly = ref<{ id: string; name: string } | null>(null)
 const browsingActas = ref(sessionStorage.getItem('browsingActas') === 'true')
-const participantLeft = ref('')
-const participantLeftId = ref('')
 let refreshTimer: number | undefined
 let realtimeSocket: Socket | null = null
 let lastRefreshAt = 0
@@ -381,14 +379,9 @@ function syncRealtime() {
   const socketUrl = import.meta.env.VITE_SOCKET_URL || `${API.replace(/\/api\/v1\/?$/, '')}/events`
   realtimeActive.value = true
   realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelayMax: 5000 })
-  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
+  for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.left', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
     realtimeSocket.on(event, scheduleRefresh)
   }
-  realtimeSocket.on('participant.left', (payload: { participantId?: string; firstName?: string; lastName?: string } | undefined) => {
-    const name = `${payload?.firstName || ''} ${payload?.lastName || ''}`.trim()
-    if (name) { participantLeft.value = name; participantLeftId.value = payload?.participantId || '' }
-    scheduleRefresh()
-  })
   // The projector follows the mesa's slide at once, without waiting for the refresh.
   realtimeSocket.on('presentation.state', (payload: Presentation | undefined) => {
     if (state.value && payload) state.value = { ...state.value, presentation: { active: payload.active, slide: payload.slide } }
@@ -433,7 +426,7 @@ export function useAssembly() {
   return {
     origin, route, loading, syncing, error, notice, state, code, firstName, lastName, sessionToken, sessionAssemblyId, pendingJoinCode,
     moderatorToken, moderatorAuthState, assemblyId, selectedOptions, reviewingVote, voteSubmitting, qrImage, realtimeActive, realtimeConnected,
-    projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas, participantLeft, participantLeftId,
+    projectorFullscreen, printingActa, completedAssemblies, liveAssembly, browsingActas,
     role, assemblyStatus, lobbyStatus, round, totalParticipants, eligibleVotes, completionTime, ballotMaxChoices, projectorJoinUrl,
     go, openProjectorWindow, request, isUnauthorized, handleParticipantUnauthorized, clearParticipantSession, normalizeState, refresh,
     setBrowsingActas, selectAssembly, loadAssemblyLists, recoverActiveAssembly, rememberJoinCode, refreshQr, formatDateTime,

@@ -30,11 +30,11 @@ Cada escenario crea su propia Asamblea (antes finaliza la que haya quedado activ
 | `office-runoff.spec.ts` | A · Cargo sin mayoría: desempate automático entre los 2 primeros y empates, «Mayoría: X», «N no votaron», la 2.ª votación elige (#37, #38, #41). |
 | `committee.spec.ts` | B · Comisión de 3: 1.º electo, desempate de 2.º, 3.º y 4.º por 2 puestos, selección exacta en el teléfono y en el servidor, desempates encadenados (#37, #38, #39). |
 | `new-candidate.spec.ts` | C · Candidato nuevo: ausente en la 2.ª votación, presente en la 3.ª, y resulta electo (#40). |
-| `inhabilitar.spec.ts` | D · Inhabilitar y Habilitar durante una votación, voto rechazado con 403, sigue en la base; inhabilitar desde «salió de la sala» (#43). |
+| `inhabilitar.spec.ts` | D · Inhabilitar y Habilitar durante una votación, voto rechazado con 403, sigue en la base; inhabilitar a alguien que aún no votó. |
 | `decisions.spec.ts` | E · Decisiones 3/4 aprobada y no aprobada, 50/50 con mayoría simple, opciones que se repiten (#42). |
 | `annul-runoff.spec.ts` | F · Anular el primer desempate y repetirlo: sigue siendo la 2.ª votación y no admite candidato nuevo. |
 | `remove-candidate.spec.ts` | G · «Quitar» un candidato nuevo en la 3.ª votación: sale del borrador y ningún teléfono lo recibe (#40). |
-| `inhabilitar-reconnect.spec.ts` | H · Un inhabilitado que salió vuelve con «Reconectar dispositivo» y sigue viendo «Voto inhabilitado»; Habilitar le devuelve la papeleta (#43). |
+| `inhabilitar-reconnect.spec.ts` | H · La mesa retira a alguien de la sala, lo regresa y lo reconecta con «Reconectar dispositivo». |
 | `assembly-simulation.spec.ts` | Asamblea completa con nueve teléfonos; capturas y notas de tiempo en `SIMULATION_OUTPUT_DIR`. |
 
 ## Evidencia
