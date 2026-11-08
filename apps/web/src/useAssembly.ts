@@ -403,7 +403,7 @@ function syncRealtime() {
   if (!auth) return
   const socketUrl = import.meta.env.VITE_SOCKET_URL || `${API.replace(/\/api\/v1\/?$/, '')}/events`
   realtimeActive.value = true
-  realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelayMax: 5000 })
+  realtimeSocket = io(socketUrl, { auth, transports: ['websocket', 'polling'], reconnection: true, reconnectionDelay: 500, reconnectionDelayMax: 1000, timeout: 1000 })
   for (const event of ['assembly.state', 'lobby.state', 'participant.joined', 'participant.updated', 'participant.removed', 'participant.left', 'participant.voting', 'participant.state', 'round.state', 'round.opened', 'round.closed', 'participation.count', 'results.published']) {
     realtimeSocket.on(event, scheduleRefresh)
   }

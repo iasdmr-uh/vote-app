@@ -188,3 +188,27 @@ test('el proyector recupera el conteo actual al reconectarse, sin esperar otro c
   await link.current!.close()
   await expect(page.getByText('45 de 50 conectados')).toBeVisible({ timeout: 5_000 })
 })
+
+test('un corte cuyo primer reintento no responde se recupera dentro del margen sin aviso', async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0.999 })
+  await page.clock.install()
+  let attempts = 0
+  let first: WebSocketRoute | null = null
+  await page.routeWebSocket(socketPath, async (ws) => {
+    attempts += 1
+    if (attempts === 2) { await ws.close(); return }
+    if (attempts === 1) first = ws
+    await acceptSocket(ws)
+  })
+  await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
+  await page.goto('/')
+  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+
+  await first!.close()
+  await page.clock.runFor(2_900)
+  await page.waitForTimeout(300)
+  await page.clock.runFor(600)
+  await expect(page.getByText(notice)).toHaveCount(0)
+  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  expect(attempts).toBe(3)
+})
