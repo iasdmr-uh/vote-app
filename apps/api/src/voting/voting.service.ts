@@ -22,6 +22,7 @@ import { roomNumbers } from './room.js'
 import { appUrl } from './app-url.js'
 import { assertNotCompleted, lockAssembly, recordAudit } from './assembly-tx.js'
 import { baseOf, basePeople, countInRoom, freezeRoundBase, roundBase, roundBases } from './base-count.js'
+import { everyoneHasVoted } from './auto-close.js'
 import { ORGANIZATION_ID, RESULTS_ENGINE_ACTOR, RESUME_CODE_TTL_MS, SECRECY_CLEANUP_PENDING, VACUUM_LOCK_TIMEOUT_MS } from './constants.js'
 import { BOOLEAN_DECISION_LABELS, SETTLED_ROUND_STATUSES, decisionFields, isRunoff, outcomeOf, runoffSourceOf, seatsOf, voteNumberIn, waitsForSourceResult } from './round-rules.js'
 
@@ -290,7 +291,23 @@ export class VotingService implements OnModuleInit {
     const state = await this.participantState(participantId)
     this.realtime.participantState(participantId, state)
     await this.announceParticipationCount(participant.assemblyId, roundId)
+    try {
+      if (await this.everyoneVoted(participant.assemblyId, roundId)) await this.closeRound(roundId, 'system')
+    } catch (error) {
+      this.logger.error(`Closing round ${roundId} after the last ballot failed: ${(error as Error).message}`)
+    }
     return { accepted: true, participationStatus: 'recorded' as const }
+  }
+
+  private async everyoneVoted(assemblyId: string, roundId: string) {
+    const round = await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { status: true, regionalSecretaryVotes: true } })
+    if (round.status !== 'open') return false
+    const base = baseOf(round, await basePeople(this.prisma, assemblyId))
+    const [canVote, voted] = await Promise.all([
+      this.prisma.participantSession.findMany({ where: { id: { in: base }, votingDisabled: false }, select: { id: true } }),
+      this.prisma.participation.findMany({ where: { roundId }, select: { participantSessionId: true } }),
+    ])
+    return everyoneHasVoted(canVote.map(({ id }) => id), new Set(voted.map(({ participantSessionId }) => participantSessionId)))
   }
 
   async publicState(assemblyCode: string) {
@@ -647,7 +664,7 @@ export class VotingService implements OnModuleInit {
     return registered < unsettled.length
   }
 
-  async closeRound(roundId: string) {
+  async closeRound(roundId: string, closedBy: 'operator' | 'system' = 'operator') {
     const round = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ id: string; assembly_id: string; status: string }>>`
         SELECT id, assembly_id, status FROM rounds WHERE id = ${roundId}::uuid FOR UPDATE
@@ -660,7 +677,9 @@ export class VotingService implements OnModuleInit {
       if (current.status === 'closed' || current.status === 'published') return { id: current.id, assemblyId: current.assembly_id, status: current.status, changed: false, runoffRoundId: null }
       if (current.status !== 'open') throw new ConflictException('Solo se puede cerrar una papeleta abierta')
       const updated = await tx.round.update({ where: { id: roundId }, data: { status: 'closed', closedAt: new Date() }, select: { id: true, assemblyId: true, status: true } })
-      await recordAudit(tx, { assemblyId: current.assembly_id, roundId, action: 'round.closed' })
+      await recordAudit(tx, closedBy === 'system'
+        ? { assemblyId: current.assembly_id, roundId, action: 'round.closed_automatically', actorRef: RESULTS_ENGINE_ACTOR, metadata: { reason: 'everyone_voted' } }
+        : { assemblyId: current.assembly_id, roundId, action: 'round.closed' })
       await this.unlinkRoundVotes(tx, roundId)
       // Closing computes the result: the elected join the official result and open seats get a runoff draft.
       const runoffRoundId = await this.settleElection(tx, roundId)

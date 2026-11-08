@@ -94,3 +94,8 @@ test('an entry whose vote was later deleted keeps the title stored with it', () 
 test('adding a result to the roster names its election', () => {
   assert.equal(logEntryOf(row('results.registered', null, { roundTitle: 'Comisión de Finanzas' }))?.text, 'Agregado a oficiales: Comisión de Finanzas')
 })
+
+test('a vote that closed by itself names the system and the reason', () => {
+  const entry = logEntryOf(row('round.closed_automatically', { reason: 'everyone_voted' }, { roundTitle: 'Presidente' }))
+  assert.deepEqual(entry, { time: at, kind: 'Votación', text: 'Votación cerrada por el sistema: Presidente. Motivo: todos votaron' })
+})
