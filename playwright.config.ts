@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173'
+const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? '5173'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${webPort}`
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -21,7 +22,7 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: 'npm run dev --workspace @asdmr/web -- --host 127.0.0.1 --port 5173 --strictPort',
+        command: `npm run dev --workspace @asdmr/web -- --host 127.0.0.1 --port ${webPort} --strictPort`,
         url: baseURL,
         reuseExistingServer: false,
         timeout: 30_000,
