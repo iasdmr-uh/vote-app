@@ -5,19 +5,25 @@ import type { VotingService } from '../../src/voting/voting.service.js'
 
 export type Delegate = { id: string; token: string }
 
-export async function seedAssembly(prisma: PrismaService, service: VotingService, { label, delegates = [], closeLobby = true }: { label: string; delegates?: string[]; closeLobby?: boolean }) {
+export async function seedAssembly(prisma: PrismaService, service: VotingService, { label, delegates = [] }: { label: string; delegates?: string[] }) {
   const organizationId = randomUUID()
   await prisma.organization.create({ data: { id: organizationId, name: `${label}-${organizationId}`, type: 'union' } })
-  const joinCode = newOpaqueCredential()
-  const assemblyId = (await prisma.assembly.create({ data: { organizationId, name: label, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
-  const people: Record<string, Delegate> = {}
-  for (const name of delegates) {
-    const joined = await service.joinAssembly(joinCode, name, 'Delegado')
-    const session = await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })
-    people[name] = { id: session.id, token: joined.participantSessionToken }
+  try {
+    const joinCode = newOpaqueCredential()
+    const assemblyId = (await prisma.assembly.create({ data: { organizationId, name: label, status: 'lobby_open', joinCodeHash: hashCredential(joinCode) } })).id
+    const people: Record<string, Delegate> = {}
+    for (const name of delegates) {
+      const [firstName, lastName = 'Delegado'] = name.split(' ')
+      const joined = await service.joinAssembly(joinCode, firstName!, lastName)
+      const session = await prisma.participantSession.findUniqueOrThrow({ where: { tokenHash: hashCredential(joined.participantSessionToken) } })
+      people[name] = { id: session.id, token: joined.participantSessionToken }
+    }
+    await service.changeLobby(assemblyId, 'lobby_closed')
+    return { organizationId, assemblyId, joinCode, people, cleanup: () => removeOrganization(prisma, organizationId) }
+  } catch (error) {
+    await removeOrganization(prisma, organizationId)
+    throw error
   }
-  if (closeLobby) await service.changeLobby(assemblyId, 'lobby_closed')
-  return { organizationId, assemblyId, joinCode, people, cleanup: () => removeOrganization(prisma, organizationId) }
 }
 
 export async function removeOrganization(prisma: PrismaService, organizationId: string) {

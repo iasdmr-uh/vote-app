@@ -66,7 +66,7 @@ test('electionOutcome: a tie at the last seat sends only the tied candidates to 
 - Unique fields get a random suffix. (Goldberg integration 6.5)
 - Each test removes its own records when it ends, so the next test finds no live assembly. Goldberg 2.8 allows this after-each strategy.
 - Integration files run one at a time, because the API allows one live assembly and `VACUUM FULL` locks the whole votes table.
-- The integration script fails when `TEST_DATABASE_URL` is missing.
+- Integration tests fail when `TEST_DATABASE_URL` is missing.
 
 ## Outcomes to check
 
