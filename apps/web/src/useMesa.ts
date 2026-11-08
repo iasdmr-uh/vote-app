@@ -139,11 +139,13 @@ function rootRoundOf(target: { id: string; committeeRootRoundId?: string | null 
 /**
  * Elections whose final result is shown but not yet added to the officials list. The server refuses to open
  * another election until each one is added or annulled, so the mesa lists them whatever card is current.
+ * The current election is left out only while its result card, with its own button, is on screen.
  */
 const electionsAwaitingRegistration = computed(() => {
   const latestByElection = new Map<string, RoundRecord>()
   for (const vote of state.value?.rounds ?? []) if (vote.status !== 'draft') latestByElection.set(vote.committeeRootRoundId || vote.id, vote)
-  const currentElection = currentRoundRecord.value ? currentRoundRecord.value.committeeRootRoundId || currentRoundRecord.value.id : undefined
+  const resultCardShown = round.value?.status === 'published' && !showNextBallotForm.value
+  const currentElection = resultCardShown && currentRoundRecord.value ? currentRoundRecord.value.committeeRootRoundId || currentRoundRecord.value.id : undefined
   return [...latestByElection.values()].filter((latest) => {
     const root = rootRoundOf(latest)
     if (!root || root.id === currentElection) return false
