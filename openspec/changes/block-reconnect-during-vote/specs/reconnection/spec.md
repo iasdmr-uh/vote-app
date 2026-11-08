@@ -1,5 +1,21 @@
 ## ADDED Requirements
 
+### Requirement: No joining during an open vote
+
+While a vote is open, the tool SHALL refuse to join anyone with the assembly code, and the phone SHALL say that a vote is in progress and to wait. Once the vote closes or is annulled, joining SHALL follow the usual check-in rule.
+
+Source: issue #78, and the owner's decision of 8 November 2026 that nothing can interrupt an open vote.
+
+#### Scenario: Join during an open vote
+
+- **WHEN** a vote is open and someone enters the assembly code with a name
+- **THEN** no session is created and the phone says a vote is in progress and to wait
+
+#### Scenario: Join after the vote
+
+- **WHEN** the open vote was closed or annulled and the mesa reopened check-in
+- **THEN** joining with the assembly code works
+
 ### Requirement: No reconnection codes during an open vote
 
 While a vote is open, the tool SHALL refuse to issue a reconnection code and SHALL refuse to redeem any one-use code, including a reconnection code issued before the vote opened and the regional secretary's entry QR. A refused redemption SHALL leave the code unused.

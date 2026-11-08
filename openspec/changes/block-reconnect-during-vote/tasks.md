@@ -5,10 +5,13 @@
 - [x] 1.3 Failing test: issuing a code for the regional secretary is refused
 - [x] 1.4 Test: a session token keeps working during an open vote
 - [x] 1.5 Add the open-vote check to `issueResumeCode` and `redeemResumeCode`, and refuse the secretary in `issueResumeCode`
+- [x] 1.6 Failing test: joining with the assembly code during an open vote is refused with a message to wait, and works after annulment once check-in reopens
+- [x] 1.7 Refuse joins during an open vote in `joinAssembly`
 
 ## 2. Console
 
 - [x] 2.1 Hide «Reconectar dispositivo» while a vote is open and on the secretary's row, with E2E checks
+- [x] 2.2 E2E: the phone shows the wait message when a join is refused
 
 ## 3. Docs
 
