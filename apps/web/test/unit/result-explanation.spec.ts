@@ -58,7 +58,7 @@ describe('explanationText', () => {
       explanation({ reasons: { Isaías: 'elected', Jeremías: 'no_majority', Ezequiel: 'tied_at_cut', Daniel: 'tied_at_cut', Oseas: 'out' } }),
       rows([['Isaías', 22], ['Jeremías', 12], ['Ezequiel', 8], ['Daniel', 8], ['Oseas', 0]]),
     )
-    assert.equal(text, 'Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22). Sin mayoría: Jeremías (12). Empate en el último puesto: Ezequiel (8) y Daniel (8). Pasan a la siguiente votación.')
+    assert.equal(text, 'Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22). Sin mayoría: Jeremías (12). Desempate en el último puesto: Ezequiel (8) y Daniel (8). Pasan a la siguiente votación.')
   })
 
   test('a base with the regional secretary', () => {

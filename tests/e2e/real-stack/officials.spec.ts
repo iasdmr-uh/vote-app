@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
-import { addToOfficials, confirm, openRoom, prepareBallot, runVote, voteAll } from './helpers'
+import { addToOfficials, confirm, expectClosedByItself, openRoom, prepareBallot, runVote, voteAll } from './helpers'
 
 const BLANK_BOARD = ['Vicepresidente', 'Secretario', 'Vocal 1', 'Vocal 2', 'Vocal 3']
 
@@ -21,8 +21,7 @@ test('los puestos electos llegan a «Presentar oficiales» y al organigrama del 
   await confirm(mesa, 'Abrir desempate', 'Abrir votación')
   await expect(room.phones[0].page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await voteAll(room.phones, [['María López'], ['María López'], ['Carlos Gómez']])
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('3')
-  await confirm(mesa, 'Cerrar votación')
+  await expectClosedByItself(mesa)
   await expect(projector.locator('.slide-office .office-name')).toHaveText('María López')
 
   await addToOfficials(mesa)

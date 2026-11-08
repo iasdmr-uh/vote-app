@@ -26,6 +26,9 @@ test('closing a round leaves no database-level link between participation receip
     const voters = await Promise.all(Array.from({ length: 4 }, (_, index) => prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: `Voter${index}`, lastName: 'Test', tokenHash: hashCredential(newOpaqueCredential()),
     } })))
+    await prisma.participantSession.create({ data: {
+      assemblyId: assembly.id, firstName: 'Absent', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
+    } })
     const round = await prisma.round.create({ data: {
       assemblyId: assembly.id, title: 'Secret ballot', countingRule: { kind: 'count_only' },
       options: { create: [{ label: 'A', order: 0 }, { label: 'B', order: 1 }, { label: 'C', order: 2 }] },
@@ -60,6 +63,9 @@ test('a failed VACUUM keeps the round closed, and a retry unlinks the votes and 
     } })
     const voter = await prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: 'Voter', lastName: 'Retry', tokenHash: hashCredential(newOpaqueCredential()),
+    } })
+    await prisma.participantSession.create({ data: {
+      assemblyId: assembly.id, firstName: 'Absent', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
     } })
     const round = await prisma.round.create({ data: {
       assemblyId: assembly.id, title: 'Retry ballot', countingRule: { kind: 'count_only' },
@@ -103,6 +109,9 @@ test('startup unlinks rounds published before this protection existed, even in c
     } })
     const voter = await prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: 'Legacy', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
+    } })
+    await prisma.participantSession.create({ data: {
+      assemblyId: assembly.id, firstName: 'Absent', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
     } })
     const round = await prisma.round.create({ data: {
       assemblyId: assembly.id, title: 'Legacy ballot', countingRule: { kind: 'count_only' },
@@ -156,6 +165,9 @@ test('a lock held on the votes table makes cleanup fail fast and recoverably ins
     } })
     const voter = await prisma.participantSession.create({ data: {
       assemblyId: assembly.id, firstName: 'Voter', lastName: 'Lock', tokenHash: hashCredential(newOpaqueCredential()),
+    } })
+    await prisma.participantSession.create({ data: {
+      assemblyId: assembly.id, firstName: 'Absent', lastName: 'Voter', tokenHash: hashCredential(newOpaqueCredential()),
     } })
     const round = await prisma.round.create({ data: {
       assemblyId: assembly.id, title: 'Lock ballot', countingRule: { kind: 'count_only' },

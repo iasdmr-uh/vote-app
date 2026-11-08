@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { addToOfficials, closeAndShow, confirm, expectBadge, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
+import { addToOfficials, closeAndShow, confirm, expectBadge, expectClosedByItself, expectPhoneShowsNoResult, expectProjectorFinal, mesaRow, moderatorState, openRoom, prepareBallot, projectorRow, runVote, vote, voteAll } from './helpers'
 
 /**
  * Simulates a whole Asamblea against the real API and PostgreSQL: nine delegate phones, the projector
@@ -55,7 +55,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
   await expect(phones[0].page.locator('.phone-status-open')).toHaveText('VOTACIÓN ABIERTA')
   await snap(phones[0].page, 'telefono-desempate-T02')
   await voteAll(phones, phones.map((_, index) => [index < 6 ? 'María López' : 'Carlos Gómez']))
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
   await expectBadge(mesaRow(mesa, 'María López'), 'Electo/a')
   await expectProjectorFinal(projector, 'María López')
@@ -104,7 +104,7 @@ test('simulación completa: Comité de la Unión y comisiones', async ({ browser
       await snap(mesa, 'mesa-quien-voto')
     }
   }
-  await expect(mesa.locator('.vote-progress strong')).toHaveText('9')
+  await expectClosedByItself(mesa)
   await closeAndShow(room)
   await expect(mesa.locator('.ballot-card .majority-chip')).toHaveText('5 integrantes · Mayoría: 5')
   for (const name of ['Elena Castro', 'Sofía Méndez']) await expectBadge(mesaRow(mesa, name), 'Electo/a')
