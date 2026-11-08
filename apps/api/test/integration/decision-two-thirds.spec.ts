@@ -16,10 +16,6 @@ test('a 2/3 decision with 28 in the room needs 19, and abstentions count in the 
     assert.equal(amendment.approvalRule, 'two_thirds')
     await voting.openRound(amendment.id)
 
-    const phone = await voting.participantState(people['Delegado 1']!.id)
-    assert.equal(phone.openRound?.approvalRule, 'two_thirds')
-    assert.equal(phone.openRound?.approvalThreshold, 19)
-
     const [favor] = amendment.options
     for (const name of room28.slice(0, 18)) await voting.castVote(people[name]!.id, amendment.id, favor!.id)
     await voting.closeRound(amendment.id)
@@ -28,7 +24,6 @@ test('a 2/3 decision with 28 in the room needs 19, and abstentions count in the 
 
     const projector = await voting.publicState(joinCode)
     assert.equal(projector.round?.approvalRule, 'two_thirds')
-    assert.equal(projector.round?.approvalThreshold, 19)
   } finally {
     await cleanup()
     await prisma.$disconnect()

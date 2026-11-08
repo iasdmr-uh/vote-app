@@ -1,4 +1,4 @@
-import { decisionOutcome, electionOutcome, thresholdVotes, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
+import { decisionOutcome, electionOutcome, type DecisionFormat, type DecisionOutcome, type ElectionOutcome, type ThresholdRule } from './results-engine.js'
 
 export const SETTLED_ROUND_STATUSES = ['closed', 'published', 'annulled'] as const
 
@@ -20,12 +20,8 @@ export function outcomeOf(round: OutcomeRound, counts: Array<{ optionId: string;
 
 export const BOOLEAN_DECISION_LABELS = ['A favor', 'En contra'] as const
 
-type DecisionFields = { decisionFormat?: string | null; approvalRule?: string; approvalThreshold?: number }
-
-export function decisionFields(round: { category: string; decisionFormat: string | null; approvalRule: string; eligibleCount: number | null }): DecisionFields {
-  if (round.category !== 'decision') return {}
-  const fields = { decisionFormat: round.decisionFormat, approvalRule: round.approvalRule }
-  return round.eligibleCount === null ? fields : { ...fields, approvalThreshold: thresholdVotes(round.eligibleCount, round.approvalRule as ThresholdRule) }
+export function decisionFields(round: { category: string; decisionFormat: string | null; approvalRule: string }) {
+  return round.category === 'decision' ? { decisionFormat: round.decisionFormat, approvalRule: round.approvalRule } : {}
 }
 
 export function isRunoff(countingRule: unknown) {

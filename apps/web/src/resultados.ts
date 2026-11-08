@@ -122,13 +122,9 @@ export function majorityText(target: DecisionTarget & { runoff?: boolean }, outc
   return `${seats} · ${majority}`
 }
 
-type DecisionTarget = { category?: string; decisionFormat?: string | null; approvalRule?: string | null; approvalThreshold?: number }
+type DecisionTarget = { category?: string; decisionFormat?: string | null; approvalRule?: string | null }
 
 const RULE_LABELS: Record<string, string> = { three_quarters: '3/4', two_thirds: '2/3' }
-
-function ruleText(rule: string | null | undefined, votes: number) {
-  return `Se aprueba con ${RULE_LABELS[rule ?? ''] ?? 'mayoría simple'} · ${votes} ${votes === 1 ? 'voto' : 'votos'}`
-}
 
 export function isDecision(target?: DecisionTarget | null) {
   return target?.category === 'decision'
@@ -137,12 +133,8 @@ export function isDecision(target?: DecisionTarget | null) {
 /** "Se aprueba con 3/4 · 29 votos" or "Se aprueba con mayoría simple · 20 votos" for a decision. */
 export function approvalText(target: DecisionTarget, outcome?: Outcome) {
   if (!outcome) return ''
-  return ruleText(outcome.rule ?? target.approvalRule, outcome.threshold)
-}
-
-export function ballotRuleText(target: DecisionTarget) {
-  if (!isDecision(target) || target.approvalThreshold === undefined) return ''
-  return ruleText(target.approvalRule, target.approvalThreshold)
+  const rule = RULE_LABELS[outcome.rule ?? target.approvalRule ?? ''] ?? 'mayoría simple'
+  return `Se aprueba con ${rule} · ${outcome.threshold} ${outcome.threshold === 1 ? 'voto' : 'votos'}`
 }
 
 /**

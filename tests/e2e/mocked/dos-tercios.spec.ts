@@ -45,7 +45,7 @@ test('el proyector nombra 2/3 y los votos necesarios', async ({ page }) => {
       await route.fulfill({ json: {
         assembly: { name: 'Asamblea Ordinaria 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' },
         participantCount: 28, recordedCount: 26, eligibleCount: 28,
-        round: { id: 'reforma', title: 'Reforma de Estatutos', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds', approvalThreshold: 19, voteNumber: 1, runoff: false },
+        round: { id: 'reforma', title: 'Reforma de Estatutos', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds', voteNumber: 1, runoff: false },
         results: [{ optionId: 'favor', label: 'A favor', count: 18 }, { optionId: 'contra', label: 'En contra', count: 8 }],
         outcome: amendmentOutcome,
       } })
@@ -64,7 +64,7 @@ test('el acta nombra 2/3 y los votos necesarios', async ({ page }) => {
   await mockCompletedAssembly(page, {
     period: '2027–2029', positions: actaPositions,
     rounds: [{
-      id: 'reforma', title: 'Reforma de Estatutos', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds', approvalThreshold: 19,
+      id: 'reforma', title: 'Reforma de Estatutos', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds',
       voteNumber: 1, participationCount: 26, eligibleCount: 28,
       options: [{ id: 'favor', label: 'A favor' }, { id: 'contra', label: 'En contra' }],
       results: [{ optionId: 'favor', label: 'A favor', count: 18 }, { optionId: 'contra', label: 'En contra', count: 8 }],
@@ -79,49 +79,23 @@ test('el acta nombra 2/3 y los votos necesarios', async ({ page }) => {
   await expect(acta.locator('.acta-meta')).toHaveText(['Se aprueba con 2/3 · 19 votos · 26 de 28 votaron · 2 no votaron'])
 })
 
-const phoneRounds = [
-  { approvalRule: 'two_thirds', approvalThreshold: 19, text: 'Se aprueba con 2/3 · 19 votos' },
-  { approvalRule: 'three_quarters', approvalThreshold: 21, text: 'Se aprueba con 3/4 · 21 votos' },
-  { approvalRule: 'simple', approvalThreshold: 15, text: 'Se aprueba con mayoría simple · 15 votos' },
-]
-
-for (const { approvalRule, approvalThreshold, text } of phoneRounds) {
-  test(`el teléfono muestra «${text}» antes de votar`, async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'two-thirds-session'))
-    await page.route(api, async (route) => {
-      if (new URL(route.request().url()).pathname.endsWith('/participant/me')) {
-        await route.fulfill({ json: {
-          assembly: { id: 'two-thirds-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending',
-          currentRound: {
-            id: 'reforma', title: 'Reforma de Estatutos', status: 'open', format: 'single_choice', category: 'decision', decisionFormat: 'boolean',
-            approvalRule, approvalThreshold, options: [{ id: 'favor', label: 'A favor' }, { id: 'contra', label: 'En contra' }],
-          },
-        } })
-        return
-      }
-      await route.fulfill({ status: 404, json: { message: 'No mock route for the phone rule test' } })
-    })
-
-    await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Reforma de Estatutos' })).toBeVisible()
-    await expect(page.getByText(text)).toBeVisible()
-  })
-}
-
-test('el teléfono no muestra una regla de aprobación en una elección', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'election-session'))
+test('el teléfono no muestra la regla de aprobación antes de votar', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'two-thirds-session'))
   await page.route(api, async (route) => {
     if (new URL(route.request().url()).pathname.endsWith('/participant/me')) {
       await route.fulfill({ json: {
-        assembly: { id: 'election-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending',
-        currentRound: { id: 'presidente', title: 'Presidente', status: 'open', format: 'single_choice', category: 'office', options: [{ id: 'isaias', label: 'Isaías' }, { id: 'jeremias', label: 'Jeremías' }] },
+        assembly: { id: 'two-thirds-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending',
+        currentRound: {
+          id: 'reforma', title: 'Reforma de Estatutos', status: 'open', format: 'single_choice', category: 'decision', decisionFormat: 'boolean',
+          approvalRule: 'two_thirds', options: [{ id: 'favor', label: 'A favor' }, { id: 'contra', label: 'En contra' }],
+        },
       } })
       return
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for the election phone test' } })
+    await route.fulfill({ status: 404, json: { message: 'No mock route for the phone rule test' } })
   })
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Presidente' })).toBeVisible()
-  await expect(page.getByText(/Se aprueba con/)).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Reforma de Estatutos' })).toBeVisible()
+  await expect(page.getByText(/Se aprueba con|2\/3/)).toHaveCount(0)
 })

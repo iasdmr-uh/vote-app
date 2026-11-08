@@ -10,7 +10,7 @@
 **Goals:**
 
 - Add 2/3 as a third rule with one formula in one function.
-- Show the rule and the votes needed wherever 3/4 is shown today, and on the phone before voting.
+- Show the rule and the votes needed wherever 3/4 is shown today.
 
 **Non-Goals:**
 
@@ -30,9 +30,9 @@ Alternative considered: a numeric fraction in the column. It would let the mesa 
 
 A migration adds `CHECK (approval_rule IN ('simple', 'three_quarters', 'two_thirds'))`. The DTO already rejects unknown values, and the database now rejects them too.
 
-### Server sends the votes needed
+### Phone stays minimal
 
-Decision rounds in the API state gain `approvalThreshold` once the base is frozen, computed with `thresholdVotes`. The phone shows «Se aprueba con 2/3 · 19 votos» from it for every decision, by the user's decision of 8 Nov 2026. The phone does not restate the formula.
+The phone ballot shows no rule before voting, by the user's decision of 8 Nov 2026. The mesa explains the rule out loud, and the results show how the outcome was counted. The API state needs no new field, because results already carry `outcome.threshold`.
 
 ### Shared rule label
 
@@ -40,4 +40,4 @@ Decision rounds in the API state gain `approvalThreshold` once the base is froze
 
 ## Risks / Trade-offs
 
-- [The phone shows the rule for simple majority and 3/4 too, beyond #87] → The user chose this on 8 Nov 2026, so phones stay consistent across decisions and #54's ask is met for decisions.
+- [Delegates do not see the votes needed before voting] → The mesa states the rule out loud, and the results name it. #54's ask is declined for the phone by the user's decision of 8 Nov 2026.

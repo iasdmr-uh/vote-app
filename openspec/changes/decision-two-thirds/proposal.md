@@ -6,7 +6,7 @@ Amending the Estatutos needs 2/3 of the Assembly's votes, and the tool cannot ru
 
 - The mesa can choose «2/3» as the approval rule when it prepares a decision, next to «Mayoría simple» and «3/4».
 - A 2/3 decision needs at least 2/3 of the base, rounded up. The base is everyone in the room when voting opens, abstentions included, the same base the other rules use. 28 in the room needs 19.
-- Before voting, delegates see the rule and the votes needed for every decision, whether simple majority, 2/3 or 3/4. The user decided this on 8 Nov 2026.
+- The phone ballot shows no rule before voting, so it stays minimal. The user decided this on 8 Nov 2026, and #54's ask for the rule before voting is declined for the phone.
 - Results, the public screen and the acta name 2/3 and the votes needed.
 - The database accepts only the three known approval rules.
 - Elections are not affected.
@@ -27,6 +27,6 @@ None.
 - API round creation: accept `two_thirds` for decisions only.
 - Database: a check constraint on `rounds.approval_rule`.
 - API participant state: the votes needed for the open decision.
-- Web: the mesa selector, the phone ballot and the shared rule text.
-- Docs: the 2/3 row and decision rules in `docs/rules.md`, the API docs and the data model.
+- Web: the mesa selector and the shared rule text.
+- Docs: the 2/3 row and decision rules in `docs/rules.md` and `docs/scope.md`, the API docs and the data model.
 - Related: #54, #59.

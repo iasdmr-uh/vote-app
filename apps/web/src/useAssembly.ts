@@ -168,7 +168,7 @@ function normalizeState(value: Record<string, any>): PublicState {
     status: rawRound.status,
     format: rawRound.format,
     category: rawRound.category || 'office',
-    ...(rawRound.category === 'decision' ? { decisionFormat: rawRound.decisionFormat, approvalRule: rawRound.approvalRule, ...(rawRound.approvalThreshold !== undefined ? { approvalThreshold: rawRound.approvalThreshold } : {}) } : {}),
+    ...(rawRound.category === 'decision' ? { decisionFormat: rawRound.decisionFormat, approvalRule: rawRound.approvalRule } : {}),
     memberCount: rawRound.memberCount,
     electionSeats: rawRound.electionSeats,
     voteNumber: rawRound.voteNumber,
