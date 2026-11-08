@@ -60,7 +60,8 @@ test('decisions: A favor / En contra with 3/4 or mayoría simple, and options th
     await service.closeRound(budget.id)
     const closedBudget = (await service.moderatorAssembly(activeAssemblyId)).rounds.find((item) => item.id === budget.id)!
     assert.deepEqual(closedBudget.outcome, { seats: 1, base: 8, threshold: 6, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved: true })
-    assert.equal(closedBudget.officialResult, null, 'nobody is elected in a boolean decision')
+    assert.deepEqual(closedBudget.officialResult?.elected, [], 'nobody is elected in a boolean decision')
+    assert.equal(closedBudget.officialResult?.approved, true)
     assert.equal((await service.moderatorAssembly(activeAssemblyId)).rounds.length, 1, 'a boolean decision never repeats')
     const projector = await service.publicState(joinCode)
     assert.equal(projector.round?.approvalRule, 'three_quarters')

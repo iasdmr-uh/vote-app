@@ -352,6 +352,7 @@ export class VotingService implements OnModuleInit {
       ...(results ? { results } : {}),
       ...(recordedCount !== undefined && eligibleCounts && round ? { recordedCount, eligibleCount: eligibleCounts.get(round.id) ?? 0 } : {}),
       ...(outcome ? { outcome } : {}),
+      ...(outcome && round ? await this.resultSummary(round.id, outcome.runoff) : {}),
       ...(officialResult ? { officialResult } : {}),
     }
   }
@@ -453,6 +454,7 @@ export class VotingService implements OnModuleInit {
       round: round ? { id: round.id, title: round.title, status: round.status, format: round.format, category: round.category, memberCount: round.memberCount, electionSeats: round.electionSeats, regionalSecretaryVotes: round.regionalSecretaryVotes, positionId: await this.positionIdOf(round), ...decisionFields(round), ...chain } : null,
       ...(result ? { results: result } : {}),
       ...(outcome ? { outcome } : {}),
+      ...(outcome && round ? await this.resultSummary(round.id, outcome.runoff) : {}),
       ...(officialResult ? { officialResult } : {}),
       presentation: presentationOf(assembly),
     }
@@ -509,7 +511,7 @@ export class VotingService implements OnModuleInit {
       secrecyCleanupPending: (SETTLED_ROUND_STATUSES as readonly string[]).includes(round.status) && !round.votesUnlinkedAt,
       ...(round.status === 'published' ? { results: await this.publishedResults(round.id) } : {}),
       ...(round.status === 'published'
-        ? { outcome: outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length) }
+        ? await this.moderatorSummary(round.id, outcomeOf(round, await this.rankedCounts(round.id), eligibleCounts.get(round.id) ?? assembly.participants.length))
         : {}),
       voteNumber: voteNumberIn(chains.get(round.committeeRootRoundId ?? round.id) ?? [], round.id),
       runoff: isRunoff(round.countingRule),
@@ -1245,11 +1247,38 @@ export class VotingService implements OnModuleInit {
     }
   }
 
+  private async resultSummary(roundId: string, runoff: string[]): Promise<{
+    final?: { elected: Array<{ optionId: string; label: string }>; approved: boolean | null }
+    continuing?: Array<{ optionId: string; label: string }>
+  }> {
+    const round = await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, select: { committeeRootRoundId: true, options: { select: { id: true, label: true }, orderBy: { order: 'asc' } } } })
+    const result = await this.prisma.officialResult.findUnique({
+      where: { roundId: round.committeeRootRoundId ?? roundId },
+      select: { settledRoundId: true, approved: true, options: { orderBy: { seatOrder: 'asc' }, select: { optionId: true, option: { select: { label: true } } } } },
+    })
+    if (result?.settledRoundId === roundId) {
+      return { final: { elected: result.options.map(({ optionId, option }) => ({ optionId, label: option.label })), approved: result.approved } }
+    }
+    return { continuing: round.options.filter((option) => runoff.includes(option.id)).map((option) => ({ optionId: option.id, label: option.label })) }
+  }
+
+  private async moderatorSummary<T extends { runoff: string[] }>(roundId: string, outcome: T) {
+    const summary = await this.resultSummary(roundId, outcome.runoff)
+    return { outcome, final: Boolean(summary.final), ...(summary.continuing ? { continuing: summary.continuing } : {}) }
+  }
+
   private async moderatorOfficialResult(roundId: string) {
     const result = await this.prisma.officialResult.findUnique({
-      where: { roundId }, include: { options: { where: { option: { round: { status: 'published' } } }, orderBy: { seatOrder: 'asc' }, include: { option: { select: { label: true, roundId: true } } } } },
+      where: { roundId }, include: { settledRound: { select: { status: true } }, options: { where: { option: { round: { status: 'published' } } }, orderBy: { seatOrder: 'asc' }, include: { option: { select: { label: true, roundId: true } } } } },
     })
-    return result?.options.length ? this.serializeOfficialResult(result) : null
+    const settled = result?.settledRound?.status === 'published'
+    if (!result || (!result.options.length && !settled)) return null
+    return {
+      ...this.serializeOfficialResult(result),
+      settledRoundId: settled ? result.settledRoundId : null,
+      approved: settled ? result.approved : null,
+      registeredAt: result.registeredAt?.toISOString() ?? null,
+    }
   }
 
   private async publishedOfficialResult(roundId: string) {

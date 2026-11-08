@@ -157,3 +157,62 @@ test('a yes or no decision records whether it was approved', { skip }, async () 
     assert.equal(row.registeredAt, null)
   })
 })
+
+test('every screen says who goes on after a vote that does not settle, and says final with everyone elected after the one that does', { skip }, async () => {
+  await withAssembly(4, async ({ service, assemblyId, joinCode, voters }) => {
+    const first = await service.createRound(assemblyId, { title: 'Comisión de Finanzas', category: 'committee', memberCount: 3, format: 'multiple_choice', options: ['Isaías', 'Jeremías', 'Ezequiel', 'Daniel', 'Oseas'].map((label) => ({ label })) })
+    const id = (options: Array<{ id: string; label: string }>, label: string) => options.find((option) => option.label === label)!.id
+    await service.openRound(first.id)
+    const ballots = [['Isaías', 'Jeremías', 'Ezequiel'], ['Isaías', 'Daniel', 'Oseas'], ['Isaías', 'Jeremías', 'Daniel'], ['Isaías', 'Ezequiel', 'Oseas']]
+    for (const [index, voter] of voters.entries()) await service.castVote(voter, first.id, ballots[index]!.map((label) => id(first.options, label)))
+    await service.closeRound(first.id)
+
+    const goingOn = ['Daniel', 'Ezequiel', 'Jeremías', 'Oseas']
+    const labels = (items: Array<{ label: string }> | undefined) => items?.map((item) => item.label).sort((a, b) => a.localeCompare(b, 'es'))
+    const publicFirst = await service.publicState(joinCode)
+    assert.equal(publicFirst.final, undefined)
+    assert.deepEqual(labels(publicFirst.continuing), goingOn)
+    const phoneFirst = await service.participantState(voters[0]!)
+    assert.equal(phoneFirst.final, undefined)
+    assert.deepEqual(labels(phoneFirst.continuing), goingOn)
+    let mesa = await service.moderatorAssembly(assemblyId)
+    const mesaFirst = mesa.rounds.find((item) => item.id === first.id)!
+    assert.equal(mesaFirst.final, false)
+    assert.deepEqual(labels(mesaFirst.continuing), goingOn)
+    assert.equal(mesa.rounds.some((item) => item.status === 'open'), false, 'the next vote waits for the operator')
+
+    const runoff = mesa.rounds.find((item) => item.runoffSourceRoundId === first.id)!
+    await service.openRound(runoff.id)
+    for (const voter of voters) await service.castVote(voter, runoff.id, [id(runoff.options, 'Jeremías'), id(runoff.options, 'Ezequiel')])
+    await service.closeRound(runoff.id)
+
+    const elected = ['Isaías', 'Jeremías', 'Ezequiel']
+    const publicFinal = await service.publicState(joinCode)
+    assert.deepEqual(publicFinal.final?.elected.map((item) => item.label), elected, 'everyone elected in the election, in election order')
+    assert.equal(publicFinal.final?.approved, null)
+    assert.equal(publicFinal.continuing, undefined)
+    assert.deepEqual((await service.participantState(voters[0]!)).final?.elected.map((item) => item.label), elected)
+    mesa = await service.moderatorAssembly(assemblyId)
+    const mesaFinal = mesa.rounds.find((item) => item.id === runoff.id)!
+    assert.equal(mesaFinal.final, true)
+    assert.equal(mesa.rounds.find((item) => item.id === first.id)!.officialResult?.settledRoundId, runoff.id)
+  })
+})
+
+test('every screen says a decision is approved or not approved', { skip }, async () => {
+  await withAssembly(3, async ({ service, assemblyId, joinCode, voters }) => {
+    const statute = await service.createRound(assemblyId, { title: 'Reforma de estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean' })
+    const [favor, contra] = statute.options
+    await service.openRound(statute.id)
+    await service.castVote(voters[0]!, statute.id, favor!.id)
+    await service.castVote(voters[1]!, statute.id, contra!.id)
+    await service.castVote(voters[2]!, statute.id, contra!.id)
+    await service.closeRound(statute.id)
+
+    assert.deepEqual((await service.publicState(joinCode)).final, { elected: [], approved: false })
+    assert.deepEqual((await service.participantState(voters[0]!)).final, { elected: [], approved: false })
+    const mesa = (await service.moderatorAssembly(assemblyId)).rounds.find((item) => item.id === statute.id)!
+    assert.equal(mesa.final, true)
+    assert.equal(mesa.officialResult?.approved, false)
+  })
+})
