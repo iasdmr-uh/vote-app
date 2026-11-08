@@ -42,7 +42,9 @@ function start(command, args, options = {}) {
 async function waitForPostgres() {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const check = spawnSync('docker', ['exec', containerName, 'pg_isready', '-U', 'asdmr_e2e', '-d', 'asdmr_e2e'], { encoding: 'utf8' })
-    if (check.status === 0) return
+    const logs = spawnSync('docker', ['logs', containerName], { encoding: 'utf8' })
+    const started = `${logs.stdout}${logs.stderr}`.split('ready to accept connections').length - 1
+    if (check.status === 0 && started >= 2) return
     await new Promise((resolveWait) => setTimeout(resolveWait, 1000))
   }
   throw new Error('PostgreSQL did not become ready within 60 seconds')

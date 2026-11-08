@@ -25,6 +25,7 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL,
+    launchOptions: { slowMo: Number(process.env.E2E_SLOWMO ?? 0) },
     actionTimeout: 15_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
