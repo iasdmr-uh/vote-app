@@ -12,6 +12,7 @@
 
 - Vitest is added to `apps/web` only when a Vue component needs testing on its own.
 - `mock.module`, watch mode and coverage are experimental in `node:test`, so tests and CI do not depend on them.
+- Integration and HTTP tests also load `apps/api/test/support/decorator-metadata.mjs`. It compiles TypeScript with decorator metadata, which Nest needs to inject providers and `tsx` does not emit.
 
 ## Levels
 

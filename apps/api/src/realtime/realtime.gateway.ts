@@ -8,7 +8,7 @@ import {
 import type { Server, Socket } from 'socket.io'
 import {
   REALTIME_AUTHORIZER,
-  RealtimeAuthorizer,
+  type RealtimeAuthorizer,
   RealtimeClientToServerEvents,
   RealtimeCredentials,
   RealtimeIdentity,
