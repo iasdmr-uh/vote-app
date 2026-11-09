@@ -145,8 +145,6 @@ test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálcu
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/log')) {
       return { status: 200, contentType: 'text/csv; charset=utf-8', body: '﻿"Hora","Tipo","Acción"\r\n' }
     }
-    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
-    if (url.pathname.endsWith('/moderator/assemblies/active')) { return { json: { assembly: null } } }
   })
 
   await page.goto('/moderator')
@@ -205,8 +203,6 @@ test('sin una votación contada, los habilitados del acta incluyen a quienes sal
         rounds: [{ id: 'r1', title: 'Presidencia', status: 'annulled', annulReason: 'Error', participationCount: 2, eligibleCount: 2, options: [{ id: 'a', label: 'Alfa' }], officialResult: null }],
       } }
     }
-    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
-    if (url.pathname.endsWith('/moderator/assemblies/active')) { return { json: { assembly: null } } }
   })
 
   await page.goto('/moderator')

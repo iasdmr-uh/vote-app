@@ -11,7 +11,6 @@ test('al crear la Asamblea la mesa escribe el nombre y el periodo', async ({ pag
   let createBody: Record<string, unknown> | undefined
   await page.addInitScript(() => sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token'))
   api.on(({ request, url }) => {
-    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
     if (url.pathname.endsWith('/moderator/assemblies/active')) { return { json: { assembly: null, completed: [] } } }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies')) {
       createBody = request.postDataJSON()

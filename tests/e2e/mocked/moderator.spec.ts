@@ -397,7 +397,6 @@ test('moderador finaliza la Asamblea explícitamente y el panel queda en modo de
 test('con la pestaña cerrada, la mesa recupera una Asamblea finalizada para el acta y el borrado', async ({ page, api }) => {
   await page.addInitScript(() => sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token'))
   api.on(({ url }) => {
-    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
     if (url.pathname.endsWith('/moderator/assemblies/active')) {
       return { json: { assembly: null, completed: [{ id: 'done-assembly', name: 'Asamblea finalizada de prueba', completedAt: '2026-10-02T18:30:00.000Z' }] } }
     }
@@ -420,7 +419,6 @@ test('la mesa cierra un acta recuperada sin borrarla y vuelve a la lista', async
   let deleteCalls = 0
   api.on(({ request, url }) => {
     if (request.method() === 'DELETE') deleteCalls += 1
-    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
     if (url.pathname.endsWith('/moderator/assemblies/active')) {
       return { json: { assembly: null, completed: [
         { id: 'first', name: 'Primera Asamblea', completedAt: '2026-10-02T18:30:00.000Z' },
@@ -456,7 +454,6 @@ test('con otra Asamblea activa, la mesa abre un acta pendiente, la cierra sin bo
   let deleteCalls = 0
   api.on(({ request, url }) => {
     if (request.method() === 'DELETE') deleteCalls += 1
-    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
     if (url.pathname.endsWith('/moderator/assemblies/active')) {
       return { json: { assembly: { id: 'live', name: 'Asamblea en curso', status: 'lobby_closed' }, completed: [{ id: 'old', name: 'Asamblea anterior', completedAt: '2026-10-02T18:30:00.000Z' }] } }
     }
@@ -539,9 +536,6 @@ test('moderador valida la credencial antes de mostrar el panel cuando aún no ha
 test('moderador recupera la Asamblea activa en una pestaña nueva y puede reabrir el ingreso', async ({ page, api }) => {
   let lobbyPatch: unknown
   api.on(({ request, url }) => {
-    if (url.pathname.endsWith('/moderator/session')) {
-      return { json: { authenticated: true } }
-    }
     if (url.pathname.endsWith('/moderator/assemblies/active')) {
       return { json: { assembly: { id: 'synthetic-assembly', name: 'Asamblea recuperada', status: 'lobby_closed' } } }
     }
