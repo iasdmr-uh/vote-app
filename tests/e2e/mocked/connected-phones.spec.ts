@@ -1,6 +1,6 @@
-import { expect, test, type Page, type WebSocketRoute } from '@playwright/test'
+import type { Page, WebSocketRoute } from '@playwright/test'
+import { expect, test, type MockApi } from './api-fixture'
 
-const api = '**/api/v1/**'
 const socketPath = /\/socket\.io\//
 
 function openVoteState(extra: Record<string, unknown> = {}) {
@@ -38,12 +38,11 @@ async function mockSocket(page: Page) {
   return link
 }
 
-async function joinAsPhone(page: Page, state: () => Record<string, unknown>) {
+async function joinAsPhone(api: MockApi, state: () => Record<string, unknown>) {
+  const { page } = api
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'synthetic-phone'))
-  await page.route(api, async (route) => {
-    const url = new URL(route.request().url())
-    if (url.pathname.endsWith('/participant/me')) { await route.fulfill({ json: state() }); return }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for connected phones test' } })
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/participant/me')) { return { json: state() } }
   })
 }
 
@@ -54,19 +53,19 @@ async function expectBallotWithoutStatus(page: Page) {
   await expect(page.getByText('Conectado', { exact: true })).toHaveCount(0)
 }
 
-test('el teléfono no muestra «Conectado» durante la votación ni el aviso de conexión', async ({ page }) => {
+test('el teléfono no muestra «Conectado» durante la votación ni el aviso de conexión', async ({ page, api }) => {
   const link = await mockSocket(page)
-  await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
+  await joinAsPhone(api, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
   await expect.poll(() => link.joins).toBe(1)
   await expectBallotWithoutStatus(page)
   await expect(page.getByText(notice)).toHaveCount(0)
 })
 
-test('un corte breve no cambia lo que muestra el teléfono; uno largo muestra el aviso', async ({ page }) => {
+test('un corte breve no cambia lo que muestra el teléfono; uno largo muestra el aviso', async ({ page, api }) => {
   await page.clock.install()
   const link = await mockSocket(page)
-  await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
+  await joinAsPhone(api, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
   await expect.poll(() => link.joins).toBe(1)
 
@@ -85,10 +84,10 @@ test('un corte breve no cambia lo que muestra el teléfono; uno largo muestra el
   await expect(page.getByText(notice)).toHaveCount(0)
 })
 
-test('un corte que se recupera dentro del margen no muestra el aviso', async ({ page }) => {
+test('un corte que se recupera dentro del margen no muestra el aviso', async ({ page, api }) => {
   await page.clock.install()
   const link = await mockSocket(page)
-  await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
+  await joinAsPhone(api, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
   await expect.poll(() => link.joins).toBe(1)
 
@@ -100,9 +99,9 @@ test('un corte que se recupera dentro del margen no muestra el aviso', async ({ 
   await expect(page.getByText(notice)).toHaveCount(0)
 })
 
-test('sin votación abierta el teléfono no muestra «Conectado»', async ({ page }) => {
+test('sin votación abierta el teléfono no muestra «Conectado»', async ({ page, api }) => {
   await mockSocket(page)
-  await joinAsPhone(page, () => ({ ...openVoteState({ connectionGraceMs: 3_000 }), currentRound: undefined }))
+  await joinAsPhone(api, () => ({ ...openVoteState({ connectionGraceMs: 3_000 }), currentRound: undefined }))
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Sala de espera' })).toBeVisible()
   await expect(page.getByText('Conectado', { exact: true })).toHaveCount(0)
@@ -119,9 +118,9 @@ function projectorState(round: Record<string, unknown>, connection?: Record<stri
 
 const connectedCount = /\d+ de \d+ conectados/
 
-test('el proyector muestra cuántos teléfonos de la base están conectados y sigue los cambios', async ({ page }) => {
+test('el proyector muestra cuántos teléfonos de la base están conectados y sigue los cambios', async ({ page, api }) => {
   const link = await mockSocket(page)
-  await page.route(api, (route) => route.fulfill({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'open' }, { roundId: 'v1', connected: 47, base: 50 }) }))
+  api.on(() => ({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'open' }, { roundId: 'v1', connected: 47, base: 50 }) }))
   await page.goto('/projector?code=synthetic')
   await expect(page.getByText('47 de 50 conectados')).toBeVisible()
   await expect(page.locator('.pj-progress')).toContainText('de 50 ya votaron')
@@ -130,10 +129,10 @@ test('el proyector muestra cuántos teléfonos de la base están conectados y si
   await expect(page.getByText('48 de 50 conectados')).toBeVisible()
 })
 
-test('el proyector oculta el conteo de conectados al cerrar la votación', async ({ page }) => {
+test('el proyector oculta el conteo de conectados al cerrar la votación', async ({ page, api }) => {
   let status = 'open'
   const link = await mockSocket(page)
-  await page.route(api, (route) => route.fulfill({ json: status === 'open'
+  api.on(() => ({ json: status === 'open'
     ? projectorState({ id: 'v1', title: 'Presidencia', status }, { roundId: 'v1', connected: 47, base: 50 })
     : projectorState({ id: 'v1', title: 'Presidencia', status, annulReason: status === 'annulled' ? 'Error' : null }) }))
   await page.goto('/projector?code=synthetic')
@@ -148,24 +147,23 @@ test('el proyector oculta el conteo de conectados al cerrar la votación', async
   await expect(page.getByText(connectedCount)).toHaveCount(0)
 })
 
-test('el proyector no muestra el conteo de una votación anulada', async ({ page }) => {
+test('el proyector no muestra el conteo de una votación anulada', async ({ page, api }) => {
   await mockSocket(page)
-  await page.route(api, (route) => route.fulfill({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'annulled', annulReason: 'Error' }) }))
+  api.on(() => ({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'annulled', annulReason: 'Error' }) }))
   await page.goto('/projector?code=synthetic')
   await expect(page.locator('.pj-status-annulled')).toBeVisible()
   await expect(page.getByText(connectedCount)).toHaveCount(0)
 })
 
-test('la mesa muestra solo el conteo de conectados, sin marcar a nadie', async ({ page }) => {
+test('la mesa muestra solo el conteo de conectados, sin marcar a nadie', async ({ page, api }) => {
   await mockSocket(page)
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  await page.route(api, async (route) => {
-    const url = new URL(route.request().url())
+  api.on(({ url }) => {
     if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
+      return { json: {
         id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'in_progress', eligibleCount: 3, recordedCount: 1,
         participants: [
           { id: 'p1', firstName: 'Isaías', lastName: 'Delegado 1', voted: true },
@@ -174,20 +172,18 @@ test('la mesa muestra solo el conteo de conectados, sin marcar a nadie', async (
         ],
         rounds: [{ id: 'v1', title: 'Presidencia', status: 'open', options: [{ id: 'a', label: 'Daniel' }, { id: 'b', label: 'Ezequiel' }], officialResult: null }],
         connection: { roundId: 'v1', connected: 2, base: 3 },
-      } })
-      return
+      } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for connected phones test' } })
   })
   await page.goto('/moderator')
   await expect(page.locator('.ballot-card').getByText('2 de 3 conectados')).toBeVisible()
   await expect(page.getByText(/conectad/i)).toHaveCount(1)
 })
 
-test('el proyector recupera el conteo actual al reconectarse, sin esperar otro cambio', async ({ page }) => {
+test('el proyector recupera el conteo actual al reconectarse, sin esperar otro cambio', async ({ page, api }) => {
   let connected = 47
   const link = await mockSocket(page)
-  await page.route(api, (route) => route.fulfill({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'open' }, { roundId: 'v1', connected, base: 50 }) }))
+  api.on(() => ({ json: projectorState({ id: 'v1', title: 'Presidencia', status: 'open' }, { roundId: 'v1', connected, base: 50 }) }))
   await page.goto('/projector?code=synthetic')
   await expect(page.getByText('47 de 50 conectados')).toBeVisible()
 
@@ -196,7 +192,7 @@ test('el proyector recupera el conteo actual al reconectarse, sin esperar otro c
   await expect(page.getByText('45 de 50 conectados')).toBeVisible({ timeout: 5_000 })
 })
 
-test('un corte cuyo primer reintento falla se recupera dentro del margen sin aviso', async ({ page }) => {
+test('un corte cuyo primer reintento falla se recupera dentro del margen sin aviso', async ({ page, api }) => {
   await page.addInitScript(() => { Math.random = () => 0.999 })
   let attempts = 0
   let first: WebSocketRoute | null = null
@@ -207,7 +203,7 @@ test('un corte cuyo primer reintento falla se recupera dentro del margen sin avi
     if (attempts === 1) first = ws
     await acceptSocket(ws, () => { joins += 1 })
   })
-  await joinAsPhone(page, () => openVoteState({ connectionGraceMs: 3_000 }))
+  await joinAsPhone(api, () => openVoteState({ connectionGraceMs: 3_000 }))
   await page.goto('/')
   await expect.poll(() => joins).toBe(1)
   await page.evaluate((text) => {

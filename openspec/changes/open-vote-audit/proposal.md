@@ -28,5 +28,5 @@ None.
 
 1. API: `presentation.service.ts`, `official-roster.service.ts`, and `VotingService` (secrecy cleanup retry, `createRound`, `addPosition`, repeating an annulled vote, draft candidate and secretary edits) in `apps/api/src/voting/`.
 2. Web: `Mesa.vue`, `ModeratorPresentationBar.vue`, `ModeratorParticipants.vue`, `useMesa.ts`.
-3. Tests: `apps/api/test/integration/open-vote-guards.spec.ts`, `tests/e2e/mocked/flows.spec.ts`.
+3. Tests: `apps/api/test/integration/open-vote-guards.spec.ts`, `tests/e2e/mocked/moderator.spec.ts`.
 4. Docs: `docs/scope.md`.

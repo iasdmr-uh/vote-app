@@ -1,31 +1,24 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './api-fixture'
 
 // Puestos del organigrama (#46): the mesa chooses the puesto of a cargo (M25) and can add a departamento.
 
-const api = '**/api/v1/**'
 
 const board = ['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3']
 const departments = ['Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia', 'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción']
 const electedBy: Record<string, string> = { Presidente: 'María López', Vicepresidente: 'Juan Mora', Secretario: 'Elena Castro' }
 
-test('al crear la Asamblea la mesa escribe el nombre y el periodo', async ({ page }) => {
+test('al crear la Asamblea la mesa escribe el nombre y el periodo', async ({ page, api }) => {
   let createBody: Record<string, unknown> | undefined
   await page.addInitScript(() => sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token'))
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
-    if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null, completed: [] } }); return }
+  api.on(({ request, url }) => {
+    if (url.pathname.endsWith('/moderator/assemblies/active')) { return { json: { assembly: null, completed: [] } } }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies')) {
       createBody = request.postDataJSON()
-      await route.fulfill({ status: 201, json: { assemblyId: 'new-assembly', name: 'IV Asamblea Reorganizativa 2026', period: '2027–2029', status: 'lobby_open', joinCode: 'JOIN', joinUrl: 'http://localhost/?join=JOIN' } })
-      return
+      return { status: 201, json: { assemblyId: 'new-assembly', name: 'IV Asamblea Reorganizativa 2026', period: '2027–2029', status: 'lobby_open', joinCode: 'JOIN', joinUrl: 'http://localhost/?join=JOIN' } }
     }
     if (url.pathname.endsWith('/moderator/assemblies/new-assembly')) {
-      await route.fulfill({ json: { id: 'new-assembly', name: 'IV Asamblea Reorganizativa 2026', period: '2027–2029', status: 'lobby_open', completedAt: null, participants: [], participantCount: 0, rounds: [], positions: [] } })
-      return
+      return { json: { id: 'new-assembly', name: 'IV Asamblea Reorganizativa 2026', period: '2027–2029', status: 'lobby_open', completedAt: null, participants: [], participantCount: 0, rounds: [], positions: [] } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for period test' } })
   })
 
   await page.goto('/moderator')
@@ -35,7 +28,7 @@ test('al crear la Asamblea la mesa escribe el nombre y el periodo', async ({ pag
   await expect.poll(() => createBody).toEqual({ name: 'IV Asamblea Reorganizativa 2026', period: '2027–2029' })
 })
 
-test('la mesa elige el puesto de un cargo, ve los electos en gris y agrega un departamento (M25)', async ({ page }) => {
+test('la mesa elige el puesto de un cargo, ve los electos en gris y agrega un departamento (M25)', async ({ page, api }) => {
   const positions = [
     ...board.map((label, sortOrder) => ({ id: `b${sortOrder}`, group: 'board', label, sortOrder, custom: false, elected: electedBy[label] ? { label: electedBy[label], roundId: `r-${label}` } : null })),
     ...departments.map((label, sortOrder) => ({ id: `d${sortOrder}`, group: 'department', label, sortOrder, custom: false, elected: null })),
@@ -46,30 +39,24 @@ test('la mesa elige el puesto de un cargo, ve los electos en gris y agrega un de
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
+      return { json: {
         id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', period: '2027–2029', status: 'lobby_closed', completedAt: null,
         participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1, rounds: [], attendanceRound: null, positions,
-      } })
-      return
+      } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/positions')) {
       const body = request.postDataJSON() as { label: string }
       positionBodies.push(body)
       const added = { id: 'custom', group: 'department', label: body.label, sortOrder: departments.length, custom: true, elected: null }
       positions.push(added)
-      await route.fulfill({ status: 201, json: added })
-      return
+      return { status: 201, json: added }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/rounds')) {
       roundBodies.push(request.postDataJSON())
-      await route.fulfill({ status: 201, json: { id: `r${roundBodies.length}` } })
-      return
+      return { status: 201, json: { id: `r${roundBodies.length}` } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for puestos test' } })
   })
 
   await page.goto('/moderator')
@@ -123,18 +110,15 @@ test('la mesa elige el puesto de un cargo, ve los electos en gris y agrega un de
   await expect(page.getByLabel('Decisión', { exact: true })).toBeVisible()
 })
 
-test('sin puesto elegido, el cargo no se prepara', async ({ page }) => {
+test('sin puesto elegido, el cargo no se prepara', async ({ page, api }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  await page.route(api, async (route) => {
-    const url = new URL(route.request().url())
+  api.on(({ url }) => {
     if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea', status: 'lobby_closed', completedAt: null, participants: [], participantCount: 0, rounds: [], positions: [] } })
-      return
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea', status: 'lobby_closed', completedAt: null, participants: [], participantCount: 0, rounds: [], positions: [] } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/moderator')
   await page.getByLabel('Agregar candidato').fill('Ana Ruiz')

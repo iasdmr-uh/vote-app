@@ -1,8 +1,8 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './api-fixture'
 
 // Decisions (#42): A favor / En contra or options, approved with mayoría simple or 3/4 of the habilitados.
 
-const api = '**/api/v1/**'
 
 async function asModerator(page: Page) {
   await page.addInitScript(() => {
@@ -13,25 +13,20 @@ async function asModerator(page: Page) {
 
 const budgetOptions = [{ id: 'favor', label: 'A favor' }, { id: 'contra', label: 'En contra' }]
 
-test('la mesa prepara una decisión A favor / En contra con 3/4 y otra con opciones (M23)', async ({ page }) => {
+test('la mesa prepara una decisión A favor / En contra con 3/4 y otra con opciones (M23)', async ({ page, api }) => {
   const bodies: Array<Record<string, any>> = []
   await asModerator(page)
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
+      return { json: {
         id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'lobby_closed', completedAt: null,
         participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1, rounds: [], attendanceRound: null,
-      } })
-      return
+      } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/rounds')) {
       bodies.push(request.postDataJSON())
-      await route.fulfill({ status: 201, json: { id: `r${bodies.length}` } })
-      return
+      return { status: 201, json: { id: `r${bodies.length}` } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for decision form test' } })
   })
 
   await page.goto('/moderator')
@@ -67,7 +62,7 @@ test('la mesa prepara una decisión A favor / En contra con 3/4 y otra con opcio
   })
 })
 
-test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No aprobada» en el acta', async ({ page }) => {
+test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No aprobada» en el acta', async ({ page, api }) => {
   await asModerator(page)
   const approved = {
     id: 'presupuesto', title: 'Presupuesto 2027', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false,
@@ -81,12 +76,10 @@ test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No apro
     results: [{ optionId: 'f2', label: 'A favor', count: 19 }, { optionId: 'c2', label: 'En contra', count: 19 }],
     outcome: { seats: 1, base: 38, threshold: 20, elected: [], runoff: [], openSeats: 0, rule: 'simple', approved: false }, officialResult: null,
   }
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [rejected, approved], currentRound: approved } })
-      return
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [rejected, approved], currentRound: approved } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/moderator')
@@ -102,7 +95,7 @@ test('la mesa ve «Aprobada» y la regla en una decisión publicada, y «No apro
   await expect(acta.locator('.official-round').nth(0).locator('.badge-warning')).toHaveCount(0)
 })
 
-test('una decisión con opciones sin la mayoría marca Desempate y prepara la 2.ª votación entre las dos primeras', async ({ page }) => {
+test('una decisión con opciones sin la mayoría marca Desempate y prepara la 2.ª votación entre las dos primeras', async ({ page, api }) => {
   let opened = ''
   await asModerator(page)
   const labels = ['Tegucigalpa', 'San Pedro Sula', 'La Ceiba', 'Choluteca']
@@ -117,19 +110,14 @@ test('una decisión con opciones sin la mayoría marca Desempate y prepara la 2.
     id: 'sede-2', title: 'Sede de la Asamblea 2027', status: 'draft', category: 'decision', decisionFormat: 'options', approvalRule: 'simple', voteNumber: 2, runoff: true,
     committeeRootRoundId: 'sede', runoffSourceRoundId: 'sede', options: labels.slice(0, 2).map((label, index) => ({ id: `r${index}`, label })), officialResult: null,
   }
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [first, repeat], currentRound: first } })
-      return
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [first, repeat], currentRound: first } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/open')) {
       opened = url.pathname
-      await route.fulfill({ status: 201, json: { roundId: 'sede-2', status: 'open' } })
-      return
+      return { status: 201, json: { roundId: 'sede-2', status: 'open' } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/moderator')
@@ -142,32 +130,27 @@ test('una decisión con opciones sin la mayoría marca Desempate y prepara la 2.
   await expect.poll(() => opened).toContain('/moderator/rounds/sede-2/open')
 })
 
-test('el teléfono vota una decisión A favor / En contra con una sola opción (T03) y no ve el resultado', async ({ page }) => {
+test('el teléfono vota una decisión A favor / En contra con una sola opción (T03) y no ve el resultado', async ({ page, api }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'decision-session'))
   let recorded = false
   let published = false
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
       const round = { id: 'presupuesto', title: 'Presupuesto 2027', status: published ? 'published' : 'open', format: 'single_choice', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', options: budgetOptions }
-      await route.fulfill({ json: {
+      return { json: {
         assembly: { id: 'decision-assembly', name: 'Asamblea prueba', status: 'in_progress' },
         participationStatus: recorded ? 'recorded' : 'pending', currentRound: round,
         ...(published ? {
           results: [{ optionId: 'favor', label: 'A favor', count: 30 }, { optionId: 'contra', label: 'En contra', count: 6 }], recordedCount: 36, eligibleCount: 38,
           outcome: { seats: 1, base: 38, threshold: 29, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved: true },
         } : {}),
-      } })
-      return
+      } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/presupuesto/vote')) {
       expect(request.postDataJSON()).toEqual({ optionId: 'favor', confirmation: true })
       recorded = true
-      await route.fulfill({ status: 201, json: { status: 'recorded' } })
-      return
+      return { status: 201, json: { status: 'recorded' } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for decision ballot test' } })
   })
 
   await page.goto('/')
@@ -190,26 +173,21 @@ test('el teléfono vota una decisión A favor / En contra con una sola opción (
   await expect(page.locator('body')).not.toContainText(/Aprobada|A favor|30 votos|resultado/i)
 })
 
-test('el teléfono vota una decisión con opciones (T04)', async ({ page }) => {
+test('el teléfono vota una decisión con opciones (T04)', async ({ page, api }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'decision-session'))
   const options = ['Tegucigalpa', 'San Pedro Sula', 'La Ceiba', 'Choluteca'].map((label, index) => ({ id: `o${index}`, label }))
   let voted: unknown
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: {
+      return { json: {
         assembly: { id: 'decision-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: voted ? 'recorded' : 'pending',
         currentRound: { id: 'sede', title: 'Sede de la Asamblea 2027', status: 'open', format: 'single_choice', category: 'decision', decisionFormat: 'options', approvalRule: 'simple', options },
-      } })
-      return
+      } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/participant/rounds/sede/vote')) {
       voted = request.postDataJSON()
-      await route.fulfill({ status: 201, json: { status: 'recorded' } })
-      return
+      return { status: 201, json: { status: 'recorded' } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/')
@@ -222,21 +200,19 @@ test('el teléfono vota una decisión con opciones (T04)', async ({ page }) => {
 })
 
 for (const approved of [true, false]) {
-  test(`el proyector muestra «${approved ? 'Aprobada' : 'No aprobada'}», la regla y los porcentajes sobre los habilitados (P21)`, async ({ page }) => {
+  test(`el proyector muestra «${approved ? 'Aprobada' : 'No aprobada'}», la regla y los porcentajes sobre los habilitados (P21)`, async ({ page, api }) => {
     const counts = approved ? [30, 6] : [27, 9]
-    await page.route(api, async (route) => {
-      if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-        await route.fulfill({ json: {
+    api.on(({ url }) => {
+      if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+        return { json: {
           assembly: { name: 'Asamblea Ordinaria 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' },
           participantCount: 38, recordedCount: 36, eligibleCount: 38,
           round: { id: 'presupuesto', title: 'Presupuesto 2027', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false },
           // Ranked by votes; the projector still shows A favor first.
           results: [{ optionId: 'contra', label: 'En contra', count: counts[1] }, { optionId: 'favor', label: 'A favor', count: counts[0] }].sort((a, b) => b.count - a.count),
           outcome: { seats: 1, base: 38, threshold: 29, elected: [], runoff: [], openSeats: 0, rule: 'three_quarters', approved },
-        } })
-        return
+        } }
       }
-      await route.fulfill({ status: 404, json: { message: 'No mock route' } })
     })
 
     await page.goto('/projector?code=DEMO-ROOM')
@@ -254,10 +230,10 @@ for (const approved of [true, false]) {
   })
 }
 
-test('el proyector marca la opción aprobada de una decisión con opciones', async ({ page }) => {
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: {
+test('el proyector marca la opción aprobada de una decisión con opciones', async ({ page, api }) => {
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      return { json: {
         assembly: { name: 'Asamblea Ordinaria 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' },
         participantCount: 38, recordedCount: 37, eligibleCount: 38,
         round: { id: 'sede-2', title: 'Sede de la Asamblea 2027', status: 'published', category: 'decision', decisionFormat: 'options', approvalRule: 'simple', voteNumber: 2, runoff: true },
@@ -265,10 +241,8 @@ test('el proyector marca la opción aprobada de una decisión con opciones', asy
         outcome: { seats: 1, base: 38, threshold: 20, elected: ['s'], runoff: [], openSeats: 0, rule: 'simple', approved: true },
         officialResult: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], note: null, declaredAt: '2026-11-02T10:00:00.000Z' },
         final: { elected: [{ optionId: 's', label: 'San Pedro Sula' }], approved: true },
-      } })
-      return
+      } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/projector?code=DEMO-ROOM')

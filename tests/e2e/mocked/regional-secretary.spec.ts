@@ -1,6 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type MockApi } from './api-fixture'
 
-const api = '**/api/v1/**'
 const assembly = '/moderator/assemblies/synthetic-assembly'
 
 type Round = Record<string, unknown> & { id: string }
@@ -24,31 +23,30 @@ function draftVote(voteNumber: number, extra: Record<string, unknown> = {}): Rou
   }
 }
 
-async function mesaWith(page: Page, rounds: Round[], onRequest: (method: string, path: string, body: unknown) => Record<string, unknown> | null = () => null, extraState: () => Record<string, unknown> = () => ({})) {
+async function mesaWith(api: MockApi, rounds: Round[], onRequest: (method: string, path: string, body: unknown) => Record<string, unknown> | null = () => null, extraState: () => Record<string, unknown> = () => ({})) {
+  const { page } = api
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  await page.route(api, async (route) => {
-    const request = route.request()
+  api.on(({ request }) => {
     const path = new URL(request.url()).pathname.replace(/^.*\/api\/v1/, '')
     if (request.method() === 'GET' && path === assembly) {
       const published = rounds.filter((round) => round.status !== 'draft')
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea', status: 'in_progress', lobbyStatus: 'lobby_closed', participants: [], rounds, currentRound: published.at(-1), ...extraState() } })
-      return
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea', status: 'in_progress', lobbyStatus: 'lobby_closed', participants: [], rounds, currentRound: published.at(-1), ...extraState() } }
     }
     const reply = onRequest(request.method(), path, request.postDataJSON())
-    if (reply) await route.fulfill({ status: 201, json: reply })
-    else await route.fulfill({ status: 404, json: { message: 'No mock route' } })
+    if (reply) return { status: 201, json: reply }
+    else return { status: 404, json: { message: 'No mock route' } }
   })
   await page.goto('/moderator')
 }
 
-test('the mesa adds the regional secretary to a tied 4th vote, sees the larger base, and can remove them', async ({ page }) => {
+test('the mesa adds the regional secretary to a tied 4th vote, sees the larger base, and can remove them', async ({ page, api }) => {
   const fourth = draftVote(4)
   const requests: Array<[string, string, unknown]> = []
   let secretary: Record<string, unknown> | null = null
-  await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), fourth], (method, path, body) => {
+  await mesaWith(api, [tiedVote(1), tiedVote(2), tiedVote(3), fourth], (method, path, body) => {
     if (!path.endsWith('/moderator/rounds/v4/regional-secretary')) return null
     requests.push([method, path, body])
     if (method === 'POST') {
@@ -83,38 +81,38 @@ test('the mesa adds the regional secretary to a tied 4th vote, sees the larger b
   expect(requests[1]?.[0]).toBe('DELETE')
 })
 
-test('the mesa cannot add the regional secretary to a 3rd vote', async ({ page }) => {
-  await mesaWith(page, [tiedVote(1), tiedVote(2), draftVote(3)])
+test('the mesa cannot add the regional secretary to a 3rd vote', async ({ page, api }) => {
+  await mesaWith(api, [tiedVote(1), tiedVote(2), draftVote(3)])
   const ballot = page.locator('.ballot-card')
   await ballot.getByRole('button', { name: 'Abrir desempate', exact: true }).click()
   await expect(ballot.getByRole('textbox', { name: 'Nombre del candidato' })).toBeVisible()
   await expect(ballot.locator('.regional-secretary')).toHaveCount(0)
 })
 
-test('the mesa cannot add the regional secretary when the previous vote did not tie', async ({ page }) => {
+test('the mesa cannot add the regional secretary when the previous vote did not tie', async ({ page, api }) => {
   const untied = tiedVote(3, {
     results: [{ optionId: 'a3', label: 'Ana Ruiz', count: 5 }, { optionId: 'l3', label: 'Luis Mora', count: 4 }],
     participationCount: 9,
   })
-  await mesaWith(page, [tiedVote(1), tiedVote(2), untied, draftVote(4)])
+  await mesaWith(api, [tiedVote(1), tiedVote(2), untied, draftVote(4)])
   const ballot = page.locator('.ballot-card')
   await ballot.getByRole('button', { name: 'Abrir desempate', exact: true }).click()
   await expect(ballot.getByRole('textbox', { name: 'Nombre del candidato' })).toBeVisible()
   await expect(ballot.locator('.regional-secretary')).toHaveCount(0)
 })
 
-test('a tied decision with options offers the regional secretary and no new candidate', async ({ page }) => {
+test('a tied decision with options offers the regional secretary and no new candidate', async ({ page, api }) => {
   const asDecision = { title: 'Sede', category: 'decision', decisionFormat: 'options', approvalRule: 'simple' }
-  await mesaWith(page, [tiedVote(1, asDecision), tiedVote(2, asDecision), tiedVote(3, asDecision), draftVote(4, asDecision)])
+  await mesaWith(api, [tiedVote(1, asDecision), tiedVote(2, asDecision), tiedVote(3, asDecision), draftVote(4, asDecision)])
   const ballot = page.locator('.ballot-card')
   await ballot.getByRole('button', { name: /^Abrir/ }).first().click()
   await expect(ballot.locator('.regional-secretary')).toBeVisible()
   await expect(ballot.getByRole('textbox', { name: 'Nombre del candidato' })).toHaveCount(0)
 })
 
-test('a second election offers the same regional secretary by name', async ({ page }) => {
+test('a second election offers the same regional secretary by name', async ({ page, api }) => {
   const bodies: unknown[] = []
-  await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path, body) => {
+  await mesaWith(api, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path, body) => {
     if (method !== 'POST' || !path.endsWith('/regional-secretary')) return null
     bodies.push(body)
     return { participantId: 'rs', name: 'Marta Regional', resumeUrl: 'http://localhost:5173/?resume=abc', expiresAt: '2026-11-05T12:00:00.000Z' }
@@ -131,27 +129,27 @@ function openVote(regionalSecretaryVotes: boolean): Round {
 }
 
 for (const regionalSecretaryVotes of [true, false]) {
-  test(`the mesa card of an open vote ${regionalSecretaryVotes ? 'says' : 'does not say'} the regional secretary takes part`, async ({ page }) => {
-    await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), openVote(regionalSecretaryVotes)], () => null, () => ({ recordedCount: 3, eligibleCount: regionalSecretaryVotes ? 11 : 10 }))
+  test(`the mesa card of an open vote ${regionalSecretaryVotes ? 'says' : 'does not say'} the regional secretary takes part`, async ({ page, api }) => {
+    await mesaWith(api, [tiedVote(1), tiedVote(2), tiedVote(3), openVote(regionalSecretaryVotes)], () => null, () => ({ recordedCount: 3, eligibleCount: regionalSecretaryVotes ? 11 : 10 }))
     const card = page.locator('.ballot-card')
     await expect(card).toContainText('VOTACIÓN ABIERTA')
     await expect(card.getByText('Con la secretaría regional')).toHaveCount(regionalSecretaryVotes ? 1 : 0)
   })
 }
 
-test('the projector says the regional secretary takes part in the vote', async ({ page }) => {
-  await page.route(api, async (route) => {
-    await route.fulfill({ json: {
+test('the projector says the regional secretary takes part in the vote', async ({ page, api }) => {
+  api.on(() => {
+    return { json: {
       assembly: { id: 'a', name: 'Asamblea', status: 'in_progress' }, lobbyStatus: 'lobby_closed', participantCount: 10, recordedCount: 3, eligibleCount: 11,
       round: { id: 'v4', title: 'Presidencia', status: 'open', category: 'office', voteNumber: 4, runoff: true, regionalSecretaryVotes: true },
-    } })
+    } }
   })
   await page.goto('/projector?code=synthetic')
   await expect(page.locator('.pj-status')).toContainText('Con la secretaría regional')
   await expect(page.locator('.pj-progress')).toContainText('de 11 ya votaron')
 })
 
-test('the record marks each vote with who that vote elected and lists the whole committee on the last one', async ({ page }) => {
+test('the record marks each vote with who that vote elected and lists the whole committee on the last one', async ({ page, api }) => {
   const root = {
     id: 'c1', title: 'Comisión', status: 'published', category: 'committee', memberCount: 3, voteNumber: 1, runoff: false, participationCount: 10, eligibleCount: 10,
     options: [{ id: 'a', label: 'Ana Ruiz' }, { id: 'b', label: 'Bruno Díaz' }, { id: 'c', label: 'Carla Mora' }, { id: 'd', label: 'Dora Paz' }],
@@ -165,7 +163,7 @@ test('the record marks each vote with who that vote elected and lists the whole 
     results: [{ optionId: 'c2', label: 'Carla Mora', count: 7 }, { optionId: 'b2', label: 'Bruno Díaz', count: 6 }],
     outcome: { seats: 2, base: 10, threshold: 6, elected: ['c2', 'b2'], runoff: [], openSeats: 0 }, officialResult: null,
   }
-  await mesaWith(page, [root, runoff])
+  await mesaWith(api, [root, runoff])
   const votes = page.locator('.official-round')
   await expect(votes.nth(0).locator('.declared-result')).toContainText('Ana Ruiz')
   await expect(votes.nth(0).locator('.declared-result')).not.toContainText('Carla Mora')
@@ -174,10 +172,10 @@ test('the record marks each vote with who that vote elected and lists the whole 
   await expect(votes.nth(0).locator('.committee-members')).toHaveCount(0)
 })
 
-test('the mesa sees the regional secretary in the list and takes them out without a way back', async ({ page }) => {
+test('the mesa sees the regional secretary in the list and takes them out without a way back', async ({ page, api }) => {
   const takeOuts: string[] = []
   let secretary: Record<string, unknown> = { id: 'rs', firstName: 'Marta', lastName: 'Regional', status: 'active' }
-  await mesaWith(page, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path) => {
+  await mesaWith(api, [tiedVote(1), tiedVote(2), tiedVote(3), draftVote(4)], (method, path) => {
     if (method !== 'POST' || !path.endsWith('/moderator/participants/rs/take-out')) return null
     takeOuts.push(path)
     secretary = { ...secretary, status: 'left' }

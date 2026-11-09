@@ -1,31 +1,25 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './api-fixture'
 import { actaPositions, mockCompletedAssembly } from './acta-fixture'
 
-const api = '**/api/v1/**'
 const amendmentOutcome = { seats: 1, base: 28, threshold: 19, elected: [], runoff: [], openSeats: 0, rule: 'two_thirds', approved: false }
 
-test('la mesa prepara una decisión con 2/3', async ({ page }) => {
+test('la mesa prepara una decisión con 2/3', async ({ page, api }) => {
   const bodies: Array<Record<string, unknown>> = []
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
+      return { json: {
         id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'lobby_closed', completedAt: null,
         participants: [{ id: 'p1', firstName: 'Delegado', lastName: '1' }], participantCount: 1, rounds: [], attendanceRound: null,
-      } })
-      return
+      } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/rounds')) {
       bodies.push(request.postDataJSON())
-      await route.fulfill({ status: 201, json: { id: 'r1' } })
-      return
+      return { status: 201, json: { id: 'r1' } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for the 2/3 form test' } })
   })
 
   await page.goto('/moderator')
@@ -39,19 +33,17 @@ test('la mesa prepara una decisión con 2/3', async ({ page }) => {
   expect(bodies[0]).toEqual({ title: 'Reforma de Estatutos', format: 'single_choice', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds' })
 })
 
-test('el proyector nombra 2/3 y los votos necesarios', async ({ page }) => {
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: {
+test('el proyector nombra 2/3 y los votos necesarios', async ({ page, api }) => {
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      return { json: {
         assembly: { name: 'Asamblea Ordinaria 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' },
         participantCount: 28, recordedCount: 26, eligibleCount: 28,
         round: { id: 'reforma', title: 'Reforma de Estatutos', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds', voteNumber: 1, runoff: false },
         results: [{ optionId: 'favor', label: 'A favor', count: 18 }, { optionId: 'contra', label: 'En contra', count: 8 }],
         outcome: amendmentOutcome,
-      } })
-      return
+      } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/projector?code=DEMO-ROOM')
@@ -60,8 +52,8 @@ test('el proyector nombra 2/3 y los votos necesarios', async ({ page }) => {
   await expect(page.locator('.pj-subtitle')).toHaveText('Se aprueba con 2/3 · 19 votos')
 })
 
-test('el acta nombra 2/3 y los votos necesarios', async ({ page }) => {
-  await mockCompletedAssembly(page, {
+test('el acta nombra 2/3 y los votos necesarios', async ({ page, api }) => {
+  await mockCompletedAssembly(api, {
     period: '2027–2029', positions: actaPositions,
     rounds: [{
       id: 'reforma', title: 'Reforma de Estatutos', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'two_thirds',
@@ -79,20 +71,18 @@ test('el acta nombra 2/3 y los votos necesarios', async ({ page }) => {
   await expect(acta.locator('.acta-meta')).toHaveText(['Se aprueba con 2/3 · 19 votos · 26 de 28 votaron · 2 no votaron'])
 })
 
-test('el teléfono no muestra la regla de aprobación antes de votar', async ({ page }) => {
+test('el teléfono no muestra la regla de aprobación antes de votar', async ({ page, api }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'two-thirds-session'))
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: {
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/participant/me')) {
+      return { json: {
         assembly: { id: 'two-thirds-assembly', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending',
         currentRound: {
           id: 'reforma', title: 'Reforma de Estatutos', status: 'open', format: 'single_choice', category: 'decision', decisionFormat: 'boolean',
           approvalRule: 'two_thirds', options: [{ id: 'favor', label: 'A favor' }, { id: 'contra', label: 'En contra' }],
         },
-      } })
-      return
+      } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for the phone rule test' } })
   })
 
   await page.goto('/')

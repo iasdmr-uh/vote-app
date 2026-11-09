@@ -1,6 +1,6 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import type { Locator } from '@playwright/test'
+import { expect, test, type MockApi } from './api-fixture'
 
-const api = '**/api/v1/**'
 const assembly = { id: 'a1', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' }
 const prophets = ['Isaías', 'Daniel', 'Jeremías', 'Ezequiel', 'Oseas']
 const options = prophets.map((label, index) => ({ id: `o${index}`, label }))
@@ -48,62 +48,59 @@ async function expectRows(rows: Locator, expected: ReadonlyArray<readonly [strin
   for (const [index, row] of expected.entries()) await expect(rows.nth(index)).toHaveText(rowPattern(row))
 }
 
-async function mesaWith(page: Page, round: Record<string, unknown>) {
+async function mesaWith(api: MockApi, round: Record<string, unknown>) {
+  const { page } = api
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'a1')
   })
-  await page.route(api, async (route) => {
-    const request = route.request()
+  api.on(({ request }) => {
     if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/moderator/assemblies/a1')) {
       const { results: _results, outcome: _outcome, explanation: _explanation, ...current } = round
-      await route.fulfill({ json: {
+      return { json: {
         assembly, participants: [{ id: 'p1', firstName: 'Delegado', lastName: '1' }], participantCount: 40, eligibleCount: 40, recordedCount: 36,
         currentRound: current, rounds: [round],
-      } })
-      return
+      } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/moderator')
 }
 
-async function projectorWith(page: Page, round: Record<string, unknown>) {
+async function projectorWith(api: MockApi, round: Record<string, unknown>) {
+  const { page } = api
   const { results, outcome, explanation, ...current } = round
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: { assembly, participantCount: 40, recordedCount: 36, eligibleCount: 40, round: current, results, outcome, explanation } })
-      return
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      return { json: { assembly, participantCount: 40, recordedCount: 36, eligibleCount: 40, round: current, results, outcome, explanation } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/projector?code=DEMO-ROOM')
 }
 
 for (const [where, scope] of [['published result', '.ballot-card'], ['results record', '.official-history']] as const) {
-  test(`the mesa ${where} lists rows by votes with «No votaron» last and no position numbers`, async ({ page }) => {
-    await mesaWith(page, committee)
+  test(`the mesa ${where} lists rows by votes with «No votaron» last and no position numbers`, async ({ page, api }) => {
+    await mesaWith(api, committee)
     const area = page.locator(scope)
     await expectRows(area.locator('.ranked-rows > li'), committeeRows)
     await expect(area.locator('.rank-number')).toHaveCount(0)
   })
 
-  test(`the mesa ${where} shows the base sum and the names each ballot marks`, async ({ page }) => {
-    await mesaWith(page, committee)
+  test(`the mesa ${where} shows the base sum and the names each ballot marks`, async ({ page, api }) => {
+    await mesaWith(api, committee)
     const area = page.locator(scope)
     await expect(area.getByText('36 votaron + 4 no votaron = 40', { exact: true })).toBeVisible()
     await expect(area.getByText('Cada papeleta marca 3 nombres · 3 × 36 = 108 votos', { exact: true })).toBeVisible()
   })
 
-  test(`the mesa ${where} orders a decision by votes and never marks it tied`, async ({ page }) => {
-    await mesaWith(page, decision)
+  test(`the mesa ${where} orders a decision by votes and never marks it tied`, async ({ page, api }) => {
+    await mesaWith(api, decision)
     const area = page.locator(scope)
     await expectRows(area.locator('.ranked-rows > li'), [['En contra', 22, 55], ['A favor', 14, 35], ['No votaron', 4, 10]])
     await expect(area.getByText(/Cada papeleta marca/)).toHaveCount(0)
   })
 
-  test(`the mesa ${where} does not mark an even decision as tied`, async ({ page }) => {
-    await mesaWith(page, evenDecision)
+  test(`the mesa ${where} does not mark an even decision as tied`, async ({ page, api }) => {
+    await mesaWith(api, evenDecision)
     const area = page.locator(scope)
     await expectRows(area.locator('.ranked-rows > li'), [['A favor', 18, 45], ['En contra', 18, 45], ['No votaron', 4, 10]])
     await expect(area.locator('.ranked-rows .badge-warning')).toHaveCount(0)
@@ -111,31 +108,31 @@ for (const [where, scope] of [['published result', '.ballot-card'], ['results re
 }
 
 for (const [where, scope] of [['published result', '.ballot-card'], ['results record', '.official-history']] as const) {
-  test(`the mesa ${where} marks rows tied at the cut as «Desempate»`, async ({ page }) => {
-    await mesaWith(page, tiedCommittee)
+  test(`the mesa ${where} marks rows tied at the cut as «Desempate»`, async ({ page, api }) => {
+    await mesaWith(api, tiedCommittee)
     const rows = page.locator(scope).locator('.ranked-rows > li')
     await expect(rows.locator('.badge-warning')).toHaveText(['Desempate', 'Desempate'])
     await expect(rows.nth(1)).toContainText('Daniel')
     await expect(rows.nth(2)).toContainText('Jeremías')
   })
 
-  test(`the mesa ${where} keeps «Desempate» on rows that continue without a majority`, async ({ page }) => {
-    await mesaWith(page, committee)
+  test(`the mesa ${where} keeps «Desempate» on rows that continue without a majority`, async ({ page, api }) => {
+    await mesaWith(api, committee)
     const rows = page.locator(scope).locator('.ranked-rows > li')
     await expect(rows.locator('.badge-warning')).toHaveText(['Desempate', 'Desempate'])
   })
 }
 
-test('the projector marks rows tied at the cut and rows without a majority as «Desempate»', async ({ page }) => {
-  await projectorWith(page, tiedCommittee)
+test('the projector marks rows tied at the cut and rows without a majority as «Desempate»', async ({ page, api }) => {
+  await projectorWith(api, tiedCommittee)
   await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate'])
-  await page.unrouteAll({ behavior: 'ignoreErrors' })
-  await projectorWith(page, committee)
+  api.reset()
+  await projectorWith(api, committee)
   await expect(page.locator('.pj-results .pj-tie')).toHaveText(['Desempate', 'Desempate'])
 })
 
-test('the projector lists rows by votes with «No votaron» last and no position numbers', async ({ page }) => {
-  await projectorWith(page, committee)
+test('the projector lists rows by votes with «No votaron» last and no position numbers', async ({ page, api }) => {
+  await projectorWith(api, committee)
   const rows = page.locator('.pj-results li')
   await expect(rows).toHaveCount(committeeRows.length)
   for (const [index, [label, count, percent]] of committeeRows.entries()) {
@@ -146,19 +143,19 @@ test('the projector lists rows by votes with «No votaron» last and no position
   await expect(page.locator('.pj-rank')).toHaveCount(0)
 })
 
-test('the projector shows the base sum and the names each ballot marks', async ({ page }) => {
-  await projectorWith(page, committee)
+test('the projector shows the base sum and the names each ballot marks', async ({ page, api }) => {
+  await projectorWith(api, committee)
   await expect(page.getByText('36 votaron + 4 no votaron = 40', { exact: true })).toBeVisible()
   await expect(page.getByText('Cada papeleta marca 3 nombres · 3 × 36 = 108 votos', { exact: true })).toBeVisible()
 })
 
-test('the projector orders a decision by votes and never marks an even split as tied', async ({ page }) => {
+test('the projector orders a decision by votes and never marks an even split as tied', async ({ page, api }) => {
   for (const [round, expected] of [[decision, ['En contra', 'A favor', 'No votaron']], [evenDecision, ['A favor', 'En contra', 'No votaron']]] as const) {
-    await projectorWith(page, round)
+    await projectorWith(api, round)
     await page.getByRole('button', { name: 'Ver conteo' }).click()
     await expect(page.locator('.pj-results li .pj-label')).toHaveText([...expected])
     await expect(page.locator('.pj-results .pj-tie')).toHaveCount(0)
     await expect(page.getByText(/Cada papeleta marca/)).toHaveCount(0)
-    await page.unrouteAll({ behavior: 'ignoreErrors' })
+    api.reset()
   }
 })
