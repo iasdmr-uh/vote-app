@@ -8,7 +8,7 @@
     "build": "nest build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test --test-concurrency=1 test/unit/*.spec.ts",
-    "test:integration": "node --import tsx --test --test-concurrency=1 test/integration/*.spec.ts",
+    "test:integration": "node --import tsx --import ./test/support/decorator-metadata.mjs --test --test-concurrency=1 test/integration/*.spec.ts test/http/*.spec.ts",
     "test:scenarios": "node --import tsx --test --test-concurrency=1 test/unit/tie-sessions.spec.ts test/integration/tie-sessions.spec.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

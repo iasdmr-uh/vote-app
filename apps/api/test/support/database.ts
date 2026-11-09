@@ -1,6 +1,6 @@
 import { PrismaService } from '../../src/prisma/prisma.service.js'
 
-const testDatabaseUrl = process.env.TEST_DATABASE_URL
+export const testDatabaseUrl = process.env.TEST_DATABASE_URL
 
 if (!testDatabaseUrl) throw new Error('Set TEST_DATABASE_URL to a disposable PostgreSQL database with migrations applied.')
 
