@@ -5,6 +5,7 @@ import { RequestMethod } from '@nestjs/common'
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js'
 import { ModulesContainer } from '@nestjs/core'
 import { type Api, startApi } from '../support/api.js'
+import { seedAssembly } from '../support/seed.js'
 
 const publicRoutes = [
   'GET /health',
@@ -14,12 +15,15 @@ const publicRoutes = [
 ]
 
 let api: Api
+let seeded: Awaited<ReturnType<typeof seedAssembly>>
 
 before(async () => {
   api = await startApi()
+  seeded = await seedAssembly(api.prisma, api.room, { label: 'http-route-guards', delegates: ['Delegado 1'] })
 })
 
 after(async () => {
+  await seeded?.cleanup()
   await api?.stop()
 })
 
@@ -56,4 +60,18 @@ test('route guards: every route outside the public list answers 401 without cred
 
   assert.ok(routes.length > publicRoutes.length, 'the app lists its moderator and participant routes')
   assert.deepEqual(open.sort(), [...publicRoutes].sort())
+})
+
+test('route guards: every moderator route answers 401 to a valid delegate session token', async () => {
+  const moderatorRoutes = listRoutes().filter(({ path }) => path.startsWith('/moderator/'))
+  const token = seeded.people['Delegado 1']!.token
+
+  const open: string[] = []
+  for (const { method, path } of moderatorRoutes) {
+    const response = await api.request(method, path.replace(/:\w+/g, () => randomUUID()), { token })
+    if (response.status !== 401) open.push(`${method} ${path}`)
+  }
+
+  assert.ok(moderatorRoutes.length > 0, 'the app lists its moderator routes')
+  assert.deepEqual(open, [])
 })
