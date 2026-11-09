@@ -66,5 +66,4 @@ Phones can reconnect, and the mesa can move to paper.
 
 ## Open questions
 
-- **Casting vote:** whether the Presiding Officer casts it inside or outside the tool. Milestone 1 decides this.
 - **Election date:** not yet recorded. It decides how much of the backfill fits before the election.
