@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test } from './api-fixture'
 
-const api = '**/api/v1/**'
 
 async function signedInMesa(page: Page) {
   await page.addInitScript(() => {
@@ -16,7 +16,7 @@ const root = {
   outcome: { seats: 1, base: 38, threshold: 20, elected: [], runoff: ['m', 'c'], openSeats: 1 }, officialResult: null,
 }
 
-test('desde la 3.ª votación la mesa agrega un candidato «Nuevo», lo puede quitar y abre la votación (M22)', async ({ page }) => {
+test('desde la 3.ª votación la mesa agrega un candidato «Nuevo», lo puede quitar y abre la votación (M22)', async ({ page, api }) => {
   await signedInMesa(page)
   const requests: string[] = []
   const second = {
@@ -29,30 +29,23 @@ test('desde la 3.ª votación la mesa agrega un candidato «Nuevo», lo puede qu
     id: 'presidencia-3', title: 'Presidencia', status: 'draft', category: 'office', voteNumber: 3, runoff: true, committeeRootRoundId: 'presidencia', runoffSourceRoundId: 'presidencia-2',
     options: [{ id: 'm3', label: 'María López', isNew: false }, { id: 'c3', label: 'Carlos Gómez', isNew: false }], officialResult: null,
   }
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [root, second, third], currentRound: second } })
-      return
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [root, second, third], currentRound: second } }
     }
     if (url.pathname.includes('/moderator/rounds/')) requests.push(`${request.method()} ${url.pathname.replace(/^.*\/moderator/, '')}`)
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/presidencia-3/candidates')) {
       const option = { id: 'r3', label: (request.postDataJSON() as { label: string }).label, isNew: true }
       third.options.push(option)
-      await route.fulfill({ status: 201, json: { roundId: 'presidencia-3', option: { ...option, order: 2 } } })
-      return
+      return { status: 201, json: { roundId: 'presidencia-3', option: { ...option, order: 2 } } }
     }
     if (request.method() === 'DELETE' && url.pathname.endsWith('/moderator/rounds/presidencia-3/candidates/r3')) {
       third.options = third.options.filter((option) => option.id !== 'r3')
-      await route.fulfill({ json: { roundId: 'presidencia-3', optionId: 'r3', removed: true } })
-      return
+      return { json: { roundId: 'presidencia-3', optionId: 'r3', removed: true } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/rounds/presidencia-3/open')) {
-      await route.fulfill({ status: 201, json: { roundId: 'presidencia-3', status: 'open', title: 'Presidencia' } })
-      return
+      return { status: 201, json: { roundId: 'presidencia-3', status: 'open', title: 'Presidencia' } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for new candidate test' } })
   })
 
   await page.goto('/moderator')
@@ -90,26 +83,21 @@ test('desde la 3.ª votación la mesa agrega un candidato «Nuevo», lo puede qu
   await expect.poll(() => requests).toContain('POST /rounds/presidencia-3/open')
 })
 
-test('el primer desempate (2.ª votación) se abre directamente, sin agregar candidatos', async ({ page }) => {
+test('el primer desempate (2.ª votación) se abre directamente, sin agregar candidatos', async ({ page, api }) => {
   await signedInMesa(page)
   let opened = ''
   const second = {
     id: 'presidencia-2', title: 'Presidencia', status: 'draft', category: 'office', voteNumber: 2, runoff: true, committeeRootRoundId: 'presidencia', runoffSourceRoundId: 'presidencia',
     options: [{ id: 'm2', label: 'María López' }, { id: 'c2', label: 'Carlos Gómez' }], officialResult: null,
   }
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [root, second], currentRound: root } })
-      return
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [root, second], currentRound: root } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/open')) {
       opened = url.pathname
-      await route.fulfill({ status: 201, json: { roundId: 'presidencia-2', status: 'open' } })
-      return
+      return { status: 201, json: { roundId: 'presidencia-2', status: 'open' } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 
   await page.goto('/moderator')

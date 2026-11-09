@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { MockApi } from './api-fixture'
 
 // The completed Asamblea of Figma A1–A3 (section 160:9): every kind of vote, and an org chart with blanks and an added department.
 
@@ -47,25 +47,16 @@ export const actaPositions = [
   { group: 'department', label: 'Mayordomía', sortOrder: 200, custom: true },
 ].map((position, index) => ({ id: `pos-${index}`, ...position, elected: elected[position.label] ? { label: elected[position.label]!, roundId: 'r-any' } : null }))
 
-export async function mockCompletedAssembly(page: Page, extra: Record<string, unknown> = { period: '2027–2029', positions: actaPositions }) {
-  await page.addInitScript(() => {
+export async function mockCompletedAssembly(api: MockApi, extra: Record<string, unknown> = { period: '2027–2029', positions: actaPositions }) {
+  await api.page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
     window.print = () => {}
   })
-  await page.route('**/api/v1/**', async (route) => {
-    const url = new URL(route.request().url())
-    if (route.request().method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
-        id: 'synthetic-assembly', name: 'IV Asamblea Reorganizativa 2026', status: 'completed', completedAt: '2026-11-03T20:00:00.000Z',
-        participants: Array.from({ length: 37 }, (_, index) => ({ id: `p${index}`, firstName: 'Delegado', lastName: `${index + 1}` })),
-        leftParticipants: [{ id: 'p-left', firstName: 'Pedro', lastName: 'Vargas' }], participantCount: 37,
-        rounds: actaRounds, ...extra,
-      } })
-      return
-    }
-    if (url.pathname.endsWith('/moderator/session')) { await route.fulfill({ json: { authenticated: true } }); return }
-    if (url.pathname.endsWith('/moderator/assemblies/active')) { await route.fulfill({ json: { assembly: null } }); return }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for acta test' } })
-  })
+  api.get('/moderator/assemblies/synthetic-assembly', () => ({ json: {
+    id: 'synthetic-assembly', name: 'IV Asamblea Reorganizativa 2026', status: 'completed', completedAt: '2026-11-03T20:00:00.000Z',
+    participants: Array.from({ length: 37 }, (_, index) => ({ id: `p${index}`, firstName: 'Delegado', lastName: `${index + 1}` })),
+    leftParticipants: [{ id: 'p-left', firstName: 'Pedro', lastName: 'Vargas' }], participantCount: 37,
+    rounds: actaRounds, ...extra,
+  } }))
 }

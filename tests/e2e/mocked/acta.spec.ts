@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
+import type { Page } from '@playwright/test'
+import { expect, test } from './api-fixture'
 import { mockCompletedAssembly } from './acta-fixture'
 
 // Printed acta in the Agenda UH 2026 style (#47, Figma A1–A3).
@@ -12,8 +14,8 @@ async function openPrintedActa(page: Page) {
   return acta
 }
 
-test('el acta impresa lista cada votación en orden con su número, participación, mayoría y etiquetas (A1–A2)', async ({ page }) => {
-  await mockCompletedAssembly(page)
+test('el acta impresa lista cada votación en orden con su número, participación, mayoría y etiquetas (A1–A2)', async ({ page, api }) => {
+  await mockCompletedAssembly(api)
   const acta = await openPrintedActa(page)
 
   await expect(acta.getByRole('img', { name: 'Con poder y gloria' }).first()).toBeVisible()
@@ -52,8 +54,8 @@ test('el acta impresa lista cada votación en orden con su número, participaci�
   await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeHidden()
 })
 
-test('el organigrama muestra la Junta directiva y los Departamentos, con puestos sin votar en blanco y el departamento agregado (A3)', async ({ page }) => {
-  await mockCompletedAssembly(page)
+test('el organigrama muestra la Junta directiva y los Departamentos, con puestos sin votar en blanco y el departamento agregado (A3)', async ({ page, api }) => {
+  await mockCompletedAssembly(api)
   const acta = await openPrintedActa(page)
   const org = acta.locator('.acta-org')
   await expect(org.getByRole('heading', { name: 'OFICIALES DE UNIÓN HONDUREÑA' })).toBeVisible()
@@ -85,17 +87,17 @@ test('el organigrama muestra la Junta directiva y los Departamentos, con puestos
   }
 })
 
-test('sin puestos no se imprime el organigrama', async ({ page }) => {
-  await mockCompletedAssembly(page, {})
+test('sin puestos no se imprime el organigrama', async ({ page, api }) => {
+  await mockCompletedAssembly(api, {})
   const acta = await openPrintedActa(page)
   await expect(acta.locator('.acta-round')).toHaveCount(8)
   await expect(acta.locator('.acta-org')).toHaveCount(0)
   await expect(acta.getByText('OFICIALES DE UNIÓN HONDUREÑA')).toHaveCount(0)
 })
 
-test('el acta se imprime en tamaño carta sin cortar votaciones', async ({ page, browserName }) => {
+test('el acta se imprime en tamaño carta sin cortar votaciones', async ({ page, api, browserName }) => {
   test.skip(browserName !== 'chromium', 'PDF output is Chromium only')
-  await mockCompletedAssembly(page)
+  await mockCompletedAssembly(api)
   await openPrintedActa(page)
   const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true })
   const text = pdf.toString('latin1')
@@ -103,4 +105,112 @@ test('el acta se imprime en tamaño carta sin cortar votaciones', async ({ page,
   // A1 and A2 for the history, A3 for the org chart.
   expect(pages.length).toBe(3)
   expect(text).toMatch(/\/MediaBox\s*\[0 0 612 792\]/)
+})
+
+function sheetRows(xml: string) {
+  const unescape = (text: string) => text.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  return [...xml.matchAll(/<row [^>]*>(.*?)<\/row>/g)].map(([, row]) => [...row!.matchAll(/<c [^>]*?(t="inlineStr")?>(.*?)<\/c>/g)]
+    .map(([, inline, body]) => inline ? unescape(body!.replace(/^<is><t xml:space="preserve">|<\/t><\/is>$/g, '')) : Number(body!.replace(/<\/?v>/g, ''))))
+}
+
+test('después de finalizar, la mesa imprime el acta, descarga la hoja de cálculo y borra los datos', async ({ page, api }) => {
+  let deleted = false
+  let deleteBody: unknown
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+    window.print = () => { (window as unknown as { printed: number }).printed = ((window as unknown as { printed?: number }).printed ?? 0) + 1 }
+  })
+  api.on(({ request, url }) => {
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly') && !deleted) {
+      return { json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
+        participants: [{ id: 'p1', firstName: 'Delegado', lastName: 'Sintético' }], participantCount: 1,
+        rounds: [
+          { id: 'r1', title: 'Presidencia', status: 'published', participationCount: 4, eligibleCount: 5, options: [{ id: 'a', label: 'Rosa' }, { id: 'b', label: 'Pedro' }],
+            results: [{ optionId: 'a', label: 'Rosa', count: 3 }, { optionId: 'b', label: 'Pedro', count: 1 }],
+            outcome: { seats: 1, base: 5, threshold: 3, elected: ['a'], runoff: [], openSeats: 0 },
+            officialResult: { elected: [{ optionId: 'a', label: 'Rosa' }], note: null, declaredBy: 'shared_moderator_credential', declaredAt: '2026-10-02T18:00:00.000Z', publishedAt: '2026-10-02T18:01:00.000Z' } },
+          { id: 'r2', title: 'Secretaría', status: 'annulled', annulReason: 'Nombre mal escrito', participationCount: 1, options: [{ id: 'c', label: 'Juan' }] },
+          { id: 'r3', title: 'Tesorería', status: 'published', participationCount: 1, options: [{ id: 'f', label: '=HYPERLINK("http://x","y")' }],
+            results: [{ optionId: 'f', label: '=HYPERLINK("http://x","y")', count: 1 }] },
+        ],
+      } }
+    }
+    if (request.method() === 'DELETE' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      deleteBody = request.postDataJSON()
+      deleted = true
+      return { json: { assemblyId: 'synthetic-assembly', deleted: true, vacuumed: true } }
+    }
+    if (request.method() === 'POST' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly/log')) {
+      return { status: 200, contentType: 'text/csv; charset=utf-8', body: '﻿"Hora","Tipo","Acción"\r\n' }
+    }
+    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) { return { json: { assembly: null } } }
+  })
+
+  await page.goto('/moderator')
+  await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeVisible()
+
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Descargar hoja de cálculo' }).click()
+  expect((await download).suggestedFilename()).toBe('acta-asamblea-de-prueba.xlsx')
+  const sheet = execFileSync('unzip', ['-p', await (await download).path() as string, 'xl/worksheets/sheet1.xml'], { encoding: 'utf8' })
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '4 de 5 votaron · 1 no votó', 1, 'Rosa', 3, 60, '', 'Electo/a'])
+  expect(sheetRows(sheet)).toContainEqual(['Presidencia', 'publicada', '4 de 5 votaron · 1 no votó', 2, 'Pedro', 1, 20, '', 'No continúa'])
+  expect(sheetRows(sheet)).toContainEqual(['Secretaría', 'anulada: Nombre mal escrito', '1 votó', '', '', '', '', '', ''])
+  expect(sheetRows(sheet)).toContainEqual(['Tesorería', 'publicada', '1 votó', 1, '=HYPERLINK("http://x","y")', 1, '', '', ''])
+  expect(sheet).not.toContain('<f>')
+
+  const acta = page.locator('.acta-print')
+  await expect(acta).toHaveCount(0)
+  await page.getByRole('button', { name: 'Imprimir o guardar PDF' }).click()
+  expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1)
+  await expect(acta).toBeHidden()
+  await page.emulateMedia({ media: 'print' })
+  await expect(acta).toBeVisible()
+  await expect(acta.getByRole('heading', { name: 'ACTA DE VOTACIONES' })).toBeVisible()
+  await expect(acta.locator('.acta-round').nth(0).locator('.acta-meta')).toHaveText('4 de 5 votaron · 1 no votó · Mayoría: 3')
+  await expect(acta.locator('.acta-round').nth(1)).toContainText('ANULADA')
+  await expect(acta.locator('.acta-round').nth(1).locator('.acta-meta')).toHaveText('Nombre mal escrito')
+  await expect(page.getByRole('heading', { name: 'Acta y borrado de datos' })).toBeHidden()
+  await page.emulateMedia({ media: 'screen' })
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+  await expect(acta).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Borrar datos de la Asamblea' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Borrar datos' })).toBeDisabled()
+  await dialog.getByLabel('Escribe BORRAR para confirmar').fill('borrar')
+  await expect(dialog.getByRole('button', { name: 'Borrar datos' })).toBeDisabled()
+  await dialog.getByLabel('Escribe BORRAR para confirmar').fill('BORRAR')
+  await dialog.getByRole('button', { name: 'Borrar datos' }).click()
+  await expect(page.getByText('Se borraron los datos de la Asamblea. Al apagar, sigue el cierre de la guía del técnico.')).toBeVisible()
+  expect(deleteBody).toEqual({ confirmation: true })
+  await expect(page.getByRole('button', { name: 'Crear Asamblea' })).toBeVisible()
+  expect(await page.evaluate(() => sessionStorage.getItem('assemblyId'))).toBeNull()
+})
+
+test('sin una votación contada, los habilitados del acta incluyen a quienes salieron', async ({ page, api }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
+    sessionStorage.setItem('assemblyId', 'synthetic-assembly')
+    window.print = () => {}
+  })
+  api.on(({ request, url }) => {
+    if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
+      return { json: {
+        id: 'synthetic-assembly', name: 'Asamblea de prueba', status: 'completed', completedAt: '2026-10-02T18:30:00.000Z',
+        participants: [{ id: 'p1', firstName: 'Ana', lastName: 'Reyes' }], leftParticipants: [{ id: 'p2', firstName: 'Pedro', lastName: 'Vargas' }], participantCount: 1,
+        rounds: [{ id: 'r1', title: 'Presidencia', status: 'annulled', annulReason: 'Error', participationCount: 2, eligibleCount: 2, options: [{ id: 'a', label: 'Alfa' }], officialResult: null }],
+      } }
+    }
+    if (url.pathname.endsWith('/moderator/session')) { return { json: { authenticated: true } } }
+    if (url.pathname.endsWith('/moderator/assemblies/active')) { return { json: { assembly: null } } }
+  })
+
+  await page.goto('/moderator')
+  await page.getByRole('button', { name: 'Imprimir o guardar PDF' }).click()
+  const acta = page.locator('.acta-print')
+  await expect(acta.locator('.acta-summary')).toHaveText('2 habilitados · 1 votación · 1 anulada')
 })

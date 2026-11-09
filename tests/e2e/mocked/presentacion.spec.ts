@@ -1,17 +1,15 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test, type MockApi } from './api-fixture'
 
 /** #48: slides in the Agenda UH 2026 style on the projector (Figma 160:9, P1–P6). */
-const api = '**/api/v1/**'
 
 const assembly = { name: 'IV Asamblea Reorganizativa 2026', status: 'in_progress', lobbyStatus: 'lobby_closed' }
 
-async function projectorWith(page: Page, publicState: Record<string, unknown> | (() => Record<string, unknown>)) {
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: typeof publicState === 'function' ? publicState() : publicState })
-      return
+function projectorWith(api: MockApi, publicState: Record<string, unknown> | (() => Record<string, unknown>)) {
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      return { json: typeof publicState === 'function' ? publicState() : publicState }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
 }
 
@@ -25,8 +23,8 @@ async function refreshByPolling(page: Page) {
 test.describe('diapositivas del proyector', () => {
   test.use({ viewport: { width: 1920, height: 1080 } })
 
-  test('P2: el cargo electo en grande, sus votos sobre los habilitados y el desempate', async ({ page }) => {
-    await projectorWith(page, {
+  test('P2: el cargo electo en grande, sus votos sobre los habilitados y el desempate', async ({ page, api }) => {
+    projectorWith(api, {
       assembly, participantCount: 38, recordedCount: 37, eligibleCount: 38,
       round: { id: 'presidente-2', title: 'Presidente', status: 'published', category: 'office', voteNumber: 2, runoff: true },
       results: [{ optionId: 'm', label: 'María López', count: 25 }, { optionId: 'c', label: 'Carlos Gómez', count: 12 }],
@@ -53,9 +51,9 @@ test.describe('diapositivas del proyector', () => {
     await expect(slide).toBeVisible()
   })
 
-  test('P2 cabe en una pantalla más pequeña con la misma proporción', async ({ page }) => {
+  test('P2 cabe en una pantalla más pequeña con la misma proporción', async ({ page, api }) => {
     await page.setViewportSize({ width: 1280, height: 720 })
-    await projectorWith(page, {
+    projectorWith(api, {
       assembly, participantCount: 38, recordedCount: 38, eligibleCount: 38,
       round: { id: 'tesorero', title: 'Tesorero', status: 'published', category: 'office', voteNumber: 1, runoff: false },
       results: [{ optionId: 'p', label: 'Pedro Antonio Vargas Hernández', count: 30 }, { optionId: 'x', label: 'Otro', count: 8 }],
@@ -73,9 +71,9 @@ test.describe('diapositivas del proyector', () => {
   })
 
   for (const approved of [true, false]) {
-    test(`P3: la decisión «${approved ? 'Aprobada' : 'No aprobada'}» con A favor, En contra y la regla`, async ({ page }) => {
+    test(`P3: la decisión «${approved ? 'Aprobada' : 'No aprobada'}» con A favor, En contra y la regla`, async ({ page, api }) => {
       const counts = approved ? [30, 6] : [27, 9]
-      await projectorWith(page, {
+      projectorWith(api, {
         assembly, participantCount: 38, recordedCount: 36, eligibleCount: 38,
         round: { id: 'presupuesto', title: 'Presupuesto 2027', status: 'published', category: 'decision', decisionFormat: 'boolean', approvalRule: 'three_quarters', voteNumber: 1, runoff: false },
         results: [{ optionId: 'favor', label: 'A favor', count: counts[0] }, { optionId: 'contra', label: 'En contra', count: counts[1] }],
@@ -94,8 +92,8 @@ test.describe('diapositivas del proyector', () => {
     })
   }
 
-  test('P6: la comisión completa, en orden, con sus votos y los integrantes', async ({ page }) => {
-    await projectorWith(page, {
+  test('P6: la comisión completa, en orden, con sus votos y los integrantes', async ({ page, api }) => {
+    projectorWith(api, {
       assembly, participantCount: 38, recordedCount: 36, eligibleCount: 38,
       round: { id: 'finanzas', title: 'Comisión de Finanzas', status: 'published', category: 'committee', memberCount: 3, electionSeats: 3, voteNumber: 1, runoff: false },
       results: [{ optionId: 'a', label: 'Ana Ruiz', count: 30 }, { optionId: 'j', label: 'Jorge Banegas', count: 26 }, { optionId: 'e', label: 'Elena Castro', count: 24 }, { optionId: 'l', label: 'Luis Pérez', count: 9 }],
@@ -110,9 +108,9 @@ test.describe('diapositivas del proyector', () => {
     await expect(slide.getByText('Luis Pérez')).toHaveCount(0)
   })
 
-  test('P6: los delegados elegidos en desempates suman los anteriores; muchos van en dos columnas', async ({ page }) => {
+  test('P6: los delegados elegidos en desempates suman los anteriores; muchos van en dos columnas', async ({ page, api }) => {
     const names = ['Ana Ruiz', 'Jorge Banegas', 'Elena Castro', 'Luis Pérez', 'Sofía Méndez', 'Juan Mora', 'Rosa Díaz', 'Mario Aguilar']
-    await projectorWith(page, {
+    projectorWith(api, {
       assembly, participantCount: 38, recordedCount: 36, eligibleCount: 38,
       round: { id: 'delegados-2', title: 'Delegados para CG', status: 'published', category: 'committee', memberCount: 8, electionSeats: 2, voteNumber: 2, runoff: true },
       // Only this vote's counts reach the projector: the six elected earlier show without votes.
@@ -132,10 +130,10 @@ test.describe('diapositivas del proyector', () => {
     expect(list!.y + list!.height).toBeLessThanOrEqual(1080)
   })
 
-  test('sin resultado definido se queda el conteo detallado; cerrada o anulada no cambian', async ({ page }) => {
+  test('sin resultado definido se queda el conteo detallado; cerrada o anulada no cambian', async ({ page, api }) => {
     await page.clock.install()
     let status = 'closed'
-    await projectorWith(page, () => ({
+    projectorWith(api, () => ({
       assembly, participantCount: 37, recordedCount: 36, eligibleCount: 38,
       round: { id: 'finanzas', title: 'Comisión de Finanzas', status, category: 'committee', memberCount: 3, electionSeats: 3, voteNumber: 1, runoff: false },
       ...(status === 'published' ? {
@@ -157,14 +155,14 @@ test.describe('diapositivas del proyector', () => {
     await expect(page.locator('.pj-status')).toHaveText('Votación anulada')
   })
 
-  test('«Presentar oficiales»: portada, Junta directiva y Departamentos con puestos en blanco', async ({ page }) => {
+  test('«Presentar oficiales»: portada, Junta directiva y Departamentos con puestos en blanco', async ({ page, api }) => {
     await page.clock.install()
     let presentation = { active: true, slide: 0 }
     const positions = [
       ...['Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal 1', 'Vocal 2', 'Vocal 3'].map((label, index) => ({ id: `b${index}`, group: 'board', label, sortOrder: index, custom: false, elected: index === 0 ? { label: 'María López', roundId: 'r1' } : index === 1 ? { label: 'Juan Mora', roundId: 'r2' } : null })),
       ...['Auditor', 'Escuela Sabática', 'Obra Misionera', 'Niños', 'Jóvenes', 'Asistencia Social', 'Salud', 'Familia', 'Colportaje', 'Música', 'Industria y Comercio', 'Multimedia', 'Agricultura', 'Construcción', 'Comunicación'].map((label, index) => ({ id: `d${index}`, group: 'department', label, sortOrder: index, custom: index === 14, elected: index === 0 ? { label: 'Carlos Gómez', roundId: 'r3' } : null })),
     ]
-    await projectorWith(page, () => ({
+    projectorWith(api, () => ({
       assembly, assemblyName: 'IV Asamblea Reorganizativa 2026', period: '2027–2029', participantCount: 38, positions, presentation,
       round: { id: 'presidente', title: 'Presidente', status: 'open', category: 'office' },
     }))
@@ -210,10 +208,10 @@ test.describe('diapositivas del proyector', () => {
     await expect(page.getByRole('heading', { name: 'Presidente' })).toBeVisible()
   })
 
-  test('sin puestos del servidor la Junta directiva sale completa y en blanco; sin periodo la portada lo omite', async ({ page }) => {
+  test('sin puestos del servidor la Junta directiva sale completa y en blanco; sin periodo la portada lo omite', async ({ page, api }) => {
     await page.clock.install()
     let presentation = { active: true, slide: 0 }
-    await projectorWith(page, () => ({ assembly: { ...assembly, name: 'Asamblea de prueba' }, participantCount: 3, presentation }))
+    projectorWith(api, () => ({ assembly: { ...assembly, name: 'Asamblea de prueba' }, participantCount: 3, presentation }))
     await page.goto('/projector?code=DEMO-ROOM')
     await expect(page.locator('.cover-assembly')).toHaveText('Asamblea de prueba')
     await expect(page.locator('.cover-period')).toHaveCount(0)
@@ -224,31 +222,26 @@ test.describe('diapositivas del proyector', () => {
   })
 })
 
-test('la mesa presenta los oficiales: activa, pasa con flechas y termina', async ({ page }) => {
+test('la mesa presenta los oficiales: activa, pasa con flechas y termina', async ({ page, api }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
   let presentation = { active: false, slide: 0 }
   const calls: unknown[] = []
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: {
+      return { json: {
         id: 'synthetic-assembly', name: 'IV Asamblea Reorganizativa 2026', status: 'in_progress', completedAt: null,
         participants: [], participantCount: 0, attendanceRound: null, rounds: [], presentation,
-      } })
-      return
+      } }
     }
     if (request.method() === 'POST' && url.pathname.endsWith('/moderator/presentation')) {
       const body = request.postDataJSON()
       calls.push(body)
       presentation = { active: body.active, slide: body.slide }
-      await route.fulfill({ json: { assemblyId: 'synthetic-assembly', presentation } })
-      return
+      return { json: { assemblyId: 'synthetic-assembly', presentation } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for presentation test' } })
   })
 
   await page.goto('/moderator')

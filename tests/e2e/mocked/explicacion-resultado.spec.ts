@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { expect, test, type MockApi } from './api-fixture'
 
-const api = '**/api/v1/**'
 const assembly = { id: 'a1', name: 'Asamblea de prueba', status: 'in_progress', lobbyStatus: 'lobby_closed' }
 const committee = { id: 'r1', title: 'Comisión de Finanzas', category: 'committee', memberCount: 3, electionSeats: 3, voteNumber: 1, participationCount: 38, eligibleCount: 38 }
 const prophets = ['Isaías', 'Jeremías', 'Ezequiel', 'Daniel', 'Oseas']
@@ -20,22 +20,20 @@ const finalResult = {
 }
 const finalParagraph = 'Mayoría simple de 38 habilitados = 20 votos. Electo/a: Isaías (22) y Jeremías (21).'
 
-async function mesaWith(page: Page, round: Record<string, unknown>) {
+async function mesaWith(api: MockApi, round: Record<string, unknown>) {
+  const { page } = api
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'a1')
   })
-  await page.route(api, async (route) => {
-    const request = route.request()
+  api.on(({ request }) => {
     if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/moderator/assemblies/a1')) {
       const { results: _results, outcome: _outcome, explanation: _explanation, final: _final, officialResult: _official, ...current } = round
-      await route.fulfill({ json: {
+      return { json: {
         assembly, participants: [{ id: 'p1', firstName: 'Delegado', lastName: '1' }], participantCount: 38, eligibleCount: 38, recordedCount: 38,
         currentRound: current, rounds: [round],
-      } })
-      return
+      } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/moderator')
 }
@@ -53,57 +51,55 @@ async function expectToggle(page: Page, scope: string, text: string) {
   await expect(area.getByText(text, { exact: true })).toBeHidden()
 }
 
-test('the mesa opens and closes the explanation of a preliminary result', async ({ page }) => {
-  await mesaWith(page, { ...committee, status: 'published', options, results, outcome, explanation })
+test('the mesa opens and closes the explanation of a preliminary result', async ({ page, api }) => {
+  await mesaWith(api, { ...committee, status: 'published', options, results, outcome, explanation })
   await expectToggle(page, '.ballot-card', paragraph)
 })
 
-test('the mesa opens and closes the explanation of a final result', async ({ page }) => {
-  await mesaWith(page, { ...finalRound, ...finalResult })
+test('the mesa opens and closes the explanation of a final result', async ({ page, api }) => {
+  await mesaWith(api, { ...finalRound, ...finalResult })
   await expectToggle(page, '.ballot-card', finalParagraph)
 })
 
-test('the results record explains each result', async ({ page }) => {
-  await mesaWith(page, { ...committee, status: 'published', options, results, outcome, explanation })
+test('the results record explains each result', async ({ page, api }) => {
+  await mesaWith(api, { ...committee, status: 'published', options, results, outcome, explanation })
   await expectToggle(page, '.official-history', paragraph)
 })
 
-async function projectorWith(page: Page, state: Record<string, unknown>) {
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: { assembly, participantCount: 38, recordedCount: 38, eligibleCount: 38, ...state } })
-      return
+async function projectorWith(api: MockApi, state: Record<string, unknown>) {
+  const { page } = api
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
+      return { json: { assembly, participantCount: 38, recordedCount: 38, eligibleCount: 38, ...state } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/projector?code=DEMO-ROOM')
 }
 
-test('the projector shows the explanation as a fixed line', async ({ page }) => {
-  await projectorWith(page, { round: { ...committee, status: 'published' }, results, outcome, explanation, continuing: [] })
+test('the projector shows the explanation as a fixed line', async ({ page, api }) => {
+  await projectorWith(api, { round: { ...committee, status: 'published' }, results, outcome, explanation, continuing: [] })
   await expect(page.locator('.pj-explanation')).toHaveText(paragraph)
   await expect(page.getByRole('button', { name: '¿Cómo se decidió?' })).toHaveCount(0)
 })
 
-test('the projector explains a final result in its count view', async ({ page }) => {
+test('the projector explains a final result in its count view', async ({ page, api }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   const { final: _final, ...rest } = finalResult
-  await projectorWith(page, { round: finalRound, ...rest, final: { elected: finalResult.officialResult.elected, approved: null } })
+  await projectorWith(api, { round: finalRound, ...rest, final: { elected: finalResult.officialResult.elected, approved: null } })
   await page.getByRole('button', { name: 'Ver conteo' }).click()
   await expect(page.locator('.pj-explanation')).toHaveText(finalParagraph)
 })
 
-async function phoneWith(page: Page, state: Record<string, unknown>) {
+async function phoneWith(api: MockApi, state: Record<string, unknown>) {
+  const { page } = api
   await page.addInitScript(() => {
     localStorage.setItem('participantSessionToken', 'synthetic-participant-token')
     localStorage.setItem('participantAssemblyId', 'a1')
   })
-  await page.route(api, async (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: { assembly, ...state } })
-      return
+  api.on(({ url }) => {
+    if (url.pathname.endsWith('/participant/me')) {
+      return { json: { assembly, ...state } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/')
 }
@@ -112,8 +108,8 @@ for (const [moment, state] of [
   ['an open vote', { participationStatus: 'pending', currentRound: { ...committee, status: 'open', format: 'multiple_choice', options } }],
   ['a published result', { participationStatus: 'recorded', currentRound: { ...committee, status: 'published', options }, results, outcome, explanation }],
 ] as const) {
-  test(`the phone shows no rule, explanation or information button during ${moment}`, async ({ page }) => {
-    await phoneWith(page, state)
+  test(`the phone shows no rule, explanation or information button during ${moment}`, async ({ page, api }) => {
+    await phoneWith(api, state)
     await expect(page.locator(`.phone-screen[data-round-status="${state.currentRound.status}"]`)).toBeVisible()
     await expect(page.locator('.result-summary, .result-so-far, .ranked-rows')).toHaveCount(0)
     await expect(page.getByRole('button', { name: '¿Cómo se decidió?' })).toHaveCount(0)

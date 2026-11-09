@@ -1,6 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type MockApi } from './api-fixture'
 
-const api = '**/api/v1/**'
 const prophets = [{ id: 'i', label: 'Isaías' }, { id: 'j', label: 'Jeremías' }, { id: 'e', label: 'Ezequiel' }]
 const pair = prophets.slice(0, 2)
 
@@ -24,28 +23,25 @@ function repeated(status: 'open' | 'closed') {
   return { id: 'presidencia-3', title: 'Presidencia', status, category: 'office', voteNumber: 2, runoff: true, committeeRootRoundId: 'presidencia', runoffSourceRoundId: 'presidencia', options: pair, officialResult: null }
 }
 
-async function mesaWith(page: Page, current: ReturnType<typeof repeated>) {
+async function mesaWith(api: MockApi, current: ReturnType<typeof repeated>) {
+  const { page } = api
   await page.addInitScript(() => {
     sessionStorage.setItem('moderatorToken', 'synthetic-moderator-token')
     sessionStorage.setItem('assemblyId', 'synthetic-assembly')
   })
   const requests: string[] = []
-  await page.route(api, async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
+  api.on(({ request, url }) => {
     if (request.method() !== 'GET') requests.push(`${request.method()} ${url.pathname}`)
     if (request.method() === 'GET' && url.pathname.endsWith('/moderator/assemblies/synthetic-assembly')) {
-      await route.fulfill({ json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [budget, first, annulled, current], currentRound: current } })
-      return
+      return { json: { id: 'synthetic-assembly', name: 'Asamblea Ordinaria 2026', status: 'in_progress', rounds: [budget, first, annulled, current], currentRound: current } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route for vote progress test' } })
   })
   await page.goto('/moderator')
   return requests
 }
 
-test('la mesa ve una pestaña por elección y decisión, con cada votación en una columna en orden', async ({ page }) => {
-  await mesaWith(page, repeated('open'))
+test('la mesa ve una pestaña por elección y decisión, con cada votación en una columna en orden', async ({ page, api }) => {
+  await mesaWith(api, repeated('open'))
   const progress = page.locator('.election-progress')
   await expect(progress.getByRole('tab')).toHaveText(['Presupuesto 2027', 'Presidencia'])
   await expect(progress.getByRole('tab', { name: 'Presidencia' })).toHaveAttribute('aria-selected', 'true')
@@ -69,16 +65,16 @@ test('la mesa ve una pestaña por elección y decisión, con cada votación en u
   await expect(open.locator('.progress-rows, .progress-needed, .progress-outcome, .progress-next')).toHaveCount(0)
 })
 
-test('una votación cerrada no muestra conteos hasta que la pantalla pública los muestra', async ({ page }) => {
-  await mesaWith(page, repeated('closed'))
+test('una votación cerrada no muestra conteos hasta que la pantalla pública los muestra', async ({ page, api }) => {
+  await mesaWith(api, repeated('closed'))
   const column = page.locator('.election-progress .progress-column').nth(2)
   await expect(column.locator('.progress-state')).toHaveText('Preparando el resultado')
   await expect(column.locator('.progress-options li')).toHaveText(['Isaías', 'Jeremías'])
   await expect(column.locator('.progress-rows, .progress-needed, .progress-outcome, .progress-next')).toHaveCount(0)
 })
 
-test('la pestaña de una decisión muestra su regla, su resultado y que está tomada', async ({ page }) => {
-  await mesaWith(page, repeated('open'))
+test('la pestaña de una decisión muestra su regla, su resultado y que está tomada', async ({ page, api }) => {
+  await mesaWith(api, repeated('open'))
   const progress = page.locator('.election-progress')
   await progress.getByRole('tab', { name: 'Presupuesto 2027' }).click()
   await expect(progress.getByRole('tab', { name: 'Presupuesto 2027' })).toHaveAttribute('aria-selected', 'true')
@@ -90,8 +86,8 @@ test('la pestaña de una decisión muestra su regla, su resultado y que está to
   await expect(column.locator('.progress-next')).toHaveText('Decisión tomada')
 })
 
-test('el avance de votaciones solo se consulta: cambiar de pestaña no envía nada y no usa palabras de competencia', async ({ page }) => {
-  const requests = await mesaWith(page, repeated('open'))
+test('el avance de votaciones solo se consulta: cambiar de pestaña no envía nada y no usa palabras de competencia', async ({ page, api }) => {
+  const requests = await mesaWith(api, repeated('open'))
   const progress = page.locator('.election-progress')
   await expect(progress.getByRole('tab')).toHaveCount(2)
   await expect(progress.locator('button:not([role="tab"]), input, select, textarea, a')).toHaveCount(0)
@@ -101,19 +97,15 @@ test('el avance de votaciones solo se consulta: cambiar de pestaña no envía na
   await expect(progress).not.toContainText(/elimina|ganador|gana|perd|🏆/i)
 })
 
-test('el teléfono y el proyector no muestran el avance de votaciones', async ({ page }) => {
+test('el teléfono y el proyector no muestran el avance de votaciones', async ({ page, api }) => {
   await page.addInitScript(() => localStorage.setItem('participantSessionToken', 'progress-session'))
-  await page.route(api, async (route) => {
-    const url = new URL(route.request().url())
+  api.on(({ url }) => {
     if (url.pathname.endsWith('/participant/me')) {
-      await route.fulfill({ json: { assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending', currentRound: repeated('open'), rounds: [budget, first, annulled, repeated('open')] } })
-      return
+      return { json: { assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' }, participationStatus: 'pending', currentRound: repeated('open'), rounds: [budget, first, annulled, repeated('open')] } }
     }
     if (url.pathname.endsWith('/assemblies/DEMO-ROOM/public-state')) {
-      await route.fulfill({ json: { assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' }, round: repeated('open'), rounds: [budget, first, annulled, repeated('open')] } })
-      return
+      return { json: { assembly: { id: 'a', name: 'Asamblea prueba', status: 'in_progress' }, round: repeated('open'), rounds: [budget, first, annulled, repeated('open')] } }
     }
-    await route.fulfill({ status: 404, json: { message: 'No mock route' } })
   })
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'Revisar mi voto' })).toBeVisible()
