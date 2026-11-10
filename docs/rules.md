@@ -35,11 +35,13 @@ The base counts people, never marks. A delegate can mark a candidate only once, 
 | A tie for the last seats goes to a new secret vote among the tied | Offices, committees | Reglamento 05-12 03(6): «En caso de empate para el último o últimos puestos se procederá a una nueva votación entre los candidatos empatados. La votación será secreta.» |
 | Candidates with a majority form the committee | Committees | Reglamento 05-12 03(5): «Los candidatos que reciban mayoría simple de votos conformarán la comisión» |
 | Elected only inside the top N and with a majority | Offices, committees | Project decision, 2 Nov 2026 |
-| Candidates above the line without a majority go to the next vote | Offices, committees | Project decision, 2 Nov 2026 |
-| Add the next candidate when the next vote offers no choice | Offices, committees | Project decision, 2 Nov 2026 |
-| Each delegate marks exactly the open seats | Committees and their later votes | Project decision, 2 Nov 2026 |
+| Candidates above the line without a majority go to the next vote | Offices, committees | Project decision, 2 Nov 2026, confirmed in use 8 Nov 2026 |
+| Add the next candidate when the next vote offers no choice | Offices, committees | Project decision, 2 Nov 2026, confirmed in use 8 Nov 2026 |
+| Each delegate marks exactly the open seats, also when candidates equal seats | Committees and their later votes | Project decision, 2 Nov 2026, confirmed in use 8 Nov 2026 |
+| A committee ballot needs at least as many candidates as seats | Committees | Project decision, confirmed in use 8 Nov 2026 |
 | New candidate allowed from the 3rd vote | Offices, committees | Project decision, 2 Nov 2026, explained by the union representatives |
-| Regional secretary joins as one more secret voter, base + 1 | Offices, committees and Opciones decisions, from the 4th vote, after a tie at the cut. Stays for the later votes of that election while in the room | Reglamento 05-09 02: «El representante de la Conferencia General tendrá derecho a voto dirimente, cuando persiste un empate en las votaciones hasta tres votaciones.» 03-06 06 names the Secretario Regional as that representative. Mechanism is a project decision, 6 Nov 2026 |
+| Regional secretary joins as one more secret voter, base + 1 | Offices, committees and Opciones decisions, from the 4th vote, after a tie at the cut. Stays for the later votes of that election while in the room | Reglamento 05-09 02: «El representante de la Conferencia General tendrá derecho a voto dirimente, cuando persiste un empate en las votaciones hasta tres votaciones.» 03-06 06 names the Secretario Regional as that representative. Mechanism is a project decision, 6 Nov 2026. The app offers the option after a tie at the cut in the previous vote, and the Presiding Board decides whether the tie has persisted, confirmed in use 8 Nov 2026 |
+| A tie that keeps repeating or a seat nobody can fill goes to the Presiding Board, which decides with its own means | Offices, committees | Maintainer decision, 8 Nov 2026 |
 | 3/4 of the base, rounded up | Decisions, when the ballot asks for it | Board decision, final, 8 Nov 2026, #88 |
 | A result is final only when its election is complete, with every seat filled. Until then it is preliminary. Only a final result goes to «Agregar a oficiales» | Offices, committees | Project decision, 8 Nov 2026 |
 | 2/3 of the base, rounded up | Decisions, when the ballot asks for it | Reglamento 01-02 03: «sólo pueden ser modificados con las 2/3 partes de los votos de la Asamblea». #87 |
@@ -173,15 +175,7 @@ place  name       votes  majority  result
 
 ### Fewer candidates than seats
 
-Committee of 3 with 2 candidates. How many names each delegate marks here is not settled, so the counts are only illustrative.
-
-```
-place  name       votes  majority  result
-  1    Isaías       20   yes       elected
-  2    Jeremías     16   yes       elected
-```
-
-Both are elected. The third seat stays open with no candidate for a next vote. No rule yet says how to fill it.
+The app refuses a committee ballot with fewer candidates than seats. A later vote can still run out of candidates for the open seats. The Presiding Board then decides how to fill them, and the app adds no rule.
 
 ### Office with no majority
 
@@ -211,7 +205,7 @@ Every candidate has 0, so nobody has a majority and every candidate goes to the 
 
 While seats stay open, the result is preliminary. People already elected show «Electo/a» and keep their seats while the later votes fill the rest. The result becomes final when the last seat is filled, and only then does the mesa add it to the officials.
 
-The tool and the mesa never choose between tied candidates. Only another vote separates them. No rule yet ends a chain that keeps tying.
+The tool and the mesa never choose between tied candidates. Only another vote separates them. When ties keep repeating, the Presiding Board decides how to proceed with its own means.
 
 ## Decisions
 
@@ -222,10 +216,6 @@ The tool and the mesa never choose between tied candidates. Only another vote se
 
 Each delegate marks one option. The threshold is the majority, or 2/3 or 3/4 of the base rounded up when the ballot asks for it (base 28 → 19 or 21).
 
-## Open questions
+## Review
 
-- Must all three earlier votes have tied before the regional secretary joins, or only the previous one?
-- What ends a chain that keeps tying after the regional secretary joins?
-- How is a seat filled when a committee has fewer candidates than seats?
-- Confirm exact marks per ballot, including when marks equal candidates.
-- Confirm that candidates above the line without a majority join the next vote, since the Reglamento covers only ties.
+Nobody outside the project reviewed these rules before the assembly of 8 Nov 2026. The assembly ran on them without complaints.
