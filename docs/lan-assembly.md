@@ -71,6 +71,7 @@ Hazlo al menos un día antes, con la laptop que se usará.
 - **La dirección de la laptop cambió** (por ejemplo, tras reiniciar el router): ejecuta `scripts/lan.sh iniciar` de nuevo. Cierra y vuelve a abrir el proyector desde el panel para que muestre el QR nuevo. Los teléfonos que ya se habían unido deben volver a escanearlo; si el ingreso ya estaba cerrado, la mesa decide si reabrirlo.
 - **Registros para diagnosticar:** `scripts/lan.sh registros`.
 - **Reiniciar la laptop a mitad de la Asamblea:** los datos se conservan. Vuelve a ejecutar `scripts/lan.sh iniciar`.
+- **El Wi-Fi falla y la votación no puede seguir:** la papeleta física es la alternativa oficial. La Asamblea decide anular la votación, la mesa la anula en el panel y se repite en papel o en la aplicación. Ten papeletas en blanco listas antes de empezar.
 
 ## Después de la Asamblea
 
