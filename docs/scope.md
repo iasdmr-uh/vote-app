@@ -222,4 +222,4 @@ La arquitectura debe mantener separados los conceptos de organización, Asamblea
 - ~~Determinar quién puede operar el panel de moderación y cómo se entregará/acreditará su acceso.~~ Lo opera la persona técnica, solo desde la laptop servidor (`docs/lan-assembly.md`).
 - ~~Definir conservación y eliminación de nombres, participaciones, votos y bitácoras después de la Asamblea.~~ Tras imprimir el acta, la mesa borra los datos desde el panel y el técnico borra la base completa (`docs/lan-assembly.md`).
 - Confirmar la cobertura y capacidad del Wi-Fi de Starlink en la sala con un ensayo con teléfonos reales. Ya no se usa dominio; la red es local (`docs/lan-assembly.md`).
-- Precisar si el proyector mostrará solamente cantidad de participantes durante el ingreso o también la lista completa de nombres, considerando tamaño y privacidad.
+- If the Wi-Fi fails, paper ballots are the official fallback (`docs/principles.md`, P9). The Operator annuls the affected vote on the Assembly's decision, and the vote is repeated on paper or in the app. The mesa prepares paper ballots before the Assembly (`docs/lan-assembly.md`).
