@@ -12,7 +12,7 @@ Este es el modelo técnico inicial para guiar Fase 02. Toda transición sensible
 | `in_progress` | Hay o hubo rondas operativas; el ingreso no se reabre automáticamente. |
 | `completed` | Asamblea concluida por acción autorizada. |
 
-Transiciones previstas: `preparing → lobby_open → lobby_closed → in_progress → completed`. Reapertura de lobby sería `lobby_closed → lobby_open`, explícita, auditada y condicionada a la decisión pendiente indicada en `decisions-pending.md`. No inferir quién declara la Asamblea completada ni reglas de quórum.
+Transiciones: `preparing → lobby_open → lobby_closed → in_progress → completed`. La Asamblea decide las llegadas tarde y la mesa reabre el ingreso (`docs/scope.md`, regla 2 y sección 18). La reapertura pasa de `lobby_closed` o `in_progress` a `lobby_open` y queda en la bitácora como `lobby.reopened`. El servidor la rechaza mientras hay una papeleta abierta o si la Asamblea está `completed`. Reabrir un ingreso ya abierto no tiene efecto. Al cerrar de nuevo el ingreso, la Asamblea vuelve a `lobby_closed` y pasa a `in_progress` con la siguiente papeleta. No inferir quién declara la Asamblea completada ni reglas de quórum.
 
 ## Ronda
 

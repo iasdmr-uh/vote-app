@@ -95,9 +95,8 @@ E2E real: `npm run test:e2e:real-stack`; si 3300 o 4174 están ocupados, `E2E_AP
 ## Documentos de fundamento
 
 - `docs/adr/ADR-001-architecture.md`: decisiones técnicas iniciales.
-- `docs/foundation/decisions-pending.md`: confirmaciones y pendientes institucionales.
 - `docs/foundation/state-transitions.md`: estados e invariantes.
 - `docs/foundation/data-model.md`: modelo lógico.
 - `docs/foundation/api-and-events.md`: borrador HTTP y Socket.IO.
 
-Las decisiones pendientes requieren validación de Secretaría/mesa o del responsable institucional indicado; no deben convertirse en reglas implícitas del software.
+Las reglas aprobadas están en `docs/rules.md` y `docs/principles.md`. Lo que falta validar está en `docs/scope.md`, sección 18.

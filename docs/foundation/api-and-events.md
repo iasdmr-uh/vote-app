@@ -14,7 +14,7 @@ Prefijo local `/api/v1`. `assemblyCode` es aleatorio y da acceso solo al flujo d
 | `GET /assemblies/:assemblyCode/public-state` | Público/proyector | Estado, QR/URL de sala y datos públicos permitidos por etapa; sin credenciales ni selecciones. Lista de nombres sujeta a decisión pendiente. Con una votación abierta incluye `connection: {roundId, connected, base}`. |
 | `GET /moderator/assemblies/:assemblyId` | Moderador autorizado | Estado administrativo, lista operativa e indicadores agregados permitidos; sin selecciones/conteos por opción antes de `published`. Cada votación dice si es final, quiénes pasan a la siguiente y el estado de su resultado oficial. Con una votación abierta incluye `connection: {roundId, connected, base}`, sin indicar quién. |
 | `POST /moderator/assemblies` | Moderador autorizado | Crear/abrir Asamblea; devuelve identificador y código aleatorio de ingreso. |
-| `PATCH /moderator/assemblies/:assemblyId/lobby` | Moderador autorizado | Abrir/cerrar lobby; cada transición registra auditoría. Reapertura condicionada a validación. |
+| `PATCH /moderator/assemblies/:assemblyId/lobby` | Moderador autorizado | Abrir/cerrar lobby; cada transición registra auditoría. Reabrir se rechaza con una papeleta abierta. |
 | `PATCH /moderator/participants/:participantId` | Moderador autorizado | Corregir o retirar nombre/sesión según política aprobada; auditar acción mínima. |
 | `POST /moderator/assemblies/:assemblyId/rounds` | Moderador autorizado | Crear borrador con título, formato, opciones y regla configurada explícitamente. |
 | `POST /moderator/rounds/:roundId/open` | Moderador autorizado | Congelar opciones y abrir papeleta. |
